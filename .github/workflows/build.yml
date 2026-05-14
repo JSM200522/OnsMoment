@@ -25,9 +25,6 @@ jobs:
           channel: 'stable'
           cache: true
 
-      - name: Flutter doctor
-        run: flutter --version
-
       - name: Genereer Android platform folder
         run: |
           mkdir -p /tmp/flutter_template
@@ -35,34 +32,95 @@ jobs:
           flutter create --platforms=android --org=com.onsmoment --project-name=ons_moment .
           cp -r android $GITHUB_WORKSPACE/android
 
+      - name: Toon gegenereerde gradle bestanden (debug)
+        run: |
+          echo "=== settings.gradle.kts ==="
+          cat android/settings.gradle.kts 2>/dev/null || echo "Niet aanwezig"
+          echo ""
+          echo "=== settings.gradle ==="
+          cat android/settings.gradle 2>/dev/null || echo "Niet aanwezig"
+          echo ""
+          echo "=== app/build.gradle.kts ==="
+          cat android/app/build.gradle.kts 2>/dev/null || echo "Niet aanwezig"
+          echo ""
+          echo "=== app/build.gradle ==="
+          cat android/app/build.gradle 2>/dev/null || echo "Niet aanwezig"
+
       - name: Fix applicationId naar com.onsmoment.app
         run: |
-          sed -i 's|applicationId = "com.onsmoment.ons_moment"|applicationId = "com.onsmoment.app"|g' android/app/build.gradle.kts || true
-          sed -i 's|applicationId "com.onsmoment.ons_moment"|applicationId "com.onsmoment.app"|g' android/app/build.gradle || true
+          sed -i 's|applicationId = "com.onsmoment.ons_moment"|applicationId = "com.onsmoment.app"|g' android/app/build.gradle.kts 2>/dev/null || true
+          sed -i 's|applicationId "com.onsmoment.ons_moment"|applicationId "com.onsmoment.app"|g' android/app/build.gradle 2>/dev/null || true
 
       - name: Verhoog minSdkVersion naar 23
         run: |
-          sed -i 's|minSdk = flutter.minSdkVersion|minSdk = 23|g' android/app/build.gradle.kts || true
-          sed -i 's|minSdkVersion flutter.minSdkVersion|minSdkVersion 23|g' android/app/build.gradle || true
-          sed -i 's|minSdk flutter.minSdkVersion|minSdk 23|g' android/app/build.gradle || true
+          sed -i 's|minSdk = flutter.minSdkVersion|minSdk = 23|g' android/app/build.gradle.kts 2>/dev/null || true
+          sed -i 's|minSdkVersion flutter.minSdkVersion|minSdkVersion 23|g' android/app/build.gradle 2>/dev/null || true
+          sed -i 's|minSdk flutter.minSdkVersion|minSdk 23|g' android/app/build.gradle 2>/dev/null || true
 
-      - name: Voeg google-services plugin toe (project-level)
+      - name: Registreer google-services plugin in settings.gradle.kts
         run: |
           if [ -f android/settings.gradle.kts ]; then
-            sed -i 's|id("com.android.application") version "[^"]*" apply false|&\n    id("com.google.gms.google-services") version "4.4.1" apply false|' android/settings.gradle.kts
-          fi
-          if [ -f android/build.gradle ] && grep -q "buildscript" android/build.gradle; then
-            sed -i '/classpath.*com\.android\.tools\.build/a\        classpath "com.google.gms:google-services:4.4.1"' android/build.gradle
+            python3 << 'EOF'
+          with open('android/settings.gradle.kts', 'r') as f:
+              content = f.read()
+          # Zoek de plugins block en voeg google-services toe
+          import re
+          # Match: id("com.android.application") version "x.y.z" apply false
+          pattern = r'(id\("com\.android\.application"\)\s+version\s+"[^"]+"\s+apply\s+false)'
+          if 'com.google.gms.google-services' not in content:
+              content = re.sub(pattern, r'\1\n    id("com.google.gms.google-services") version "4.4.2" apply false', content)
+          with open('android/settings.gradle.kts', 'w') as f:
+              f.write(content)
+          print("=== Updated settings.gradle.kts ===")
+          print(content)
+          EOF
           fi
 
-      - name: Voeg google-services plugin toe (app-level)
+      - name: Registreer google-services plugin in settings.gradle (Groovy)
+        run: |
+          if [ -f android/settings.gradle ] && [ ! -f android/settings.gradle.kts ]; then
+            python3 << 'EOF'
+          with open('android/settings.gradle', 'r') as f:
+              content = f.read()
+          import re
+          pattern = r"(id\s+['\"]com\.android\.application['\"]\s+version\s+['\"][^'\"]+['\"]\s+apply\s+false)"
+          if 'com.google.gms.google-services' not in content:
+              content = re.sub(pattern, r"\1\n    id 'com.google.gms.google-services' version '4.4.2' apply false", content)
+          with open('android/settings.gradle', 'w') as f:
+              f.write(content)
+          print("=== Updated settings.gradle ===")
+          print(content)
+          EOF
+          fi
+
+      - name: Pas google-services plugin toe in app/build.gradle.kts
         run: |
           if [ -f android/app/build.gradle.kts ]; then
-            sed -i 's|id("com.android.application")|id("com.android.application")\n    id("com.google.gms.google-services")|' android/app/build.gradle.kts
+            python3 << 'EOF'
+          with open('android/app/build.gradle.kts', 'r') as f:
+              content = f.read()
+          if 'com.google.gms.google-services' not in content:
+              # Voeg toe na id("com.android.application")
+              content = content.replace(
+                  'id("com.android.application")',
+                  'id("com.android.application")\n    id("com.google.gms.google-services")',
+                  1
+              )
+          with open('android/app/build.gradle.kts', 'w') as f:
+              f.write(content)
+          print("=== Updated app/build.gradle.kts ===")
+          print(content)
+          EOF
           fi
-          if [ -f android/app/build.gradle ] && ! grep -q "google-services" android/app/build.gradle; then
-            echo "" >> android/app/build.gradle
-            echo "apply plugin: 'com.google.gms.google-services'" >> android/app/build.gradle
+
+      - name: Pas google-services plugin toe in app/build.gradle (Groovy)
+        run: |
+          if [ -f android/app/build.gradle ] && [ ! -f android/app/build.gradle.kts ]; then
+            if ! grep -q "google-services" android/app/build.gradle; then
+              echo "" >> android/app/build.gradle
+              echo "apply plugin: 'com.google.gms.google-services'" >> android/app/build.gradle
+            fi
+            cat android/app/build.gradle
           fi
 
       - name: Plaats google-services.json
@@ -93,9 +151,6 @@ jobs:
 
       - name: Pub get
         run: flutter pub get
-
-      - name: Analyseer code
-        run: flutter analyze --no-fatal-warnings --no-fatal-infos || true
 
       - name: Build release APK
         run: flutter build apk --release
