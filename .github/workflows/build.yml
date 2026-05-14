@@ -43,6 +43,34 @@ jobs:
           sed -i 's|minSdkVersion flutter.minSdkVersion|minSdkVersion 23|g' android/app/build.gradle 2>/dev/null || true
           sed -i 's|minSdk flutter.minSdkVersion|minSdk 23|g' android/app/build.gradle 2>/dev/null || true
 
+      - name: Upgrade Kotlin naar 1.9.22 in settings.gradle.kts
+        run: |
+          if [ -f android/settings.gradle.kts ]; then
+            sed -i 's|id("org.jetbrains.kotlin.android") version "[^"]*"|id("org.jetbrains.kotlin.android") version "1.9.22"|g' android/settings.gradle.kts
+            cat android/settings.gradle.kts
+          fi
+
+      - name: Upgrade Kotlin in settings.gradle (Groovy)
+        run: |
+          if [ -f android/settings.gradle ] && [ ! -f android/settings.gradle.kts ]; then
+            sed -i "s|id ['\"]org.jetbrains.kotlin.android['\"] version ['\"][^'\"]*['\"]|id 'org.jetbrains.kotlin.android' version '1.9.22'|g" android/settings.gradle
+          fi
+
+      - name: Upgrade Android Gradle Plugin naar 8.3.0
+        run: |
+          if [ -f android/settings.gradle.kts ]; then
+            sed -i 's|id("com.android.application") version "[^"]*"|id("com.android.application") version "8.3.0"|g' android/settings.gradle.kts
+          fi
+          if [ -f android/settings.gradle ] && [ ! -f android/settings.gradle.kts ]; then
+            sed -i "s|id ['\"]com.android.application['\"] version ['\"][^'\"]*['\"]|id 'com.android.application' version '8.3.0'|g" android/settings.gradle
+          fi
+
+      - name: Upgrade gradle wrapper naar 8.4
+        run: |
+          sed -i 's|gradle-[0-9.]*-all.zip|gradle-8.4-all.zip|g' android/gradle/wrapper/gradle-wrapper.properties
+          sed -i 's|gradle-[0-9.]*-bin.zip|gradle-8.4-bin.zip|g' android/gradle/wrapper/gradle-wrapper.properties
+          cat android/gradle/wrapper/gradle-wrapper.properties
+
       - name: Registreer google-services plugin in settings.gradle.kts
         run: |
           if [ -f android/settings.gradle.kts ]; then
@@ -141,10 +169,7 @@ jobs:
               with open('lib/screens/tablet/tablet_scherm.dart', 'w') as f:
                   f.write(content)
               print("Import toegevoegd aan tablet_scherm.dart")
-          else:
-              print("Import bestond al")
           EOF
-          head -20 lib/screens/tablet/tablet_scherm.dart
 
       - name: Pub get
         run: flutter pub get
