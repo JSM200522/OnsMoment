@@ -1,0 +1,31 @@
+name: Build Ons Moment APK
+
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Flutter installeren
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.19.0'
+
+      - name: Dependencies installeren
+        run: flutter pub get
+
+      - name: google-services.json plaatsen
+        run: cp google-services.json android/app/google-services.json
+
+      - name: APK bouwen
+        run: flutter build apk --release
+
+      - name: APK uploaden
+        uses: actions/upload-artifact@v4
+        with:
+          name: ons-moment-apk
+          path: build/app/outputs/flutter-apk/app-release.apk
