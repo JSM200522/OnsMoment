@@ -3,29 +3,111 @@ name: Build Ons Moment APK
 on:
   push:
     branches: [ main ]
+  workflow_dispatch:
 
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-      - name: Flutter installeren
+      - name: Setup Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Setup Flutter 3.19
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.19.0'
+          flutter-version: '3.19.6'
+          channel: 'stable'
+          cache: true
 
-      - name: Dependencies installeren
+      - name: Flutter doctor
+        run: flutter --version
+
+      - name: Genereer Android platform folder
+        run: |
+          mkdir -p /tmp/flutter_template
+          cd /tmp/flutter_template
+          flutter create --platforms=android --org=com.onsmoment --project-name=ons_moment .
+          cp -r android $GITHUB_WORKSPACE/android
+
+      - name: Fix applicationId naar com.onsmoment.app
+        run: |
+          sed -i 's|applicationId = "com.onsmoment.ons_moment"|applicationId = "com.onsmoment.app"|g' android/app/build.gradle.kts || true
+          sed -i 's|applicationId "com.onsmoment.ons_moment"|applicationId "com.onsmoment.app"|g' android/app/build.gradle || true
+
+      - name: Verhoog minSdkVersion naar 23
+        run: |
+          sed -i 's|minSdk = flutter.minSdkVersion|minSdk = 23|g' android/app/build.gradle.kts || true
+          sed -i 's|minSdkVersion flutter.minSdkVersion|minSdkVersion 23|g' android/app/build.gradle || true
+          sed -i 's|minSdk flutter.minSdkVersion|minSdk 23|g' android/app/build.gradle || true
+
+      - name: Voeg google-services plugin toe (project-level)
+        run: |
+          if [ -f android/settings.gradle.kts ]; then
+            sed -i 's|id("com.android.application") version "[^"]*" apply false|&\n    id("com.google.gms.google-services") version "4.4.1" apply false|' android/settings.gradle.kts
+          fi
+          if [ -f android/build.gradle ] && grep -q "buildscript" android/build.gradle; then
+            sed -i '/classpath.*com\.android\.tools\.build/a\        classpath "com.google.gms:google-services:4.4.1"' android/build.gradle
+          fi
+
+      - name: Voeg google-services plugin toe (app-level)
+        run: |
+          if [ -f android/app/build.gradle.kts ]; then
+            sed -i 's|id("com.android.application")|id("com.android.application")\n    id("com.google.gms.google-services")|' android/app/build.gradle.kts
+          fi
+          if [ -f android/app/build.gradle ] && ! grep -q "google-services" android/app/build.gradle; then
+            echo "" >> android/app/build.gradle
+            echo "apply plugin: 'com.google.gms.google-services'" >> android/app/build.gradle
+          fi
+
+      - name: Plaats google-services.json
+        run: |
+          cp google-services.json android/app/google-services.json
+          ls -la android/app/google-services.json
+
+      - name: Voeg permissions toe aan AndroidManifest
+        run: |
+          python3 << 'EOF'
+          import re
+          with open('android/app/src/main/AndroidManifest.xml', 'r') as f:
+              content = f.read()
+          permissions = '''
+              <uses-permission android:name="android.permission.INTERNET"/>
+              <uses-permission android:name="android.permission.RECORD_AUDIO"/>
+              <uses-permission android:name="android.permission.CAMERA"/>
+              <uses-permission android:name="android.permission.WAKE_LOCK"/>
+              <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"/>
+              <uses-permission android:name="android.permission.READ_MEDIA_IMAGES"/>
+              <uses-permission android:name="android.permission.READ_MEDIA_VIDEO"/>
+              <uses-permission android:name="android.permission.READ_MEDIA_AUDIO"/>
+          '''
+          content = re.sub(r'(<manifest[^>]*>)', r'\1' + permissions, content)
+          with open('android/app/src/main/AndroidManifest.xml', 'w') as f:
+              f.write(content)
+          EOF
+
+      - name: Pub get
         run: flutter pub get
 
-      - name: google-services.json plaatsen
-        run: cp google-services.json android/app/google-services.json
+      - name: Analyseer code
+        run: flutter analyze --no-fatal-warnings --no-fatal-infos || true
 
-      - name: APK bouwen
+      - name: Build release APK
         run: flutter build apk --release
 
-      - name: APK uploaden
+      - name: Toon APK info
+        run: |
+          ls -la build/app/outputs/flutter-apk/
+          du -h build/app/outputs/flutter-apk/app-release.apk
+
+      - name: Upload APK als artifact
         uses: actions/upload-artifact@v4
         with:
           name: ons-moment-apk
           path: build/app/outputs/flutter-apk/app-release.apk
+          retention-days: 90
