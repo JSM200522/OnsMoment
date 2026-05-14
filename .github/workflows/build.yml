@@ -32,20 +32,6 @@ jobs:
           flutter create --platforms=android --org=com.onsmoment --project-name=ons_moment .
           cp -r android $GITHUB_WORKSPACE/android
 
-      - name: Toon gegenereerde gradle bestanden (debug)
-        run: |
-          echo "=== settings.gradle.kts ==="
-          cat android/settings.gradle.kts 2>/dev/null || echo "Niet aanwezig"
-          echo ""
-          echo "=== settings.gradle ==="
-          cat android/settings.gradle 2>/dev/null || echo "Niet aanwezig"
-          echo ""
-          echo "=== app/build.gradle.kts ==="
-          cat android/app/build.gradle.kts 2>/dev/null || echo "Niet aanwezig"
-          echo ""
-          echo "=== app/build.gradle ==="
-          cat android/app/build.gradle 2>/dev/null || echo "Niet aanwezig"
-
       - name: Fix applicationId naar com.onsmoment.app
         run: |
           sed -i 's|applicationId = "com.onsmoment.ons_moment"|applicationId = "com.onsmoment.app"|g' android/app/build.gradle.kts 2>/dev/null || true
@@ -63,16 +49,12 @@ jobs:
             python3 << 'EOF'
           with open('android/settings.gradle.kts', 'r') as f:
               content = f.read()
-          # Zoek de plugins block en voeg google-services toe
           import re
-          # Match: id("com.android.application") version "x.y.z" apply false
           pattern = r'(id\("com\.android\.application"\)\s+version\s+"[^"]+"\s+apply\s+false)'
           if 'com.google.gms.google-services' not in content:
               content = re.sub(pattern, r'\1\n    id("com.google.gms.google-services") version "4.4.2" apply false', content)
           with open('android/settings.gradle.kts', 'w') as f:
               f.write(content)
-          print("=== Updated settings.gradle.kts ===")
-          print(content)
           EOF
           fi
 
@@ -88,8 +70,6 @@ jobs:
               content = re.sub(pattern, r"\1\n    id 'com.google.gms.google-services' version '4.4.2' apply false", content)
           with open('android/settings.gradle', 'w') as f:
               f.write(content)
-          print("=== Updated settings.gradle ===")
-          print(content)
           EOF
           fi
 
@@ -100,7 +80,6 @@ jobs:
           with open('android/app/build.gradle.kts', 'r') as f:
               content = f.read()
           if 'com.google.gms.google-services' not in content:
-              # Voeg toe na id("com.android.application")
               content = content.replace(
                   'id("com.android.application")',
                   'id("com.android.application")\n    id("com.google.gms.google-services")',
@@ -108,8 +87,6 @@ jobs:
               )
           with open('android/app/build.gradle.kts', 'w') as f:
               f.write(content)
-          print("=== Updated app/build.gradle.kts ===")
-          print(content)
           EOF
           fi
 
@@ -120,7 +97,6 @@ jobs:
               echo "" >> android/app/build.gradle
               echo "apply plugin: 'com.google.gms.google-services'" >> android/app/build.gradle
             fi
-            cat android/app/build.gradle
           fi
 
       - name: Plaats google-services.json
@@ -148,6 +124,27 @@ jobs:
           with open('android/app/src/main/AndroidManifest.xml', 'w') as f:
               f.write(content)
           EOF
+
+      - name: Fix wakelock_plus import in tablet_scherm
+        run: |
+          python3 << 'EOF'
+          with open('lib/screens/tablet/tablet_scherm.dart', 'r') as f:
+              content = f.read()
+          if "import 'package:wakelock_plus/wakelock_plus.dart'" not in content:
+              lines = content.split('\n')
+              last_import_idx = 0
+              for i, line in enumerate(lines):
+                  if line.startswith('import '):
+                      last_import_idx = i
+              lines.insert(last_import_idx + 1, "import 'package:wakelock_plus/wakelock_plus.dart';")
+              content = '\n'.join(lines)
+              with open('lib/screens/tablet/tablet_scherm.dart', 'w') as f:
+                  f.write(content)
+              print("Import toegevoegd aan tablet_scherm.dart")
+          else:
+              print("Import bestond al")
+          EOF
+          head -20 lib/screens/tablet/tablet_scherm.dart
 
       - name: Pub get
         run: flutter pub get
