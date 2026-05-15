@@ -15,13 +15,13 @@ const Color kBrownLight = Color(0xFF8B6354);
 const Color kTextMuted  = Color(0xFF9B7565);
 const Color kWhite      = Color(0xFFFFFFFF);
 
-const Map<String, String> kGeluidUrls = {
-  'twinkel': 'https://cdn.pixabay.com/audio/2022/03/24/audio_8e8e3e6f17.mp3',
-  'bel': 'https://cdn.pixabay.com/audio/2022/03/15/audio_e9e98c7c8b.mp3',
-  'vogel': 'https://cdn.pixabay.com/audio/2022/03/10/audio_cd2c1ec3fc.mp3',
-  'piano': 'https://cdn.pixabay.com/audio/2022/03/15/audio_8c0f1f4a4f.mp3',
-  'kerkklok': 'https://cdn.pixabay.com/audio/2021/08/04/audio_bb630cc098.mp3',
-  'hart': 'https://cdn.pixabay.com/audio/2022/01/18/audio_d0c6ff1eab.mp3',
+const Map<String, String> kGeluidAssets = {
+  'twinkel':  'assets/sounds/twinkel.mp3',
+  'bel':      'assets/sounds/bel.mp3',
+  'vogel':    'assets/sounds/vogel.mp3',
+  'piano':    'assets/sounds/piano.mp3',
+  'kerkklok': 'assets/sounds/kerkklok.mp3',
+  'hart':     'assets/sounds/hart.mp3',
 };
 
 class TabletScherm extends StatefulWidget {
@@ -102,11 +102,11 @@ class _TabletSchermState extends State<TabletScherm> {
   Future<void> _toonPopup(String id, Map<String, dynamic> d) async {
     if (_huidigPopupId == id) return;
     // Speel herkenningsgeluid - wacht alleen 1200ms als afspelen daadwerkelijk lukte
-    final geluidUrl = kGeluidUrls[_herkenningsgeluid];
-    if (geluidUrl != null) {
+    final geluidAsset = kGeluidAssets[_herkenningsgeluid];
+    if (geluidAsset != null) {
       bool geluidGespeeld = false;
       try {
-        await _geluidPlayer.setUrl(geluidUrl);
+        await _geluidPlayer.setAsset(geluidAsset);
         await _geluidPlayer.play();
         geluidGespeeld = true;
       } catch (_) {

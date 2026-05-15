@@ -19,18 +19,18 @@ const Color kWhite      = Color(0xFFFFFFFF);
 const Color kGreen      = Color(0xFF4CAF82);
 
 final List<Map<String, String>> kGeluiden = [
-  {'id': 'twinkel', 'emoji': '✨', 'naam': 'Twinkel',
-   'url': 'https://cdn.pixabay.com/audio/2022/03/24/audio_8e8e3e6f17.mp3'},
-  {'id': 'bel', 'emoji': '🔔', 'naam': 'Zachte bel',
-   'url': 'https://cdn.pixabay.com/audio/2022/03/15/audio_e9e98c7c8b.mp3'},
-  {'id': 'vogel', 'emoji': '🐦', 'naam': 'Vogel',
-   'url': 'https://cdn.pixabay.com/audio/2022/03/10/audio_cd2c1ec3fc.mp3'},
-  {'id': 'piano', 'emoji': '🎹', 'naam': 'Piano',
-   'url': 'https://cdn.pixabay.com/audio/2022/03/15/audio_8c0f1f4a4f.mp3'},
+  {'id': 'twinkel',  'emoji': '✨', 'naam': 'Twinkel',
+   'asset': 'assets/sounds/twinkel.mp3'},
+  {'id': 'bel',      'emoji': '🔔', 'naam': 'Zachte bel',
+   'asset': 'assets/sounds/bel.mp3'},
+  {'id': 'vogel',    'emoji': '🐦', 'naam': 'Vogel',
+   'asset': 'assets/sounds/vogel.mp3'},
+  {'id': 'piano',    'emoji': '🎹', 'naam': 'Piano',
+   'asset': 'assets/sounds/piano.mp3'},
   {'id': 'kerkklok', 'emoji': '⛪', 'naam': 'Kerkklok',
-   'url': 'https://cdn.pixabay.com/audio/2021/08/04/audio_bb630cc098.mp3'},
-  {'id': 'hart', 'emoji': '💕', 'naam': 'Liefdes-melodie',
-   'url': 'https://cdn.pixabay.com/audio/2022/01/18/audio_d0c6ff1eab.mp3'},
+   'asset': 'assets/sounds/kerkklok.mp3'},
+  {'id': 'hart',     'emoji': '💕', 'naam': 'Liefdes-melodie',
+   'asset': 'assets/sounds/hart.mp3'},
 ];
 
 class SetupWizard extends StatefulWidget {
@@ -318,7 +318,7 @@ class _SetupWizardState extends State<SetupWizard> {
       child: GestureDetector(
         onTap: () {
           setState(() => _gekozenGeluid = g['id']!);
-          _speelGeluidPreview(g['url']!);
+          _speelGeluidPreview(g['asset']!);
         },
         child: Container(padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
@@ -392,10 +392,10 @@ class _SetupWizardState extends State<SetupWizard> {
           color: kTextMuted, height: 1.4)),
     ]);
 
-  Future<void> _speelGeluidPreview(String url) async {
+  Future<void> _speelGeluidPreview(String pad) async {
     try {
       await _geluidPreviewPlayer.stop();
-      await _geluidPreviewPlayer.setUrl(url);
+      await _geluidPreviewPlayer.setAsset(pad);
       await _geluidPreviewPlayer.play();
     } catch (_) {}
   }
