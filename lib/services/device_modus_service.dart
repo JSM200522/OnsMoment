@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 /// Beheert de "modus" van dit specifieke apparaat:
@@ -13,13 +14,18 @@ class DeviceModusService {
   static const String FAMILIE = 'familie';
   static const String ONTVANGER = 'ontvanger';
 
-  /// Lees huidige modus. Null als nog niet ingesteld.
+  /// Reactief gepubliceerde modus — wordt door [get], [zet] en [wis]
+  /// up-to-date gehouden zodat de UI zonder polling kan reageren.
+  static final ValueNotifier<String?> notifier = ValueNotifier<String?>(null);
+
+  /// Lees huidige modus uit storage en publiceer naar [notifier]. Null als nog niet ingesteld.
   static Future<String?> get() async {
     try {
       final prefs = await SharedPreferences.getInstance();
       final waarde = prefs.getString(_key);
-      if (waarde == FAMILIE || waarde == ONTVANGER) return waarde;
-      return null;
+      final resultaat = (waarde == FAMILIE || waarde == ONTVANGER) ? waarde : null;
+      notifier.value = resultaat;
+      return resultaat;
     } catch (_) {
       return null;
     }
@@ -30,7 +36,9 @@ class DeviceModusService {
     if (modus != FAMILIE && modus != ONTVANGER) return false;
     try {
       final prefs = await SharedPreferences.getInstance();
-      return await prefs.setString(_key, modus);
+      final ok = await prefs.setString(_key, modus);
+      if (ok) notifier.value = modus;
+      return ok;
     } catch (_) {
       return false;
     }
@@ -41,6 +49,7 @@ class DeviceModusService {
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.remove(_key);
+      notifier.value = null;
     } catch (_) {}
   }
 }

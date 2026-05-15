@@ -47,22 +47,18 @@ class RouterScherm extends StatefulWidget {
 }
 
 class _RouterSchermState extends State<RouterScherm> {
-  String? _modus;
-  bool _modusGeladen = false;
+  bool _initieelGeladen = false;
 
   @override
   void initState() {
     super.initState();
-    _laadModus();
+    _laadInitieel();
   }
 
-  Future<void> _laadModus() async {
-    final m = await DeviceModusService.get();
+  Future<void> _laadInitieel() async {
+    await DeviceModusService.get();
     if (!mounted) return;
-    setState(() {
-      _modus = m;
-      _modusGeladen = true;
-    });
+    setState(() => _initieelGeladen = true);
   }
 
   @override
@@ -74,12 +70,17 @@ class _RouterSchermState extends State<RouterScherm> {
           return const _LaadScherm();
         }
         if (!authSnap.hasData) return const SetupWizard();
-        if (!_modusGeladen) return const _LaadScherm();
-        if (_modus == null) return const SetupWizard();
-        if (_modus == DeviceModusService.ONTVANGER) {
-          return const TabletScherm();
-        }
-        return const FamilieScherm();
+        if (!_initieelGeladen) return const _LaadScherm();
+        return ValueListenableBuilder<String?>(
+          valueListenable: DeviceModusService.notifier,
+          builder: (context, modus, _) {
+            if (modus == null) return const SetupWizard();
+            if (modus == DeviceModusService.ONTVANGER) {
+              return const TabletScherm();
+            }
+            return const FamilieScherm();
+          },
+        );
       },
     );
   }
