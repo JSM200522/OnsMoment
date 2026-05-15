@@ -891,8 +891,7 @@ class InstellingenTab extends StatelessWidget {
       title: const Text('Naar Ontvanger-modus?'),
       content: const Text(
           'Dit apparaat wordt dan een kiosk-weergave voor de ontvanger. '
-          'Je wordt eerst uitgelogd. Log daarna opnieuw in en kies '
-          '"Ontvanger" op het keuzescherm.'),
+          'Je blijft ingelogd op hetzelfde account.'),
       actions: [
         TextButton(onPressed: () => Navigator.pop(ctx),
             child: const Text('Annuleren')),
@@ -900,12 +899,9 @@ class InstellingenTab extends StatelessWidget {
           style: ElevatedButton.styleFrom(backgroundColor: kPeach),
           onPressed: () async {
             Navigator.pop(ctx);
-            // Wis modus + log uit → router gaat naar SetupWizard
-            // waar gebruiker "Ontvanger" kan kiezen en opnieuw inloggen
-            await DeviceModusService.wis();
-            await FirebaseAuth.instance.signOut();
+            await DeviceModusService.zet(DeviceModusService.ONTVANGER);
           },
-          child: const Text('Uitloggen en wisselen',
+          child: const Text('Wisselen',
               style: TextStyle(color: kWhite))),
       ],
     ));
@@ -954,7 +950,7 @@ class MomentenBeherenScherm extends StatelessWidget {
             style: TextStyle(color: kBrown, fontWeight: FontWeight.w900))),
       floatingActionButton: FloatingActionButton.extended(
         backgroundColor: kPeach,
-        onPressed: () => _voegToe(context, uid),
+        onPressed: () => _opnenDialog(context, uid),
         icon: const Icon(Icons.add_rounded, color: kWhite),
         label: const Text('Nieuw moment',
             style: TextStyle(color: kWhite, fontWeight: FontWeight.w800))),
@@ -989,27 +985,30 @@ class MomentenBeherenScherm extends StatelessWidget {
           return ListView(padding: const EdgeInsets.all(20),
             children: docs.map((doc) {
               final d = doc.data() as Map<String, dynamic>;
-              return Container(margin: const EdgeInsets.only(bottom: 10),
-                padding: const EdgeInsets.all(14),
-                decoration: BoxDecoration(color: kWhite,
-                    borderRadius: BorderRadius.circular(14),
-                    border: Border.all(color: kPeachLight, width: 2)),
-                child: Row(children: [
-                  Text(d['emoji'] ?? '⭐',
-                      style: const TextStyle(fontSize: 28)),
-                  const SizedBox(width: 14),
-                  Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                    Text(d['label'] ?? 'Moment', style: const TextStyle(
-                        fontSize: 15, fontWeight: FontWeight.w800,
-                        color: kBrown)),
-                    Text('${(d['uur'] ?? 0).toString().padLeft(2, '0')}:${(d['minuut'] ?? 0).toString().padLeft(2, '0')} elke dag',
-                        style: const TextStyle(fontSize: 12, color: kTextMuted)),
-                  ])),
-                  IconButton(icon: const Icon(Icons.delete_outline_rounded,
-                      color: Colors.red),
-                    onPressed: () => doc.reference.update({'actief': false})),
-                ]),
+              return GestureDetector(
+                onTap: () => _opnenDialog(context, uid, bestaand: doc),
+                child: Container(margin: const EdgeInsets.only(bottom: 10),
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(color: kWhite,
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(color: kPeachLight, width: 2)),
+                  child: Row(children: [
+                    Text(d['emoji'] ?? '⭐',
+                        style: const TextStyle(fontSize: 28)),
+                    const SizedBox(width: 14),
+                    Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                      Text(d['label'] ?? 'Moment', style: const TextStyle(
+                          fontSize: 15, fontWeight: FontWeight.w800,
+                          color: kBrown)),
+                      Text('${(d['uur'] ?? 0).toString().padLeft(2, '0')}:${(d['minuut'] ?? 0).toString().padLeft(2, '0')} elke dag',
+                          style: const TextStyle(fontSize: 12, color: kTextMuted)),
+                    ])),
+                    IconButton(icon: const Icon(Icons.delete_outline_rounded,
+                        color: Colors.red),
+                      onPressed: () => doc.reference.update({'actief': false})),
+                  ]),
+                ),
               );
             }).toList());
         },
@@ -1017,11 +1016,22 @@ class MomentenBeherenScherm extends StatelessWidget {
     );
   }
 
-  Future<void> _voegToe(BuildContext context, String? uid) async {
+  Future<void> _opnenDialog(BuildContext context, String? uid,
+      {QueryDocumentSnapshot? bestaand}) async {
     if (uid == null) return;
+    final initial = bestaand?.data() as Map<String, dynamic>?;
     final result = await showDialog<Map<String, dynamic>>(
-      context: context, builder: (ctx) => _NieuwMomentDialog());
-    if (result != null) {
+      context: context,
+      builder: (ctx) => _NieuwMomentDialog(initial: initial));
+    if (result == null) return;
+    if (bestaand != null) {
+      await bestaand.reference.update({
+        'emoji': result['emoji'],
+        'label': result['label'],
+        'uur': result['uur'],
+        'minuut': result['minuut'],
+      });
+    } else {
       await FirebaseFirestore.instance.collection('dagelijkse_momenten').add({
         'familieUid': uid,
         'emoji': result['emoji'],
@@ -1037,15 +1047,28 @@ class MomentenBeherenScherm extends StatelessWidget {
 }
 
 class _NieuwMomentDialog extends StatefulWidget {
+  final Map<String, dynamic>? initial;
+  const _NieuwMomentDialog({this.initial});
   @override
   State<_NieuwMomentDialog> createState() => _NieuwMomentDialogState();
 }
 
 class _NieuwMomentDialogState extends State<_NieuwMomentDialog> {
-  String _emoji = '⭐';
-  final _labelCtrl = TextEditingController();
-  TimeOfDay _tijd = const TimeOfDay(hour: 15, minute: 0);
+  late String _emoji;
+  late final TextEditingController _labelCtrl;
+  late TimeOfDay _tijd;
   final _emojis = ['⭐', '☀️', '☕', '🍽️', '🌙', '💕', '🎵', '🌸', '🌳', '📚', '🐦', '🍰'];
+
+  @override
+  void initState() {
+    super.initState();
+    final init = widget.initial;
+    _emoji = init?['emoji'] as String? ?? '⭐';
+    _labelCtrl = TextEditingController(text: init?['label'] as String? ?? '');
+    _tijd = TimeOfDay(
+        hour: init?['uur'] as int? ?? 15,
+        minute: init?['minuut'] as int? ?? 0);
+  }
 
   @override
   void dispose() {
@@ -1060,8 +1083,8 @@ class _NieuwMomentDialogState extends State<_NieuwMomentDialog> {
       child: Padding(padding: const EdgeInsets.all(20),
         child: Column(mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start, children: [
-          const Text('Nieuw moment',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900,
+          Text(widget.initial == null ? 'Nieuw moment' : 'Moment aanpassen',
+              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900,
                   color: kBrown)),
           const SizedBox(height: 16),
           const Text('Emoji', style: TextStyle(fontSize: 12,

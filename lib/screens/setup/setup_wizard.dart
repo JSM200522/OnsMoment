@@ -631,12 +631,13 @@ class _SetupWizardState extends State<SetupWizard> {
 
   Future<void> _familieRegistreren() async {
     setState(() => _bezig = true);
+    UserCredential? cred;
     try {
-      final cred = await FirebaseAuth.instance.createUserWithEmailAndPassword(
+      cred = await FirebaseAuth.instance.createUserWithEmailAndPassword(
           email: _emailCtrl.text.trim(), password: _wachtwoordCtrl.text);
       final uid = cred.user!.uid;
 
-      // Profielfoto uploaden
+      // Profielfoto uploaden (geen exception bij fail; zie #22)
       String profielFotoUrl = '';
       bool fotoUploadFaalde = false;
       if (_profielFotoBytes != null) {
@@ -651,8 +652,12 @@ class _SetupWizardState extends State<SetupWizard> {
         }
       }
 
-      // Familie/gezin document (EEN account, alle data hangt eraan)
-      await FirebaseFirestore.instance.collection('gebruikers').doc(uid).set({
+      // Profiel + dagelijkse momenten atomair via WriteBatch.
+      // Bij fail wordt de auth-user in de catch hieronder weer verwijderd
+      // zodat retry met dezelfde email mogelijk blijft.
+      final batch = FirebaseFirestore.instance.batch();
+      batch.set(
+          FirebaseFirestore.instance.collection('gebruikers').doc(uid), {
         'email': _emailCtrl.text.trim(),
         'familieNaam': _naamCtrl.text.trim(),
         'ontvangerNaam': _ontvangerNaamCtrl.text.trim(),
@@ -664,10 +669,10 @@ class _SetupWizardState extends State<SetupWizard> {
         'herkenningsgeluid': _gekozenGeluid,
         'aangemaaktOp': FieldValue.serverTimestamp(),
       });
-
-      // Dagelijkse momenten
       for (final m in _momenten) {
-        await FirebaseFirestore.instance.collection('dagelijkse_momenten').add({
+        batch.set(
+            FirebaseFirestore.instance.collection('dagelijkse_momenten').doc(),
+            {
           'familieUid': uid,
           'emoji': m.emoji,
           'label': m.label,
@@ -680,6 +685,7 @@ class _SetupWizardState extends State<SetupWizard> {
           'aangemaaktOp': FieldValue.serverTimestamp(),
         });
       }
+      await batch.commit();
 
       if (fotoUploadFaalde && mounted) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
@@ -692,6 +698,11 @@ class _SetupWizardState extends State<SetupWizard> {
       }
       await DeviceModusService.zet(DeviceModusService.FAMILIE);
     } catch (e) {
+      if (cred?.user != null) {
+        try {
+          await cred!.user!.delete();
+        } catch (_) {}
+      }
       _toonFout('Account aanmaken mislukt: ${e.toString()}');
     } finally {
       if (mounted) setState(() => _bezig = false);

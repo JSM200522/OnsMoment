@@ -56,7 +56,8 @@ class _RouterSchermState extends State<RouterScherm> {
   }
 
   Future<void> _laadInitieel() async {
-    await DeviceModusService.get();
+    await DeviceModusService.get()
+        .timeout(const Duration(seconds: 5), onTimeout: () => null);
     if (!mounted) return;
     setState(() => _initieelGeladen = true);
   }
