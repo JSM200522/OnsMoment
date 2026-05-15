@@ -8,7 +8,6 @@ import 'package:image_picker/image_picker.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:record/record.dart';
 import 'package:just_audio/just_audio.dart';
-import '../../main.dart';
 import '../../services/device_modus_service.dart';
 
 const Color kPeach      = Color(0xFFFF9B71);
@@ -24,7 +23,7 @@ const Color kGreen      = Color(0xFF4CAF82);
 const Color kBlue       = Color(0xFF4A90E2);
 const Color kRood       = Color(0xFFE74C3C);
 
-const List<Map<String, String>> kGeluiden = [
+final List<Map<String, String>> kGeluiden = [
   {'id': 'twinkel', 'emoji': '✨', 'naam': 'Twinkel',
    'url': 'https://cdn.pixabay.com/audio/2022/03/24/audio_8e8e3e6f17.mp3'},
   {'id': 'bel', 'emoji': '🔔', 'naam': 'Zachte bel',
@@ -869,21 +868,22 @@ class InstellingenTab extends StatelessWidget {
       title: const Text('Naar Ontvanger-modus?'),
       content: const Text(
           'Dit apparaat wordt dan een kiosk-weergave voor de ontvanger. '
-          'Je kunt later terugschakelen door uit te loggen en opnieuw de '
-          'familie-modus te kiezen.'),
+          'Je wordt eerst uitgelogd. Log daarna opnieuw in en kies '
+          '"Ontvanger" op het keuzescherm.'),
       actions: [
         TextButton(onPressed: () => Navigator.pop(ctx),
             child: const Text('Annuleren')),
         ElevatedButton(
           style: ElevatedButton.styleFrom(backgroundColor: kPeach),
           onPressed: () async {
-            await DeviceModusService.zet(DeviceModusService.ONTVANGER);
-            if (!context.mounted) return;
             Navigator.pop(ctx);
-            // Forceer volledige app rebuild → router routeert nu naar TabletScherm
-            OnsMomentApp.herstart(context);
+            // Wis modus + log uit → router gaat naar SetupWizard
+            // waar gebruiker "Ontvanger" kan kiezen en opnieuw inloggen
+            await DeviceModusService.wis();
+            await FirebaseAuth.instance.signOut();
           },
-          child: const Text('Wissel', style: TextStyle(color: kWhite))),
+          child: const Text('Uitloggen en wisselen',
+              style: TextStyle(color: kWhite))),
       ],
     ));
   }
