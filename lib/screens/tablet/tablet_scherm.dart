@@ -4,25 +4,8 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
-
-const Color kPeach      = Color(0xFFFF9B71);
-const Color kPeachLight = Color(0xFFFFD4C2);
-const Color kPeachPale  = Color(0xFFFFF0EA);
-const Color kRose       = Color(0xFFFF7B9C);
-const Color kCream      = Color(0xFFFFFAF7);
-const Color kBrown      = Color(0xFF5C3D2E);
-const Color kBrownLight = Color(0xFF8B6354);
-const Color kTextMuted  = Color(0xFF9B7565);
-const Color kWhite      = Color(0xFFFFFFFF);
-
-const Map<String, String> kGeluidAssets = {
-  'twinkel':  'assets/sounds/twinkel.mp3',
-  'bel':      'assets/sounds/bel.mp3',
-  'vogel':    'assets/sounds/vogel.mp3',
-  'piano':    'assets/sounds/piano.mp3',
-  'kerkklok': 'assets/sounds/kerkklok.mp3',
-  'hart':     'assets/sounds/hart.mp3',
-};
+import '../../theme/kleuren.dart';
+import '../../data/geluiden.dart';
 
 class TabletScherm extends StatefulWidget {
   const TabletScherm({super.key});
@@ -129,9 +112,7 @@ class _TabletSchermState extends State<TabletScherm> {
         await _geluidPlayer.setAsset(geluidAsset);
         await _geluidPlayer.play();
         geluidGespeeld = true;
-      } catch (_) {
-        // Geluid niet beschikbaar - geen probleem, popup gaat door
-      }
+      } catch (_) {}
       if (geluidGespeeld) {
         await Future.delayed(const Duration(milliseconds: 1200));
       }

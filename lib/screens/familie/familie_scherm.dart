@@ -10,34 +10,8 @@ import 'package:record/record.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:http/http.dart' as http;
 import '../../services/device_modus_service.dart';
-
-const Color kPeach      = Color(0xFFFF9B71);
-const Color kPeachLight = Color(0xFFFFD4C2);
-const Color kPeachPale  = Color(0xFFFFF0EA);
-const Color kRose       = Color(0xFFFF7B9C);
-const Color kCream      = Color(0xFFFFFAF7);
-const Color kBrown      = Color(0xFF5C3D2E);
-const Color kBrownLight = Color(0xFF8B6354);
-const Color kTextMuted  = Color(0xFF9B7565);
-const Color kWhite      = Color(0xFFFFFFFF);
-const Color kGreen      = Color(0xFF4CAF82);
-const Color kBlue       = Color(0xFF4A90E2);
-const Color kRood       = Color(0xFFE74C3C);
-
-final List<Map<String, String>> kGeluiden = [
-  {'id': 'twinkel',  'emoji': '✨', 'naam': 'Twinkel',
-   'asset': 'assets/sounds/twinkel.mp3'},
-  {'id': 'bel',      'emoji': '🔔', 'naam': 'Zachte bel',
-   'asset': 'assets/sounds/bel.mp3'},
-  {'id': 'vogel',    'emoji': '🐦', 'naam': 'Vogel',
-   'asset': 'assets/sounds/vogel.mp3'},
-  {'id': 'piano',    'emoji': '🎹', 'naam': 'Piano',
-   'asset': 'assets/sounds/piano.mp3'},
-  {'id': 'kerkklok', 'emoji': '⛪', 'naam': 'Kerkklok',
-   'asset': 'assets/sounds/kerkklok.mp3'},
-  {'id': 'hart',     'emoji': '💕', 'naam': 'Liefdes-melodie',
-   'asset': 'assets/sounds/hart.mp3'},
-];
+import '../../theme/kleuren.dart';
+import '../../data/geluiden.dart';
 
 class FamilieScherm extends StatefulWidget {
   const FamilieScherm({super.key});
@@ -63,7 +37,7 @@ class _FamilieSchermState extends State<FamilieScherm> {
             tooltip: 'Hulp',
             onPressed: () => showModalBottomSheet(context: context,
                 backgroundColor: Colors.transparent, isScrollControlled: true,
-                builder: (ctx) => _HulpDialog()),
+                builder: (ctx) => const _HulpDialog()),
           ),
         ],
       ),
@@ -388,9 +362,39 @@ class _StuurTabState extends State<StuurTab> {
             textAlign: TextAlign.center,
             style: const TextStyle(fontSize: 14,
                 fontWeight: FontWeight.w700, color: kBrown)),
+        if (_type == 'lied' && _mediaBytes != null) ...[
+          const SizedBox(height: 12),
+          GestureDetector(
+            onTap: _speelLiedPreview,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+              decoration: BoxDecoration(color: kPeach,
+                  borderRadius: BorderRadius.circular(20)),
+              child: const Row(mainAxisSize: MainAxisSize.min, children: [
+                Icon(Icons.play_arrow_rounded, color: kWhite, size: 20),
+                SizedBox(width: 6),
+                Text('Voorbeeld beluisteren',
+                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.w800,
+                        color: kWhite)),
+              ]),
+            ),
+          ),
+        ],
       ])),
     ),
   );
+
+  Future<void> _speelLiedPreview() async {
+    if (_mediaBytes == null) return;
+    try {
+      await _previewPlayer.stop();
+      await _previewPlayer.setAudioSource(
+          _BytesAudioSource(_mediaBytes!, 'audio/mpeg'));
+      await _previewPlayer.play();
+    } catch (e) {
+      _toonFout('Afspelen mislukt: $e');
+    }
+  }
 
   Future<void> _kiesMedia() async {
     try {
@@ -873,7 +877,7 @@ class InstellingenTab extends StatelessWidget {
         _item('❓', 'Hulp en uitleg', 'Veelgestelde vragen', () {
           showModalBottomSheet(context: context,
               backgroundColor: Colors.transparent, isScrollControlled: true,
-              builder: (ctx) => _HulpDialog());
+              builder: (ctx) => const _HulpDialog());
         }),
         _item('🚪', 'Uitloggen', 'Logt uit en wist apparaat-instellingen', () async {
           await DeviceModusService.wis();
@@ -1347,7 +1351,9 @@ class _OntvangerInfoSchermState extends State<OntvangerInfoScherm> {
 // HULP DIALOG
 // ════════════════════════════════════════════════════════════
 class _HulpDialog extends StatelessWidget {
-  final List<_FAQ> _faqs = [
+  const _HulpDialog();
+
+  static const List<_FAQ> _faqs = [
     _FAQ('Hoe stuur ik direct iets naar de ontvanger?',
         'Ga naar Sturen, zorg dat Test-modus AAN staat (blauwe banner). Kies '
         'type, voeg media toe, klik "Stuur NU". Het verschijnt binnen enkele '
@@ -1420,5 +1426,24 @@ class _HulpDialog extends StatelessWidget {
 
 class _FAQ {
   final String vraag, antwoord;
-  _FAQ(this.vraag, this.antwoord);
+  const _FAQ(this.vraag, this.antwoord);
+}
+
+class _BytesAudioSource extends StreamAudioSource {
+  final Uint8List _bytes;
+  final String _contentType;
+  _BytesAudioSource(this._bytes, this._contentType);
+
+  @override
+  Future<StreamAudioResponse> request([int? start, int? end]) async {
+    start ??= 0;
+    end ??= _bytes.length;
+    return StreamAudioResponse(
+      sourceLength: _bytes.length,
+      contentLength: end - start,
+      offset: start,
+      stream: Stream.value(_bytes.sublist(start, end)),
+      contentType: _contentType,
+    );
+  }
 }

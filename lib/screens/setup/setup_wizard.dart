@@ -6,32 +6,8 @@ import 'package:firebase_storage/firebase_storage.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:just_audio/just_audio.dart';
 import '../../services/device_modus_service.dart';
-
-const Color kPeach      = Color(0xFFFF9B71);
-const Color kPeachLight = Color(0xFFFFD4C2);
-const Color kPeachPale  = Color(0xFFFFF0EA);
-const Color kRose       = Color(0xFFFF7B9C);
-const Color kCream      = Color(0xFFFFFAF7);
-const Color kBrown      = Color(0xFF5C3D2E);
-const Color kBrownLight = Color(0xFF8B6354);
-const Color kTextMuted  = Color(0xFF9B7565);
-const Color kWhite      = Color(0xFFFFFFFF);
-const Color kGreen      = Color(0xFF4CAF82);
-
-final List<Map<String, String>> kGeluiden = [
-  {'id': 'twinkel',  'emoji': '✨', 'naam': 'Twinkel',
-   'asset': 'assets/sounds/twinkel.mp3'},
-  {'id': 'bel',      'emoji': '🔔', 'naam': 'Zachte bel',
-   'asset': 'assets/sounds/bel.mp3'},
-  {'id': 'vogel',    'emoji': '🐦', 'naam': 'Vogel',
-   'asset': 'assets/sounds/vogel.mp3'},
-  {'id': 'piano',    'emoji': '🎹', 'naam': 'Piano',
-   'asset': 'assets/sounds/piano.mp3'},
-  {'id': 'kerkklok', 'emoji': '⛪', 'naam': 'Kerkklok',
-   'asset': 'assets/sounds/kerkklok.mp3'},
-  {'id': 'hart',     'emoji': '💕', 'naam': 'Liefdes-melodie',
-   'asset': 'assets/sounds/hart.mp3'},
-];
+import '../../theme/kleuren.dart';
+import '../../data/geluiden.dart';
 
 class SetupWizard extends StatefulWidget {
   const SetupWizard({super.key});
@@ -90,7 +66,8 @@ class _SetupWizardState extends State<SetupWizard> {
   }
 
   Widget _topBalk() {
-    final maxStappen = _rol == 'familie' && !_isInloggen ? 3 : 2;
+    final toonProgress = _rol == 'familie' && !_isInloggen;
+    const maxStappen = 3;
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Row(children: [
         GestureDetector(
@@ -102,18 +79,22 @@ class _SetupWizardState extends State<SetupWizard> {
             child: const Icon(Icons.arrow_back_rounded, color: kBrown, size: 20),
           ),
         ),
-        const SizedBox(width: 12),
-        Expanded(child: Row(children: List.generate(maxStappen, (i) => Expanded(
-          child: Container(margin: const EdgeInsets.only(right: 4),
-            height: 4, decoration: BoxDecoration(
-              color: i < _stap ? kPeach : kPeachLight,
-              borderRadius: BorderRadius.circular(2))),
-        )))),
+        if (toonProgress) ...[
+          const SizedBox(width: 12),
+          Expanded(child: Row(children: List.generate(maxStappen, (i) => Expanded(
+            child: Container(margin: const EdgeInsets.only(right: 4),
+              height: 4, decoration: BoxDecoration(
+                color: i < _stap ? kPeach : kPeachLight,
+                borderRadius: BorderRadius.circular(2))),
+          )))),
+        ],
       ]),
-      const SizedBox(height: 8),
-      Text('Stap $_stap van $maxStappen',
-          style: const TextStyle(fontSize: 11,
-              fontWeight: FontWeight.w800, color: kPeach, letterSpacing: 0.8)),
+      if (toonProgress) ...[
+        const SizedBox(height: 8),
+        Text('Stap $_stap van $maxStappen',
+            style: const TextStyle(fontSize: 11,
+                fontWeight: FontWeight.w800, color: kPeach, letterSpacing: 0.8)),
+      ],
       const SizedBox(height: 16),
     ]);
   }

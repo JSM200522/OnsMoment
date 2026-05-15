@@ -5,11 +5,7 @@ import 'screens/setup/setup_wizard.dart';
 import 'screens/familie/familie_scherm.dart';
 import 'screens/tablet/tablet_scherm.dart';
 import 'services/device_modus_service.dart';
-
-const Color kPeach     = Color(0xFFFF9B71);
-const Color kPeachPale = Color(0xFFFFF0EA);
-const Color kCream     = Color(0xFFFFFAF7);
-const Color kBrown     = Color(0xFF5C3D2E);
+import 'theme/kleuren.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
