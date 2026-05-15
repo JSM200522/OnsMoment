@@ -31,7 +31,7 @@ jobs:
           flutter create --platforms=web --org=com.onsmoment --project-name=ons_moment .
           cp -r web $GITHUB_WORKSPACE/web
 
-      - name: Fix wakelock import
+      - name: Fix wakelock import in tablet_scherm
         run: |
           python3 << 'EOF'
           with open('lib/screens/tablet/tablet_scherm.dart', 'r') as f:
@@ -46,6 +46,33 @@ jobs:
               content = '\n'.join(lines)
               with open('lib/screens/tablet/tablet_scherm.dart', 'w') as f:
                   f.write(content)
+          EOF
+
+      - name: Voeg Nederlandse locale toe aan main.dart
+        run: |
+          python3 << 'EOF'
+          with open('lib/main.dart', 'r') as f:
+              content = f.read()
+          if 'flutter_localizations' not in content:
+              content = content.replace(
+                  "import 'package:flutter/material.dart';",
+                  "import 'package:flutter/material.dart';\nimport 'package:flutter_localizations/flutter_localizations.dart';"
+              )
+          if 'localizationsDelegates' not in content:
+              old = "return MaterialApp(\n      title: 'Ons Moment',"
+              new = """return MaterialApp(
+            title: 'Ons Moment',
+            localizationsDelegates: const [
+              GlobalMaterialLocalizations.delegate,
+              GlobalWidgetsLocalizations.delegate,
+              GlobalCupertinoLocalizations.delegate,
+            ],
+            supportedLocales: const [Locale('nl', 'NL'), Locale('en', 'US')],
+            locale: const Locale('nl', 'NL'),"""
+              content = content.replace(old, new)
+          with open('lib/main.dart', 'w') as f:
+              f.write(content)
+          print("Nederlandse locale toegevoegd")
           EOF
 
       - name: Genereer firebase_options.dart
@@ -99,7 +126,6 @@ jobs:
           '''
           with open('lib/firebase_options.dart', 'w') as f:
               f.write(firebase_options)
-          print("firebase_options.dart aangemaakt")
           EOF
 
       - name: Update main.dart om firebase_options te gebruiken
@@ -118,7 +144,6 @@ jobs:
               )
               with open('lib/main.dart', 'w') as f:
                   f.write(content)
-              print("main.dart geupdate")
           EOF
 
       - name: Pub get
