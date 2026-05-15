@@ -1,7 +1,9 @@
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import '../../services/auth_service.dart';
+import 'package:firebase_storage/firebase_storage.dart';
+import 'package:image_picker/image_picker.dart';
 
 const Color kPeach      = Color(0xFFFF9B71);
 const Color kPeachLight = Color(0xFFFFD4C2);
@@ -31,15 +33,15 @@ class _SetupWizardState extends State<SetupWizard> {
   final _wachtwoordCtrl = TextEditingController();
   final _ontvangerNaamCtrl = TextEditingController();
 
-  // Dagelijkse momenten - allemaal optioneel
+  Uint8List? _profielFotoBytes;
+  String _profielFotoNaam = '';
+
   final List<_DagelijksMoment> _momenten = [
     _DagelijksMoment('☀️', 'Goedemorgen', const TimeOfDay(hour: 8, minute: 30)),
     _DagelijksMoment('☕', 'Tijd voor koffie', const TimeOfDay(hour: 10, minute: 0)),
     _DagelijksMoment('🍽️', 'Lunchtijd', const TimeOfDay(hour: 12, minute: 30)),
     _DagelijksMoment('🌙', 'Welterusten', const TimeOfDay(hour: 20, minute: 0)),
   ];
-
-  final _authService = AuthService();
 
   @override
   Widget build(BuildContext context) {
@@ -63,7 +65,6 @@ class _SetupWizardState extends State<SetupWizard> {
     final maxStappen = _rol == 'familie' && !_isInloggen ? 3 : 2;
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Row(children: [
-        // TERUG-PIJLTJE
         GestureDetector(
           onTap: _terug,
           child: Container(
@@ -114,7 +115,6 @@ class _SetupWizardState extends State<SetupWizard> {
     return _klaarScherm();
   }
 
-  // ─── STAP 0: ROL KEUZE ──────────────────────────────────────
   Widget _rolKeuze() => Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
     const SizedBox(height: 40),
     const Text('💕', style: TextStyle(fontSize: 48)),
@@ -123,7 +123,7 @@ class _SetupWizardState extends State<SetupWizard> {
         style: TextStyle(fontSize: 32, fontWeight: FontWeight.w900,
             color: kBrown, height: 1.2)),
     const SizedBox(height: 12),
-    Text('Hoe ga je deze app gebruiken?',
+    const Text('Hoe ga je deze app gebruiken?',
         style: TextStyle(fontSize: 16, color: kTextMuted)),
     const SizedBox(height: 32),
     _rolKaart('👨‍👩‍👧 Familie of mantelzorger',
@@ -159,7 +159,6 @@ class _SetupWizardState extends State<SetupWizard> {
       ]),
     ));
 
-  // ─── STAP 1 FAMILIE: account ──────────────────────────────
   Widget _familieAccount() => Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
     Text(_isInloggen ? 'Welkom terug 👋' : 'Maak je account aan',
         style: const TextStyle(fontSize: 28, fontWeight: FontWeight.w900,
@@ -188,15 +187,45 @@ class _SetupWizardState extends State<SetupWizard> {
     ),
   ]);
 
-  // ─── STAP 2: MOMENTEN INSTELLEN (volledig optioneel) ──────
   Widget _momentenInstellen() => Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-    const Text('Voor wie en wanneer?',
+    const Text('Voor wie?',
         style: TextStyle(fontSize: 28, fontWeight: FontWeight.w900,
             color: kBrown, height: 1.2)),
     const SizedBox(height: 8),
-    const Text('Voeg vaste dagelijkse momenten toe — allemaal optioneel. Je kunt later '
-        'altijd aanpassen in Instellingen.',
+    const Text('Vertel ons over je dierbare. Profielfoto en momenten zijn '
+        'optioneel — je kunt altijd later aanpassen in Instellingen.',
         style: TextStyle(fontSize: 14, color: kTextMuted, height: 1.4)),
+    const SizedBox(height: 20),
+    // PROFIELFOTO
+    Center(child: GestureDetector(
+      onTap: _kiesProfielFoto,
+      child: Container(
+        width: 100, height: 100,
+        decoration: BoxDecoration(
+          color: kPeachPale,
+          shape: BoxShape.circle,
+          border: Border.all(color: kPeach, width: 3),
+          image: _profielFotoBytes != null ? DecorationImage(
+            image: MemoryImage(_profielFotoBytes!),
+            fit: BoxFit.cover,
+          ) : null,
+        ),
+        child: _profielFotoBytes == null
+          ? const Center(child: Column(mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+            Icon(Icons.add_a_photo_rounded, color: kPeach, size: 28),
+            SizedBox(height: 4),
+            Text('Foto', style: TextStyle(fontSize: 10,
+                fontWeight: FontWeight.w800, color: kPeach)),
+          ]))
+          : null,
+      ),
+    )),
+    const SizedBox(height: 8),
+    Center(child: Text(_profielFotoBytes == null
+        ? 'Tik om profielfoto te kiezen (optioneel)'
+        : 'Profielfoto gekozen — tik om aan te passen',
+        style: const TextStyle(fontSize: 11, color: kTextMuted))),
     const SizedBox(height: 20),
     _input('👵', 'Naam ontvanger', 'Jan', _ontvangerNaamCtrl, false),
     const SizedBox(height: 20),
@@ -208,7 +237,7 @@ class _SetupWizardState extends State<SetupWizard> {
       Container(padding: const EdgeInsets.all(20),
         decoration: BoxDecoration(color: kPeachPale,
             borderRadius: BorderRadius.circular(14)),
-        child: const Text('Nog geen momenten ingesteld. Tik op + om er een toe te voegen, '
+        child: const Text('Nog geen momenten. Tik op + om er een toe te voegen, '
             'of sla deze stap over.',
             style: TextStyle(fontSize: 13, color: kBrownLight, height: 1.4))),
     ..._momenten.asMap().entries.map((e) => _momentRij(e.key, e.value)),
@@ -219,7 +248,7 @@ class _SetupWizardState extends State<SetupWizard> {
         padding: const EdgeInsets.symmetric(vertical: 12),
         decoration: BoxDecoration(color: kPeachPale,
             borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: kPeach, width: 1.5, style: BorderStyle.solid)),
+            border: Border.all(color: kPeach, width: 1.5)),
         child: const Center(child: Row(mainAxisSize: MainAxisSize.min, children: [
           Icon(Icons.add_rounded, color: kPeach, size: 18),
           SizedBox(width: 4),
@@ -236,12 +265,29 @@ class _SetupWizardState extends State<SetupWizard> {
         Text('💡', style: TextStyle(fontSize: 18)),
         SizedBox(width: 10),
         Expanded(child: Text(
-          'Een leeg moment is ook prima — dan verschijnt alleen een tijd-melding. '
-          'Je kunt media (foto/stem/lied) toevoegen door op een moment te tikken.',
+          'Media (foto/stem/lied) koppel je later in de Familie-app per moment. '
+          'Een leeg moment is ook prima — dan verschijnt alleen de tijd-melding.',
           style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700,
               color: kBrownLight, height: 1.4))),
       ])),
   ]);
+
+  Future<void> _kiesProfielFoto() async {
+    try {
+      final picker = ImagePicker();
+      final foto = await picker.pickImage(source: ImageSource.gallery,
+          maxWidth: 800, imageQuality: 85);
+      if (foto != null) {
+        final bytes = await foto.readAsBytes();
+        setState(() {
+          _profielFotoBytes = bytes;
+          _profielFotoNaam = foto.name;
+        });
+      }
+    } catch (e) {
+      _toonFout('Foto kiezen niet mogelijk: $e');
+    }
+  }
 
   Widget _momentRij(int index, _DagelijksMoment m) => Container(
     margin: const EdgeInsets.only(bottom: 8),
@@ -249,83 +295,36 @@ class _SetupWizardState extends State<SetupWizard> {
     decoration: BoxDecoration(color: kWhite,
         borderRadius: BorderRadius.circular(14),
         border: Border.all(color: kPeachLight, width: 2)),
-    child: Column(children: [
-      Row(children: [
-        Text(m.emoji, style: const TextStyle(fontSize: 22)),
-        const SizedBox(width: 10),
-        Expanded(child: Text(m.label,
-            style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700,
-                color: kBrown))),
-        GestureDetector(
-          onTap: () => _kiesTijd(index),
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-            decoration: BoxDecoration(color: kPeachPale,
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: kPeach, width: 1.5)),
-            child: Text(_formatTijd(m.tijd),
-                style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w800,
-                    color: kBrown)),
-          ),
+    child: Row(children: [
+      Text(m.emoji, style: const TextStyle(fontSize: 22)),
+      const SizedBox(width: 10),
+      Expanded(child: Text(m.label,
+          style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700,
+              color: kBrown))),
+      GestureDetector(
+        onTap: () => _kiesTijd(index),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+          decoration: BoxDecoration(color: kPeachPale,
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: kPeach, width: 1.5)),
+          child: Text(_formatTijd(m.tijd),
+              style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w800,
+                  color: kBrown)),
         ),
-        const SizedBox(width: 8),
-        GestureDetector(
-          onTap: () => setState(() => _momenten.removeAt(index)),
-          child: const Padding(
-            padding: EdgeInsets.all(4),
-            child: Icon(Icons.close_rounded, color: kTextMuted, size: 18),
-          ),
+      ),
+      const SizedBox(width: 8),
+      GestureDetector(
+        onTap: () => setState(() => _momenten.removeAt(index)),
+        child: const Padding(
+          padding: EdgeInsets.all(4),
+          child: Icon(Icons.close_rounded, color: kTextMuted, size: 18),
         ),
-      ]),
-      const SizedBox(height: 8),
-      // Media keuze - 1 type per moment
-      Row(children: [
-        _mediaKnop(index, 'foto', '📷 Foto', m.mediaType == 'foto'),
-        const SizedBox(width: 6),
-        _mediaKnop(index, 'stem', '🎙️ Stem', m.mediaType == 'stem'),
-        const SizedBox(width: 6),
-        _mediaKnop(index, 'lied', '🎵 Lied', m.mediaType == 'lied'),
-        const SizedBox(width: 6),
-        _mediaKnop(index, 'tekst', '✏️ Tekst', m.mediaType == 'tekst'),
-      ]),
-      if (m.mediaType.isNotEmpty) ...[
-        const SizedBox(height: 4),
-        Text('${_mediaLabel(m.mediaType)} koppel je in de Familie-app na de setup',
-            style: const TextStyle(fontSize: 11, color: kTextMuted)),
-      ],
+      ),
     ]),
   );
 
-  Widget _mediaKnop(int index, String type, String label, bool actief) => Expanded(
-    child: GestureDetector(
-      onTap: () => setState(() {
-        _momenten[index].mediaType = actief ? '' : type;
-      }),
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 6),
-        decoration: BoxDecoration(
-          color: actief ? kPeach : kPeachPale,
-          borderRadius: BorderRadius.circular(8),
-        ),
-        child: Center(child: Text(label, style: TextStyle(fontSize: 10,
-            fontWeight: FontWeight.w800,
-            color: actief ? kWhite : kBrownLight))),
-      ),
-    ),
-  );
-
-  String _mediaLabel(String type) {
-    switch (type) {
-      case 'foto': return 'Foto';
-      case 'stem': return 'Stemberichtje';
-      case 'lied': return 'Lied';
-      case 'tekst': return 'Tekst';
-      default: return '';
-    }
-  }
-
   void _voegMomentToe() async {
-    // Dialog: emoji + naam kiezen
     final result = await showDialog<_DagelijksMoment>(
       context: context,
       builder: (ctx) => _NieuwMomentDialog(),
@@ -348,31 +347,18 @@ class _SetupWizardState extends State<SetupWizard> {
   String _formatTijd(TimeOfDay t) =>
       '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
 
-  // ─── ONTVANGER INLOGGEN ────────────────────────────────────
   Widget _ontvangerInloggen() => Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
     const Text('Log in op dit apparaat',
         style: TextStyle(fontSize: 28, fontWeight: FontWeight.w900,
             color: kBrown, height: 1.2)),
     const SizedBox(height: 8),
     const Text('Vraag je familielid om de inloggegevens. Zodra je inlogt, '
-        'opent de app zichzelf altijd in ontvanger-modus.',
+        'opent de app altijd in ontvanger-modus.',
         style: TextStyle(fontSize: 14, color: kTextMuted, height: 1.4)),
     const SizedBox(height: 24),
     _input('📧', 'E-mailadres ontvanger', '', _emailCtrl, false),
     const SizedBox(height: 10),
     _input('🔒', 'Wachtwoord', '', _wachtwoordCtrl, true),
-    const SizedBox(height: 16),
-    Container(padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(color: kPeachPale,
-          borderRadius: BorderRadius.circular(12)),
-      child: const Row(children: [
-        Text('💡', style: TextStyle(fontSize: 18)),
-        SizedBox(width: 10),
-        Expanded(child: Text(
-          'Een familielid heeft deze gegevens aangemaakt bij de setup.',
-          style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700,
-              color: kBrownLight, height: 1.4))),
-      ])),
   ]);
 
   Widget _klaarScherm() => const Column(children: [
@@ -383,7 +369,6 @@ class _SetupWizardState extends State<SetupWizard> {
         fontWeight: FontWeight.w900, color: kBrown)),
   ]);
 
-  // ─── KNOP ───────────────────────────────────────────────────
   Widget _knop() => GestureDetector(
     onTap: _bezig ? null : _volgende,
     child: Container(
@@ -436,9 +421,12 @@ class _SetupWizardState extends State<SetupWizard> {
   Future<void> _familieInloggen() async {
     setState(() => _bezig = true);
     try {
-      final cred = await _authService.familieInloggen(
-          _emailCtrl.text.trim(), _wachtwoordCtrl.text);
-      if (cred == null) _toonFout('Inloggen mislukt. Klopt e-mail en wachtwoord?');
+      final cred = await FirebaseAuth.instance.signInWithEmailAndPassword(
+          email: _emailCtrl.text.trim(), password: _wachtwoordCtrl.text);
+      await FirebaseFirestore.instance.collection('gebruikers')
+          .doc(cred.user!.uid).set({'rol': 'familie'}, SetOptions(merge: true));
+    } catch (e) {
+      _toonFout('Inloggen mislukt. Klopt e-mail en wachtwoord?');
     } finally {
       if (mounted) setState(() => _bezig = false);
     }
@@ -447,22 +435,44 @@ class _SetupWizardState extends State<SetupWizard> {
   Future<void> _familieRegistreren() async {
     setState(() => _bezig = true);
     try {
-      final cred = await _authService.familieRegistreren(
-          _emailCtrl.text.trim(), _wachtwoordCtrl.text, _naamCtrl.text.trim());
-      if (cred == null) {
-        _toonFout('Account aanmaken mislukt. E-mail al in gebruik?');
-        return;
-      }
-      // Auto-aangemaakte ontvanger (via Firebase Auth UID)
+      final cred = await FirebaseAuth.instance.createUserWithEmailAndPassword(
+          email: _emailCtrl.text.trim(), password: _wachtwoordCtrl.text);
       final ontvangerUid = 'ontvanger_${cred.user!.uid}';
+
+      // Profielfoto uploaden indien gekozen
+      String profielFotoUrl = '';
+      if (_profielFotoBytes != null) {
+        try {
+          final ref = FirebaseStorage.instance.ref()
+              .child('profielfotos').child('${ontvangerUid}.jpg');
+          await ref.putData(_profielFotoBytes!,
+              SettableMetadata(contentType: 'image/jpeg'));
+          profielFotoUrl = await ref.getDownloadURL();
+        } catch (e) {
+          // Negeer fout - profielfoto is optioneel
+        }
+      }
+
+      await FirebaseFirestore.instance
+          .collection('gebruikers').doc(cred.user!.uid).set({
+        'naam': _naamCtrl.text.trim(),
+        'email': _emailCtrl.text.trim(),
+        'rol': 'familie',
+        'ontvangerUid': ontvangerUid,
+        'ontvangerNaam': _ontvangerNaamCtrl.text.trim(),
+        'ontvangerProfielFoto': profielFotoUrl,
+        'aangemaaktOp': FieldValue.serverTimestamp(),
+      });
+
       await FirebaseFirestore.instance
           .collection('gebruikers').doc(ontvangerUid).set({
         'naam': _ontvangerNaamCtrl.text.trim(),
         'rol': 'tablet',
         'familieUid': cred.user!.uid,
+        'profielFoto': profielFotoUrl,
         'aangemeldOp': FieldValue.serverTimestamp(),
       });
-      // Dagelijkse momenten opslaan
+
       for (final m in _momenten) {
         await FirebaseFirestore.instance.collection('dagelijkse_momenten').add({
           'naarUid': ontvangerUid,
@@ -471,19 +481,15 @@ class _SetupWizardState extends State<SetupWizard> {
           'label': m.label,
           'uur': m.tijd.hour,
           'minuut': m.tijd.minute,
-          'mediaType': m.mediaType,
+          'mediaType': '',
           'mediaUrl': '',
+          'tekstBericht': '',
           'actief': true,
           'aangemaaktOp': FieldValue.serverTimestamp(),
         });
       }
-      await FirebaseFirestore.instance
-          .collection('gebruikers').doc(cred.user!.uid).update({
-        'ontvangerUid': ontvangerUid,
-        'ontvangerNaam': _ontvangerNaamCtrl.text.trim(),
-      });
     } catch (e) {
-      _toonFout('Er ging iets mis: $e');
+      _toonFout('Account aanmaken mislukt: ${e.toString()}');
     } finally {
       if (mounted) setState(() => _bezig = false);
     }
@@ -516,8 +522,7 @@ class _SetupWizardState extends State<SetupWizard> {
           Padding(padding: const EdgeInsets.only(left: 16),
               child: Text(emoji, style: const TextStyle(fontSize: 20))),
           Expanded(child: TextField(
-            controller: ctrl,
-            obscureText: verborgen,
+            controller: ctrl, obscureText: verborgen,
             style: const TextStyle(color: kBrown, fontWeight: FontWeight.w700),
             decoration: InputDecoration(
               hintText: hint, labelText: label,
@@ -534,11 +539,9 @@ class _DagelijksMoment {
   String emoji;
   String label;
   TimeOfDay tijd;
-  String mediaType; // '', 'foto', 'stem', 'lied', 'tekst'
-  _DagelijksMoment(this.emoji, this.label, this.tijd, [this.mediaType = '']);
+  _DagelijksMoment(this.emoji, this.label, this.tijd);
 }
 
-// ─── DIALOG: NIEUW MOMENT TOEVOEGEN ─────────────────────────
 class _NieuwMomentDialog extends StatefulWidget {
   @override
   State<_NieuwMomentDialog> createState() => _NieuwMomentDialogState();
@@ -548,7 +551,6 @@ class _NieuwMomentDialogState extends State<_NieuwMomentDialog> {
   String _emoji = '⭐';
   final _labelCtrl = TextEditingController();
   TimeOfDay _tijd = const TimeOfDay(hour: 15, minute: 0);
-
   final _emojis = ['⭐', '☀️', '☕', '🍽️', '🌙', '💕', '🎵', '🌸', '🌳', '📚', '🐦', '🍰'];
 
   @override
@@ -556,8 +558,7 @@ class _NieuwMomentDialogState extends State<_NieuwMomentDialog> {
     return Dialog(
       backgroundColor: kCream,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-      child: Padding(
-        padding: const EdgeInsets.all(20),
+      child: Padding(padding: const EdgeInsets.all(20),
         child: Column(mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start, children: [
           const Text('Nieuw moment toevoegen',
@@ -570,12 +571,10 @@ class _NieuwMomentDialogState extends State<_NieuwMomentDialog> {
           Wrap(spacing: 8, runSpacing: 8, children: _emojis.map((e) =>
             GestureDetector(
               onTap: () => setState(() => _emoji = e),
-              child: Container(
-                padding: const EdgeInsets.all(8),
+              child: Container(padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
                   color: _emoji == e ? kPeach : kPeachPale,
-                  borderRadius: BorderRadius.circular(8),
-                ),
+                  borderRadius: BorderRadius.circular(8)),
                 child: Text(e, style: const TextStyle(fontSize: 20)),
               ),
             )).toList()),
@@ -597,13 +596,10 @@ class _NieuwMomentDialogState extends State<_NieuwMomentDialog> {
                 final t = await showTimePicker(context: context, initialTime: _tijd,
                   builder: (c, child) => MediaQuery(
                     data: MediaQuery.of(c).copyWith(alwaysUse24HourFormat: true),
-                    child: child!,
-                  ),
-                );
+                    child: child!));
                 if (t != null) setState(() => _tijd = t);
               },
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+              child: Container(padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                 decoration: BoxDecoration(color: kPeachPale,
                   borderRadius: BorderRadius.circular(10),
                   border: Border.all(color: kPeach, width: 1.5)),
@@ -630,8 +626,7 @@ class _NieuwMomentDialogState extends State<_NieuwMomentDialog> {
                   fontWeight: FontWeight.w800)),
             ),
           ]),
-        ]),
-      ),
+        ])),
     );
   }
 }
