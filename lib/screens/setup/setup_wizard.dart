@@ -134,10 +134,30 @@ class _SetupWizardState extends State<SetupWizard> {
         style: TextStyle(fontSize: 32, fontWeight: FontWeight.w900,
             color: kBrown, height: 1.2)),
     const SizedBox(height: 12),
-    const Text('Een digitale knuffel voor wie je liefhebt',
-        style: TextStyle(fontSize: 15, color: kTextMuted,
-            fontStyle: FontStyle.italic)),
-    const SizedBox(height: 32),
+    const Text('Stuur lieve momenten naar je dierbare',
+        style: TextStyle(fontSize: 15, color: kTextMuted)),
+    const SizedBox(height: 24),
+    // INFO BOX over gedeelde inlog
+    Container(padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(color: kPeachPale,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: kPeachLight, width: 1.5)),
+      child: const Column(crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+        Row(children: [
+          Text('💡', style: TextStyle(fontSize: 16)),
+          SizedBox(width: 8),
+          Text('Goed om te weten', style: TextStyle(fontSize: 13,
+              fontWeight: FontWeight.w800, color: kBrown)),
+        ]),
+        SizedBox(height: 6),
+        Text(
+          '• Eén account voor het hele gezin (tot 8 personen)\n'
+          '• De ontvanger logt in met dezelfde gegevens op zijn/haar apparaat\n'
+          '• Iedereen ziet en stuurt vanuit hetzelfde gezamenlijke profiel',
+          style: TextStyle(fontSize: 12, color: kBrownLight, height: 1.6)),
+      ])),
+    const SizedBox(height: 20),
     _rolKaart('👨‍👩‍👧 Familie of mantelzorger',
       'Ik stuur foto\'s, stemberichtjes en herinneringen naar mijn dierbare',
       () => setState(() { _rol = 'familie'; _stap = 1; })),
@@ -203,9 +223,9 @@ class _SetupWizardState extends State<SetupWizard> {
     const SizedBox(height: 24),
 
     // ━━ PROFIELFOTO ━━
-    _sectieKop('📸 Profielfoto',
-        'Deze foto wordt het hoofdbeeld op het apparaat van de ontvanger. '
-        'Een mooie foto van je dierbare geeft een warm gevoel van thuis.'),
+    _sectieKop('📸 Achtergrondfoto',
+        'Kies een mooie foto van je dierbare. Deze foto vult het hele '
+        'home-scherm op het apparaat van de ontvanger — als sfeervolle achtergrond.'),
     const SizedBox(height: 12),
     Center(child: GestureDetector(
       onTap: _kiesProfielFoto,
