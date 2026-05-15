@@ -1048,6 +1048,12 @@ class _NieuwMomentDialogState extends State<_NieuwMomentDialog> {
   final _emojis = ['⭐', '☀️', '☕', '🍽️', '🌙', '💕', '🎵', '🌸', '🌳', '📚', '🐦', '🍰'];
 
   @override
+  void dispose() {
+    _labelCtrl.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     return Dialog(backgroundColor: kCream,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),

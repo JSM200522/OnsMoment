@@ -122,9 +122,79 @@ class _SetupWizardState extends State<SetupWizard> {
     if (_stap > 0) {
       setState(() {
         _stap--;
-        if (_stap == 0) { _rol = ''; _isInloggen = false; }
+        if (_stap == 0) _isInloggen = false;
       });
     }
+  }
+
+  Future<void> _kiesRol(String nieuweRol) async {
+    if (nieuweRol == 'ontvanger') {
+      final bevestigd = await _bevestigOntvanger();
+      if (!bevestigd) return;
+    }
+    if (!mounted) return;
+    setState(() {
+      if (_rol != '' && _rol != nieuweRol) {
+        _isInloggen = false;
+        if (nieuweRol == 'ontvanger') {
+          _naamCtrl.clear();
+          _ontvangerNaamCtrl.clear();
+          _lievelingsdingenCtrl.clear();
+          _woonplaatsCtrl.clear();
+          _noodNaamCtrl.clear();
+          _noodTelCtrl.clear();
+          _profielFotoBytes = null;
+          _gekozenGeluid = 'twinkel';
+        }
+      }
+      _rol = nieuweRol;
+      _stap = 1;
+    });
+  }
+
+  Future<bool> _bevestigOntvanger() async {
+    final result = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        backgroundColor: kCream,
+        title: const Row(children: [
+          Text('⚠️', style: TextStyle(fontSize: 22)),
+          SizedBox(width: 10),
+          Expanded(child: Text(
+            'Is het familie-account al aangemaakt?',
+            style: TextStyle(fontSize: 18,
+                fontWeight: FontWeight.w900, color: kBrown))),
+        ]),
+        content: const Text(
+          'Dit apparaat wordt zo ingesteld voor je dierbare — het '
+          'ontvangt straks de berichten, foto\'s en stemberichten van '
+          'de familie.\n\n'
+          'Daarvoor moet eerst iemand van de familie een familie-account '
+          'hebben aangemaakt op hun eigen telefoon. Dit apparaat logt '
+          'straks in met diezelfde gegevens.\n\n'
+          'Is het familie-account al aangemaakt?',
+          style: TextStyle(fontSize: 14, color: kBrownLight, height: 1.5)),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Nee, terug',
+                style: TextStyle(color: kTextMuted,
+                    fontWeight: FontWeight.w700))),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: kPeach,
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12))),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Ja, ga verder',
+                style: TextStyle(color: kWhite,
+                    fontWeight: FontWeight.w800))),
+        ],
+      ),
+    );
+    return result == true;
   }
 
   Widget _huidigeStap() {
@@ -152,7 +222,32 @@ class _SetupWizardState extends State<SetupWizard> {
     const SizedBox(height: 12),
     const Text('Stuur lieve momenten naar je dierbare',
         style: TextStyle(fontSize: 15, color: kTextMuted)),
-    const SizedBox(height: 24),
+    const SizedBox(height: 20),
+    Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: kPeach,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [BoxShadow(color: kPeach.withOpacity(0.3),
+            blurRadius: 12, offset: const Offset(0, 4))]),
+      child: const Column(crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+        Row(children: [
+          Text('⚠️', style: TextStyle(fontSize: 18)),
+          SizedBox(width: 8),
+          Expanded(child: Text('LET OP',
+              style: TextStyle(fontSize: 13,
+                  fontWeight: FontWeight.w900, color: kWhite,
+                  letterSpacing: 1.2))),
+        ]),
+        SizedBox(height: 8),
+        Text(
+          'Maak EERST het familie-account aan op de telefoon van een '
+          'familielid.\n\nStel pas DAARNA het apparaat van je dierbare in.',
+          style: TextStyle(fontSize: 13,
+              fontWeight: FontWeight.w700, color: kWhite, height: 1.4)),
+      ])),
+    const SizedBox(height: 16),
     Container(padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(color: kPeachPale,
           borderRadius: BorderRadius.circular(12),
@@ -179,11 +274,11 @@ class _SetupWizardState extends State<SetupWizard> {
     const SizedBox(height: 12),
     _rolKaart('👨‍👩‍👧 Familie of mantelzorger',
       'Ik stuur foto\'s, stemberichtjes en herinneringen naar mijn dierbare',
-      () => setState(() { _rol = 'familie'; _stap = 1; })),
+      () => _kiesRol('familie')),
     const SizedBox(height: 12),
     _rolKaart('👵 Ontvanger',
       'Dit apparaat is voor mijn dierbare — om berichten te zien en horen',
-      () => setState(() { _rol = 'ontvanger'; _stap = 1; })),
+      () => _kiesRol('ontvanger')),
   ]);
 
   Widget _rolKaart(String titel, String tekst, VoidCallback onTap) =>
@@ -543,6 +638,7 @@ class _SetupWizardState extends State<SetupWizard> {
 
       // Profielfoto uploaden
       String profielFotoUrl = '';
+      bool fotoUploadFaalde = false;
       if (_profielFotoBytes != null) {
         try {
           final ref = FirebaseStorage.instance.ref()
@@ -550,7 +646,9 @@ class _SetupWizardState extends State<SetupWizard> {
           await ref.putData(_profielFotoBytes!,
               SettableMetadata(contentType: 'image/jpeg'));
           profielFotoUrl = await ref.getDownloadURL();
-        } catch (_) {}
+        } catch (_) {
+          fotoUploadFaalde = true;
+        }
       }
 
       // Familie/gezin document (EEN account, alle data hangt eraan)
@@ -583,6 +681,15 @@ class _SetupWizardState extends State<SetupWizard> {
         });
       }
 
+      if (fotoUploadFaalde && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('Account aangemaakt. Foto kon niet worden '
+              'opgeslagen — pas later aan via Instellingen → '
+              'Ontvanger-profiel.'),
+          backgroundColor: Colors.orange,
+          duration: Duration(seconds: 5),
+        ));
+      }
       await DeviceModusService.zet(DeviceModusService.FAMILIE);
     } catch (e) {
       _toonFout('Account aanmaken mislukt: ${e.toString()}');
@@ -643,6 +750,12 @@ class _NieuwMomentDialogState extends State<_NieuwMomentDialog> {
   final _labelCtrl = TextEditingController();
   TimeOfDay _tijd = const TimeOfDay(hour: 15, minute: 0);
   final _emojis = ['⭐', '☀️', '☕', '🍽️', '🌙', '💕', '🎵', '🌸', '🌳', '📚', '🐦', '🍰'];
+
+  @override
+  void dispose() {
+    _labelCtrl.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
