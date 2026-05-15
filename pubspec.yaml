@@ -24,6 +24,7 @@ dependencies:
   wakelock_plus: ^1.2.1
   shared_preferences: ^2.2.2
   intl: ^0.18.1
+  http: ^1.2.0
 
 dev_dependencies:
   flutter_test:

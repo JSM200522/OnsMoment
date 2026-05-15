@@ -8,6 +8,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:record/record.dart';
 import 'package:just_audio/just_audio.dart';
+import 'package:http/http.dart' as http;
 import '../../services/device_modus_service.dart';
 
 const Color kPeach      = Color(0xFFFF9B71);
@@ -439,8 +440,16 @@ class _StuurTabState extends State<StuurTab> {
 
       String mediaUrl = '';
       if (_type == 'stem' && _opnamePad != null) {
-        // Web blob URL - voor MVP direct gebruiken
-        mediaUrl = _opnamePad!;
+        final response = await http.get(Uri.parse(_opnamePad!));
+        if (response.statusCode != 200 || response.bodyBytes.isEmpty) {
+          throw Exception('Opname kon niet worden gelezen');
+        }
+        final ref = FirebaseStorage.instance.ref()
+            .child('momenten')
+            .child('${DateTime.now().millisecondsSinceEpoch}.webm');
+        await ref.putData(response.bodyBytes,
+            SettableMetadata(contentType: 'audio/webm'));
+        mediaUrl = await ref.getDownloadURL();
       } else if (_mediaBytes != null) {
         final ext = _type == 'foto' ? 'jpg' : 'mp3';
         final ref = FirebaseStorage.instance.ref()
