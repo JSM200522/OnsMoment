@@ -15,6 +15,15 @@ const Color kBrownLight = Color(0xFF8B6354);
 const Color kTextMuted  = Color(0xFF9B7565);
 const Color kWhite      = Color(0xFFFFFFFF);
 
+const Map<String, String> kGeluidUrls = {
+  'twinkel': 'https://cdn.pixabay.com/audio/2022/03/24/audio_8e8e3e6f17.mp3',
+  'bel': 'https://cdn.pixabay.com/audio/2022/03/15/audio_e9e98c7c8b.mp3',
+  'vogel': 'https://cdn.pixabay.com/audio/2022/03/10/audio_cd2c1ec3fc.mp3',
+  'piano': 'https://cdn.pixabay.com/audio/2022/03/15/audio_8c0f1f4a4f.mp3',
+  'kerkklok': 'https://cdn.pixabay.com/audio/2021/08/04/audio_bb630cc098.mp3',
+  'hart': 'https://cdn.pixabay.com/audio/2022/01/18/audio_d0c6ff1eab.mp3',
+};
+
 class TabletScherm extends StatefulWidget {
   const TabletScherm({super.key});
   @override
@@ -25,12 +34,14 @@ class _TabletSchermState extends State<TabletScherm> {
   final _audioPlayer = AudioPlayer();
   final _geluidPlayer = AudioPlayer();
   Timer? _klokTimer;
-  Timer? _checkTimer;
   Timer? _autoSluitTimer;
   DateTime _nu = DateTime.now();
+  StreamSubscription? _momentenListener;
 
   Map<String, dynamic>? _huidigPopup;
   String? _huidigPopupId;
+  String _herkenningsgeluid = 'twinkel';
+  final Set<String> _alGetoond = {};  // popup IDs die al ge-trigger zijn
 
   @override
   void initState() {
@@ -38,9 +49,7 @@ class _TabletSchermState extends State<TabletScherm> {
     WakelockPlus.enable();
     _klokTimer = Timer.periodic(const Duration(seconds: 1),
         (_) => setState(() => _nu = DateTime.now()));
-    _checkTimer = Timer.periodic(const Duration(seconds: 5),
-        (_) => _checkMomenten());
-    Future.delayed(const Duration(milliseconds: 500), _checkMomenten);
+    _startMomentenListener();
 
     _audioPlayer.playerStateStream.listen((state) {
       if (state.processingState == ProcessingState.completed
@@ -53,48 +62,62 @@ class _TabletSchermState extends State<TabletScherm> {
   @override
   void dispose() {
     _klokTimer?.cancel();
-    _checkTimer?.cancel();
     _autoSluitTimer?.cancel();
+    _momentenListener?.cancel();
     _audioPlayer.dispose();
     _geluidPlayer.dispose();
     WakelockPlus.disable();
     super.dispose();
   }
 
-  Future<void> _checkMomenten() async {
+  void _startMomentenListener() {
     final uid = FirebaseAuth.instance.currentUser?.uid;
-    if (uid == null || _huidigPopup != null) return;
+    if (uid == null) return;
+    // Realtime listener — pakt nieuwe momenten direct op
+    _momentenListener = FirebaseFirestore.instance.collection('momenten')
+        .where('familieUid', isEqualTo: uid)
+        .where('gezien', isEqualTo: false)
+        .snapshots()
+        .listen(_verwerkMomenten);
+  }
+
+  void _verwerkMomenten(QuerySnapshot snap) {
+    if (_huidigPopup != null) return;
     final nu = DateTime.now();
-    final voor30min = nu.subtract(const Duration(minutes: 30));
-    try {
-      final snap = await FirebaseFirestore.instance.collection('momenten')
-          .where('naarUid', isEqualTo: uid)
-          .where('gezien', isEqualTo: false).get();
-      for (final doc in snap.docs) {
-        final d = doc.data();
-        final geplandOp = (d['geplandOp'] as Timestamp?)?.toDate();
-        if (geplandOp == null) continue;
-        if (geplandOp.isBefore(nu) && geplandOp.isAfter(voor30min)) {
-          _toonPopup(doc.id, d);
-          return;
-        }
+    final voor24uur = nu.subtract(const Duration(hours: 24));
+    for (final doc in snap.docs) {
+      if (_alGetoond.contains(doc.id)) continue;
+      final d = doc.data() as Map<String, dynamic>;
+      final geplandOp = (d['geplandOp'] as Timestamp?)?.toDate();
+      if (geplandOp == null) continue;
+      // Toon als gepland tijd al voorbij is en niet ouder dan 24 uur
+      if (geplandOp.isBefore(nu) && geplandOp.isAfter(voor24uur)) {
+        _alGetoond.add(doc.id);
+        _toonPopup(doc.id, d);
+        return;
       }
-    } catch (e) {
-      debugPrint('Check fout: $e');
     }
   }
 
-  Future<void> _toonPopup(String id, Map<String, dynamic> d, {String? geluidUrl}) async {
+  Future<void> _toonPopup(String id, Map<String, dynamic> d) async {
     if (_huidigPopupId == id) return;
-    // Speel herkenningsgeluid eerst (indien geconfigureerd)
-    if (geluidUrl != null && geluidUrl.isNotEmpty) {
+    // Speel herkenningsgeluid - wacht alleen 1200ms als afspelen daadwerkelijk lukte
+    final geluidUrl = kGeluidUrls[_herkenningsgeluid];
+    if (geluidUrl != null) {
+      bool geluidGespeeld = false;
       try {
         await _geluidPlayer.setUrl(geluidUrl);
         await _geluidPlayer.play();
-        await Future.delayed(const Duration(milliseconds: 1500));
-      } catch (_) {}
+        geluidGespeeld = true;
+      } catch (_) {
+        // Geluid niet beschikbaar - geen probleem, popup gaat door
+      }
+      if (geluidGespeeld) {
+        await Future.delayed(const Duration(milliseconds: 1200));
+      }
     }
 
+    if (!mounted) return;
     setState(() {
       _huidigPopup = d;
       _huidigPopupId = id;
@@ -108,6 +131,9 @@ class _TabletSchermState extends State<TabletScherm> {
           await _audioPlayer.play();
         } catch (_) {}
       }
+      // Fallback: ook na 60 sec sluiten als audio niet eindigt
+      _autoSluitTimer?.cancel();
+      _autoSluitTimer = Timer(const Duration(seconds: 60), _sluitPopup);
     } else {
       _autoSluitTimer?.cancel();
       _autoSluitTimer = Timer(const Duration(seconds: 30), _sluitPopup);
@@ -136,44 +162,66 @@ class _TabletSchermState extends State<TabletScherm> {
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null) return const Scaffold(backgroundColor: kCream);
 
-    // Gebruik StreamBuilder zodat profielfoto LIVE update als familie hem wijzigt
+    // StreamBuilder voor gebruikersdata - live updates van profielfoto + naam
     return StreamBuilder<DocumentSnapshot>(
       stream: FirebaseFirestore.instance.collection('gebruikers')
           .doc(uid).snapshots(),
       builder: (ctx, userSnap) {
         final userData = userSnap.data?.data() as Map<String, dynamic>? ?? {};
-        final profielFotoUrl = userData['profielFoto'] ?? '';
-        final ontvangerNaam = userData['naam'] ?? '';
+        final profielFotoUrl = userData['ontvangerFoto'] ?? '';
+        final ontvangerNaam = userData['ontvangerNaam'] ?? '';
+        final nieuwGeluid = userData['herkenningsgeluid'] ?? 'twinkel';
+        if (_herkenningsgeluid != nieuwGeluid) {
+          _herkenningsgeluid = nieuwGeluid;
+        }
 
         return Scaffold(
           body: Stack(children: [
-            // ════ ACHTERGROND: PROFIELFOTO VULT HELE SCHERM ════
+            // ━━━━ ACHTERGROND ━━━━
             Positioned.fill(child: profielFotoUrl.isNotEmpty
-              ? Image.network(profielFotoUrl, fit: BoxFit.cover,
-                  errorBuilder: (c, e, s) => Container(color: kCream))
+              ? Image.network(profielFotoUrl,
+                  fit: BoxFit.cover,
+                  loadingBuilder: (c, child, prog) {
+                    if (prog == null) return child;
+                    return Container(decoration: const BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter, end: Alignment.bottomCenter,
+                        colors: [kPeachPale, kCream])));
+                  },
+                  errorBuilder: (c, e, s) => Container(
+                    decoration: const BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter, end: Alignment.bottomCenter,
+                        colors: [kPeachPale, kCream]))))
               : Container(decoration: const BoxDecoration(
                   gradient: LinearGradient(
                     begin: Alignment.topCenter, end: Alignment.bottomCenter,
-                    colors: [kPeachPale, kCream]))),
-            ),
-            // ════ DONKERE OVERLAY voor leesbare tekst ════
+                    colors: [kPeachPale, kCream])))),
+
+            // ━━━━ OVERLAY voor leesbare tekst ━━━━
             Positioned.fill(child: Container(
               decoration: BoxDecoration(
                 gradient: LinearGradient(
                   begin: Alignment.topCenter,
                   end: Alignment.bottomCenter,
-                  colors: [
+                  colors: profielFotoUrl.isNotEmpty ? [
                     Colors.black.withOpacity(0.55),
-                    Colors.black.withOpacity(0.25),
-                    Colors.black.withOpacity(0.55),
+                    Colors.black.withOpacity(0.20),
+                    Colors.black.withOpacity(0.65),
+                  ] : [
+                    Colors.transparent,
+                    Colors.transparent,
+                    Colors.transparent,
                   ],
-                  stops: const [0.0, 0.5, 1.0],
-                ),
+                  stops: const [0.0, 0.5, 1.0]),
               ),
             )),
-            // ════ INHOUD GECENTREERD ════
-            SafeArea(child: _homeInhoud(ontvangerNaam)),
-            // ════ POPUP OVERLAY ════
+
+            // ━━━━ INHOUD ━━━━
+            SafeArea(child: _homeInhoud(ontvangerNaam,
+                hasBackground: profielFotoUrl.isNotEmpty)),
+
+            // ━━━━ POPUP ━━━━
             if (_huidigPopup != null) GestureDetector(
               onTap: _sluitPopup, child: _popupOverlay()),
           ]),
@@ -182,48 +230,57 @@ class _TabletSchermState extends State<TabletScherm> {
     );
   }
 
-  Widget _homeInhoud(String ontvangerNaam) {
+  Widget _homeInhoud(String naam, {required bool hasBackground}) {
+    final textColor = hasBackground ? kWhite : kBrown;
+    final shadow = hasBackground ? [
+      Shadow(color: Colors.black.withOpacity(0.6),
+          blurRadius: 12, offset: const Offset(0, 3))
+    ] : <Shadow>[];
+
     return Center(child: ConstrainedBox(
-      constraints: const BoxConstraints(maxWidth: 600),
+      constraints: const BoxConstraints(maxWidth: 640),
       child: Padding(padding: const EdgeInsets.symmetric(horizontal: 24),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
-            // ━━ KLOK ━━
+            // KLOK
             Text(_formatTijd(_nu),
                 textAlign: TextAlign.center,
                 style: TextStyle(fontSize: 110,
-                    fontWeight: FontWeight.w900, color: kWhite, height: 1,
-                    shadows: [Shadow(color: Colors.black.withOpacity(0.5),
-                        blurRadius: 16, offset: const Offset(0, 4))])),
+                    fontWeight: FontWeight.w900, color: textColor, height: 1,
+                    shadows: shadow)),
             const SizedBox(height: 4),
             Text(_formatDatum(_nu),
                 textAlign: TextAlign.center,
                 style: TextStyle(fontSize: 20,
-                    fontWeight: FontWeight.w700, color: kWhite,
-                    shadows: [Shadow(color: Colors.black.withOpacity(0.5),
-                        blurRadius: 12, offset: const Offset(0, 2))])),
-            const SizedBox(height: 32),
-            // ━━ BEGROETING ━━
-            if (ontvangerNaam.isNotEmpty) Container(
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                    fontWeight: FontWeight.w700, color: textColor,
+                    shadows: shadow)),
+            const SizedBox(height: 36),
+
+            // BEGROETING
+            if (naam.isNotEmpty) Container(
+              padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 14),
               decoration: BoxDecoration(
-                color: kWhite.withOpacity(0.25),
+                color: hasBackground
+                    ? kWhite.withOpacity(0.25) : kPeachPale,
                 borderRadius: BorderRadius.circular(50),
-                border: Border.all(color: kWhite.withOpacity(0.5), width: 1.5)),
-              child: Text('Hallo $ontvangerNaam 💕',
-                  style: const TextStyle(fontSize: 24,
-                      fontWeight: FontWeight.w800, color: kWhite,
-                      shadows: [Shadow(color: Colors.black54,
-                          blurRadius: 6, offset: Offset(0, 2))])),
+                border: hasBackground
+                    ? Border.all(color: kWhite.withOpacity(0.5), width: 1.5)
+                    : null),
+              child: Text('Hallo $naam 💕',
+                  style: TextStyle(fontSize: 26,
+                      fontWeight: FontWeight.w800, color: textColor,
+                      shadows: shadow)),
             ),
-            const SizedBox(height: 24),
-            // ━━ VOLGENDE MOMENT KAART ━━
+            const SizedBox(height: 28),
+
+            // VOLGENDE MOMENT KAART
             _volgendeMomentKaart(),
-            const SizedBox(height: 12),
-            // ━━ EERDER VANDAAG ━━
-            _eerderVandaag(),
+            const SizedBox(height: 16),
+
+            // EERDER VANDAAG
+            _eerderVandaag(hasBackground: hasBackground),
           ]),
       ),
     ));
@@ -234,7 +291,7 @@ class _TabletSchermState extends State<TabletScherm> {
     if (uid == null) return const SizedBox();
     return StreamBuilder<QuerySnapshot>(
       stream: FirebaseFirestore.instance.collection('dagelijkse_momenten')
-          .where('naarUid', isEqualTo: uid)
+          .where('familieUid', isEqualTo: uid)
           .where('actief', isEqualTo: true).snapshots(),
       builder: (ctx, snap) {
         if (!snap.hasData || snap.data!.docs.isEmpty) return const SizedBox();
@@ -252,6 +309,7 @@ class _TabletSchermState extends State<TabletScherm> {
           }
         }
         if (volgende == null) {
+          // Geen vandaag, pak vroegste van morgen
           int vroegsteMin = 24 * 60;
           for (final doc in docs) {
             final d = doc.data() as Map<String, dynamic>;
@@ -264,16 +322,16 @@ class _TabletSchermState extends State<TabletScherm> {
         }
         if (volgende == null) return const SizedBox();
         return Container(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.all(18),
           decoration: BoxDecoration(
-            color: kWhite.withOpacity(0.92),
+            color: kWhite.withOpacity(0.94),
             borderRadius: BorderRadius.circular(20),
             boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.2),
                 blurRadius: 20, offset: const Offset(0, 6))]),
           child: Row(mainAxisSize: MainAxisSize.min, children: [
             Text(volgende['emoji'] ?? '⭐',
-                style: const TextStyle(fontSize: 40)),
-            const SizedBox(width: 14),
+                style: const TextStyle(fontSize: 44)),
+            const SizedBox(width: 16),
             Column(crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min, children: [
               const Text('Volgende moment',
@@ -281,15 +339,16 @@ class _TabletSchermState extends State<TabletScherm> {
                       fontWeight: FontWeight.w800, letterSpacing: 0.8)),
               const SizedBox(height: 2),
               Text(volgende['label'] ?? 'Moment',
-                  style: const TextStyle(fontSize: 18,
+                  style: const TextStyle(fontSize: 20,
                       fontWeight: FontWeight.w800, color: kBrown)),
             ]),
-            const SizedBox(width: 14),
-            Container(padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+            const SizedBox(width: 16),
+            Container(padding: const EdgeInsets.symmetric(
+                horizontal: 14, vertical: 8),
               decoration: BoxDecoration(color: kPeachPale,
                   borderRadius: BorderRadius.circular(12)),
               child: Text('${(volgende['uur'] ?? 0).toString().padLeft(2, '0')}:${(volgende['minuut'] ?? 0).toString().padLeft(2, '0')}',
-                  style: const TextStyle(fontSize: 18,
+                  style: const TextStyle(fontSize: 20,
                       fontWeight: FontWeight.w800, color: kBrown))),
           ]),
         );
@@ -297,12 +356,12 @@ class _TabletSchermState extends State<TabletScherm> {
     );
   }
 
-  Widget _eerderVandaag() {
+  Widget _eerderVandaag({required bool hasBackground}) {
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null) return const SizedBox();
     return StreamBuilder<QuerySnapshot>(
       stream: FirebaseFirestore.instance.collection('momenten')
-          .where('naarUid', isEqualTo: uid)
+          .where('familieUid', isEqualTo: uid)
           .where('gezien', isEqualTo: true).snapshots(),
       builder: (ctx, snap) {
         if (!snap.hasData) return const SizedBox();
@@ -317,10 +376,12 @@ class _TabletSchermState extends State<TabletScherm> {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
             decoration: BoxDecoration(
-              color: kWhite.withOpacity(0.2),
+              color: hasBackground
+                  ? kWhite.withOpacity(0.2) : kPeachPale,
               borderRadius: BorderRadius.circular(20)),
-            child: const Text('Eerder vandaag',
-              style: TextStyle(fontSize: 11, color: kWhite,
+            child: Text('Eerder vandaag',
+              style: TextStyle(fontSize: 11,
+                  color: hasBackground ? kWhite : kBrown,
                   fontWeight: FontWeight.w800, letterSpacing: 0.8)),
           ),
           const SizedBox(height: 10),
@@ -331,12 +392,15 @@ class _TabletSchermState extends State<TabletScherm> {
             itemBuilder: (c, i) {
               final d = docs[i].data() as Map<String, dynamic>;
               return GestureDetector(
-                onTap: () => _toonPopup(docs[i].id, {...d, 'gezien': false}),
+                onTap: () {
+                  _alGetoond.remove(docs[i].id);
+                  _toonPopup(docs[i].id, d);
+                },
                 child: Container(
                   margin: const EdgeInsets.symmetric(horizontal: 4),
                   width: 56, height: 56,
                   decoration: BoxDecoration(
-                    color: kWhite.withOpacity(0.85),
+                    color: kWhite.withOpacity(0.9),
                     borderRadius: BorderRadius.circular(14),
                     boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.15),
                         blurRadius: 8)]),
@@ -361,7 +425,7 @@ class _TabletSchermState extends State<TabletScherm> {
         padding: const EdgeInsets.all(20),
         child: Center(child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 600),
-          child: Container(
+          child: SingleChildScrollView(child: Container(
             decoration: BoxDecoration(color: kCream,
                 borderRadius: BorderRadius.circular(28),
                 boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.3),
@@ -387,9 +451,9 @@ class _TabletSchermState extends State<TabletScherm> {
                     ? 'Sluit automatisch wanneer klaar' : 'Tik om te sluiten',
                     style: const TextStyle(fontSize: 11, color: kTextMuted)),
               ])),
-          ),
+          ))),
         )),
-      )),
+      ),
     );
   }
 
@@ -404,6 +468,11 @@ class _TabletSchermState extends State<TabletScherm> {
             borderRadius: BorderRadius.circular(16),
             child: Image.network(url,
               height: 280, fit: BoxFit.cover,
+              loadingBuilder: (c, child, prog) {
+                if (prog == null) return child;
+                return Container(height: 280, color: kPeachPale,
+                  child: const Center(child: CircularProgressIndicator(color: kPeach)));
+              },
               errorBuilder: (c, e, s) => Container(
                 height: 280, color: kPeachPale,
                 child: const Center(child: Icon(Icons.broken_image,
