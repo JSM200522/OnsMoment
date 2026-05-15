@@ -8,6 +8,8 @@ import 'package:image_picker/image_picker.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:record/record.dart';
 import 'package:just_audio/just_audio.dart';
+import '../../main.dart';
+import '../../services/device_modus_service.dart';
 
 const Color kPeach      = Color(0xFFFF9B71);
 const Color kPeachLight = Color(0xFFFFD4C2);
@@ -21,6 +23,21 @@ const Color kWhite      = Color(0xFFFFFFFF);
 const Color kGreen      = Color(0xFF4CAF82);
 const Color kBlue       = Color(0xFF4A90E2);
 const Color kRood       = Color(0xFFE74C3C);
+
+const List<Map<String, String>> kGeluiden = [
+  {'id': 'twinkel', 'emoji': '✨', 'naam': 'Twinkel',
+   'url': 'https://cdn.pixabay.com/audio/2022/03/24/audio_8e8e3e6f17.mp3'},
+  {'id': 'bel', 'emoji': '🔔', 'naam': 'Zachte bel',
+   'url': 'https://cdn.pixabay.com/audio/2022/03/15/audio_e9e98c7c8b.mp3'},
+  {'id': 'vogel', 'emoji': '🐦', 'naam': 'Vogel',
+   'url': 'https://cdn.pixabay.com/audio/2022/03/10/audio_cd2c1ec3fc.mp3'},
+  {'id': 'piano', 'emoji': '🎹', 'naam': 'Piano',
+   'url': 'https://cdn.pixabay.com/audio/2022/03/15/audio_8c0f1f4a4f.mp3'},
+  {'id': 'kerkklok', 'emoji': '⛪', 'naam': 'Kerkklok',
+   'url': 'https://cdn.pixabay.com/audio/2021/08/04/audio_bb630cc098.mp3'},
+  {'id': 'hart', 'emoji': '💕', 'naam': 'Liefdes-melodie',
+   'url': 'https://cdn.pixabay.com/audio/2022/01/18/audio_d0c6ff1eab.mp3'},
+];
 
 class FamilieScherm extends StatefulWidget {
   const FamilieScherm({super.key});
@@ -93,7 +110,7 @@ class _FamilieSchermState extends State<FamilieScherm> {
 }
 
 // ════════════════════════════════════════════════════════════
-// STUUR TAB - met live stem-opname
+// STUUR TAB
 // ════════════════════════════════════════════════════════════
 class StuurTab extends StatefulWidget {
   const StuurTab({super.key});
@@ -109,9 +126,8 @@ class _StuurTabState extends State<StuurTab> {
   Uint8List? _mediaBytes;
   String _mediaNaam = '';
   bool _bezig = false;
-  bool _testModus = false;
+  bool _testModus = true;  // Default AAN voor makkelijk testen
 
-  // Stem opname
   final _recorder = AudioRecorder();
   final _previewPlayer = AudioPlayer();
   bool _isOpnemen = false;
@@ -137,44 +153,35 @@ class _StuurTabState extends State<StuurTab> {
             style: TextStyle(fontSize: 24, fontWeight: FontWeight.w900,
                 color: kBrown)),
         const SizedBox(height: 8),
-        const Text('Kies één type media. Eén ding tegelijk werkt het best.',
+        const Text('Kies één type media. Eén ding tegelijk werkt het beste.',
             style: TextStyle(fontSize: 13, color: kTextMuted, height: 1.4)),
         const SizedBox(height: 16),
-
-        // TEST MODUS - extra duidelijk
-        if (_testModus) Container(
-          margin: const EdgeInsets.only(bottom: 12),
-          padding: const EdgeInsets.all(14),
-          decoration: BoxDecoration(color: kBlue,
-              borderRadius: BorderRadius.circular(12)),
-          child: const Row(children: [
-            Icon(Icons.bolt_rounded, color: kWhite, size: 20),
-            SizedBox(width: 8),
-            Expanded(child: Text(
-              'TEST-MODUS AAN — verschijnt direct bij ontvanger',
-              style: TextStyle(fontSize: 12,
-                  fontWeight: FontWeight.w800, color: kWhite))),
-          ])),
-        GestureDetector(
-          onTap: () => setState(() => _testModus = !_testModus),
-          child: Container(padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: _testModus ? kBlue.withOpacity(0.15) : kPeachPale,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: _testModus ? kBlue : kPeachLight,
-                  width: 1.5)),
-            child: Row(children: [
-              Icon(_testModus ? Icons.bolt_rounded : Icons.timer_rounded,
-                  color: _testModus ? kBlue : kTextMuted, size: 18),
-              const SizedBox(width: 8),
-              Expanded(child: Text(_testModus
-                  ? 'Test-modus AAN — tik om uit te zetten'
-                  : 'Tik om Test-modus aan te zetten (direct sturen)',
-                  style: TextStyle(fontSize: 12,
-                      fontWeight: FontWeight.w800,
-                      color: _testModus ? kBlue : kTextMuted))),
+        // TEST MODUS
+        Container(padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: _testModus ? kBlue : kPeachPale,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: _testModus ? kBlue : kPeachLight,
+                width: 1.5)),
+          child: Row(children: [
+            Icon(_testModus ? Icons.bolt_rounded : Icons.timer_rounded,
+                color: _testModus ? kWhite : kTextMuted, size: 22),
+            const SizedBox(width: 10),
+            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+              Text(_testModus ? 'TEST-MODUS AAN' : 'Test-modus uit',
+                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.w900,
+                      color: _testModus ? kWhite : kBrown)),
+              Text(_testModus
+                  ? 'Verschijnt direct bij ontvanger (binnen 5 sec)'
+                  : 'Tik om aan te zetten — handig om snel te testen',
+                  style: TextStyle(fontSize: 11,
+                      color: _testModus ? kWhite.withOpacity(0.9) : kTextMuted)),
             ])),
-        ),
+            Switch(value: _testModus,
+                onChanged: (v) => setState(() => _testModus = v),
+                activeColor: kWhite, activeTrackColor: kBlue.withOpacity(0.5)),
+          ])),
 
         const SizedBox(height: 16),
         Row(children: [
@@ -236,7 +243,8 @@ class _StuurTabState extends State<StuurTab> {
                 boxShadow: [BoxShadow(color: kPeach.withOpacity(0.35),
                     blurRadius: 20, offset: const Offset(0, 8))]),
               child: Center(child: _bezig
-                ? const CircularProgressIndicator(color: kWhite)
+                ? const SizedBox(width: 22, height: 22,
+                    child: CircularProgressIndicator(color: kWhite, strokeWidth: 3))
                 : Text(_testModus ? '⚡ Stuur NU naar ontvanger'
                     : 'Plan en stuur 💕',
                     style: const TextStyle(fontSize: 16,
@@ -268,7 +276,6 @@ class _StuurTabState extends State<StuurTab> {
         borderRadius: BorderRadius.circular(14),
         border: Border.all(color: kPeachLight, width: 2)),
     child: Column(children: [
-      // RECORD KNOP
       GestureDetector(
         onTap: _isOpnemen ? _stopOpname : _startOpname,
         child: Container(width: 80, height: 80,
@@ -287,11 +294,10 @@ class _StuurTabState extends State<StuurTab> {
       Text(_isOpnemen
           ? '🔴 Opname loopt: ${_opnameSeconden}s — tik om te stoppen'
           : _hebOpname
-            ? '✓ Opname klaar (${_opnameSeconden}s) — tik nogmaals voor nieuwe'
+            ? '✓ Opname klaar (${_opnameSeconden}s)'
             : 'Tik op de microfoon om in te spreken',
           textAlign: TextAlign.center,
-          style: TextStyle(fontSize: 13,
-              fontWeight: FontWeight.w800,
+          style: TextStyle(fontSize: 13, fontWeight: FontWeight.w800,
               color: _isOpnemen ? kRood : kBrown)),
       if (_hebOpname && !_isOpnemen) ...[
         const SizedBox(height: 12),
@@ -341,10 +347,7 @@ class _StuurTabState extends State<StuurTab> {
       final pad = await _recorder.stop();
       _opnameTimer?.cancel();
       if (pad != null) {
-        // Op web: pad is een blob URL. Convert naar bytes.
-        try {
-          await _previewPlayer.setUrl(pad);
-        } catch (_) {}
+        try { await _previewPlayer.setUrl(pad); } catch (_) {}
         _opnamePad = pad;
         setState(() {
           _isOpnemen = false;
@@ -429,34 +432,31 @@ class _StuurTabState extends State<StuurTab> {
     }
     setState(() => _bezig = true);
     try {
-      final uid = FirebaseAuth.instance.currentUser!.uid;
+      final user = FirebaseAuth.instance.currentUser!;
       final familieDoc = await FirebaseFirestore.instance
-          .collection('gebruikers').doc(uid).get();
+          .collection('gebruikers').doc(user.uid).get();
       final familieData = familieDoc.data() ?? {};
-      final ontvangerUid = familieData['ontvangerUid'] ?? '';
-      final familieNaam = familieData['naam'] ?? 'Familie';
-      if (ontvangerUid.isEmpty) {
-        _toonFout('Geen ontvanger gevonden. Maak setup opnieuw.');
-        return;
-      }
+      final familieNaam = familieData['familieNaam'] ?? 'Familie';
+
       String mediaUrl = '';
       if (_type == 'stem' && _opnamePad != null) {
-        // Voor web: pad is een blob URL — sla URL direct op
-        // (in productie zou je naar Storage moeten uploaden, voor MVP volstaat dit)
+        // Web blob URL - voor MVP direct gebruiken
         mediaUrl = _opnamePad!;
       } else if (_mediaBytes != null) {
         final ext = _type == 'foto' ? 'jpg' : 'mp3';
         final ref = FirebaseStorage.instance.ref()
-            .child('momenten').child('${DateTime.now().millisecondsSinceEpoch}.$ext');
+            .child('momenten')
+            .child('${DateTime.now().millisecondsSinceEpoch}.$ext');
         await ref.putData(_mediaBytes!, SettableMetadata(
             contentType: _type == 'foto' ? 'image/jpeg' : 'audio/mpeg'));
         mediaUrl = await ref.getDownloadURL();
       }
+
       final geplandTijd = _testModus ? DateTime.now() : DateTime(
           _datum.year, _datum.month, _datum.day, _tijd.hour, _tijd.minute);
+
       await FirebaseFirestore.instance.collection('momenten').add({
-        'naarUid': ontvangerUid,
-        'vanUid': uid,
+        'familieUid': user.uid,
         'vanNaam': familieNaam,
         'type': _type,
         'mediaUrl': mediaUrl,
@@ -466,10 +466,11 @@ class _StuurTabState extends State<StuurTab> {
         'gezien': false,
         'testModus': _testModus,
       });
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
           content: Text(_testModus
-              ? '⚡ Direct verstuurd! Check ontvanger-scherm'
+              ? '⚡ Direct verstuurd! Verschijnt nu bij ontvanger'
               : 'Moment gepland voor ${_formatDatum(_datum)} ${_formatTijd(_tijd)} 💕'),
           backgroundColor: kGreen));
         setState(() {
@@ -559,7 +560,7 @@ class AgendaTab extends StatelessWidget {
           const _SectieTitel('🔁 ELKE DAG'),
           StreamBuilder<QuerySnapshot>(
             stream: FirebaseFirestore.instance.collection('dagelijkse_momenten')
-                .where('vanUid', isEqualTo: uid)
+                .where('familieUid', isEqualTo: uid)
                 .where('actief', isEqualTo: true).snapshots(),
             builder: (ctx, snap) {
               if (!snap.hasData) return const Padding(
@@ -582,16 +583,11 @@ class AgendaTab extends StatelessWidget {
           const _SectieTitel('📅 GEPLAND'),
           StreamBuilder<QuerySnapshot>(
             stream: FirebaseFirestore.instance.collection('momenten')
-                .where('vanUid', isEqualTo: uid)
+                .where('familieUid', isEqualTo: uid)
                 .where('gezien', isEqualTo: false).snapshots(),
             builder: (ctx, snap) {
               if (!snap.hasData) return const SizedBox();
-              final docs = snap.data!.docs.where((d) {
-                final geplandOp = (d.data() as Map)['geplandOp'];
-                if (geplandOp == null) return true;
-                return (geplandOp as Timestamp).toDate().isAfter(
-                    DateTime.now().subtract(const Duration(minutes: 5)));
-              }).toList();
+              final docs = snap.data!.docs.toList();
               if (docs.isEmpty) return _leeg('Geen geplande momenten');
               docs.sort((a, b) {
                 final ta = (a.data() as Map)['geplandOp'] as Timestamp?;
@@ -607,7 +603,7 @@ class AgendaTab extends StatelessWidget {
           const _SectieTitel('✓ VERSTUURD'),
           StreamBuilder<QuerySnapshot>(
             stream: FirebaseFirestore.instance.collection('momenten')
-                .where('vanUid', isEqualTo: uid)
+                .where('familieUid', isEqualTo: uid)
                 .where('gezien', isEqualTo: true).snapshots(),
             builder: (ctx, snap) {
               if (!snap.hasData) return const SizedBox();
@@ -634,8 +630,7 @@ class _SectieTitel extends StatelessWidget {
   Widget build(BuildContext context) => Padding(
     padding: const EdgeInsets.symmetric(vertical: 8),
     child: Text(tekst, style: const TextStyle(fontSize: 11,
-        fontWeight: FontWeight.w800, color: kTextMuted, letterSpacing: 0.8)),
-  );
+        fontWeight: FontWeight.w800, color: kTextMuted, letterSpacing: 0.8)));
 }
 
 class _DagelijksItem extends StatelessWidget {
@@ -654,9 +649,8 @@ class _DagelijksItem extends StatelessWidget {
         const SizedBox(width: 10),
         Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-          Text(d['label'] ?? 'Moment',
-              style: const TextStyle(fontSize: 14,
-                  fontWeight: FontWeight.w800, color: kBrown)),
+          Text(d['label'] ?? 'Moment', style: const TextStyle(fontSize: 14,
+              fontWeight: FontWeight.w800, color: kBrown)),
           const Text('Elke dag', style: TextStyle(fontSize: 11,
               color: kTextMuted)),
         ])),
@@ -775,7 +769,7 @@ class _NotitiesTabState extends State<NotitiesTab> {
         Expanded(child: uid == null ? const SizedBox()
           : StreamBuilder<QuerySnapshot>(
           stream: FirebaseFirestore.instance.collection('notities')
-              .where('vanUid', isEqualTo: uid).snapshots(),
+              .where('familieUid', isEqualTo: uid).snapshots(),
           builder: (ctx, snap) {
             if (!snap.hasData) return const Center(
                 child: CircularProgressIndicator(color: kPeach));
@@ -807,8 +801,13 @@ class _NotitiesTabState extends State<NotitiesTab> {
 
   Future<void> _opslaan(String? uid) async {
     if (uid == null || _ctrl.text.trim().isEmpty) return;
+    final familieDoc = await FirebaseFirestore.instance
+        .collection('gebruikers').doc(uid).get();
+    final familieNaam = familieDoc.data()?['familieNaam'] ?? 'Familielid';
     await FirebaseFirestore.instance.collection('notities').add({
-      'vanUid': uid, 'tekst': _ctrl.text.trim(),
+      'familieUid': uid,
+      'vanNaam': familieNaam,
+      'tekst': _ctrl.text.trim(),
       'aangemaaktOp': FieldValue.serverTimestamp(),
     });
     _ctrl.clear();
@@ -840,20 +839,13 @@ class InstellingenTab extends StatelessWidget {
         const SizedBox(height: 20),
         _sectie('ACCOUNT'),
         _item('👵', 'Ontvanger-profiel',
-            'Naam, foto, lievelingsdingen en meer', () {
+            'Naam, foto, lievelingsdingen en herkenningsgeluid', () {
           Navigator.push(context, MaterialPageRoute(
               builder: (c) => const OntvangerInfoScherm()));
         }),
-        _item('👨‍👩‍👧', 'Familieleden uitnodigen',
-            'Tot 8 personen — binnenkort beschikbaar', () {
-          ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Binnenkort beschikbaar')));
-        }),
-        _item('💳', 'Abonnement',
-            '€7,99/maand — 5 dagen gratis proef', () {
-          ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Binnenkort beschikbaar')));
-        }),
+        _item('🔄', 'Wissel naar Ontvanger-modus',
+            'Verander dit apparaat naar ontvanger-weergave', () =>
+            _bevestigModusWissel(context)),
         const SizedBox(height: 20),
         _sectie('OVERIG'),
         _item('❓', 'Hulp en uitleg', 'Veelgestelde vragen', () {
@@ -861,14 +853,39 @@ class InstellingenTab extends StatelessWidget {
               backgroundColor: Colors.transparent, isScrollControlled: true,
               builder: (ctx) => _HulpDialog());
         }),
-        _item('🚪', 'Uitloggen', '', () async {
+        _item('🚪', 'Uitloggen', 'Logt uit en wist apparaat-instellingen', () async {
+          await DeviceModusService.wis();
           await FirebaseAuth.instance.signOut();
         }),
         const SizedBox(height: 30),
-        const Center(child: Text('Ons Moment v6',
+        const Center(child: Text('Ons Moment v7',
             style: TextStyle(fontSize: 11, color: kTextMuted))),
       ]),
     );
+  }
+
+  void _bevestigModusWissel(BuildContext context) {
+    showDialog(context: context, builder: (ctx) => AlertDialog(
+      title: const Text('Naar Ontvanger-modus?'),
+      content: const Text(
+          'Dit apparaat wordt dan een kiosk-weergave voor de ontvanger. '
+          'Je kunt later terugschakelen door uit te loggen en opnieuw de '
+          'familie-modus te kiezen.'),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(ctx),
+            child: const Text('Annuleren')),
+        ElevatedButton(
+          style: ElevatedButton.styleFrom(backgroundColor: kPeach),
+          onPressed: () async {
+            await DeviceModusService.zet(DeviceModusService.ONTVANGER);
+            if (!context.mounted) return;
+            Navigator.pop(ctx);
+            // Forceer volledige app rebuild → router routeert nu naar TabletScherm
+            OnsMomentApp.herstart(context);
+          },
+          child: const Text('Wissel', style: TextStyle(color: kWhite))),
+      ],
+    ));
   }
 
   Widget _sectie(String t) => Padding(
@@ -898,7 +915,9 @@ class InstellingenTab extends StatelessWidget {
     ));
 }
 
+// ════════════════════════════════════════════════════════════
 // MOMENTEN BEHEREN
+// ════════════════════════════════════════════════════════════
 class MomentenBeherenScherm extends StatelessWidget {
   const MomentenBeherenScherm({super.key});
   @override
@@ -908,8 +927,8 @@ class MomentenBeherenScherm extends StatelessWidget {
       backgroundColor: kCream,
       appBar: AppBar(backgroundColor: Colors.transparent, elevation: 0,
         iconTheme: const IconThemeData(color: kBrown),
-        title: const Text('Momenten beheren', style: TextStyle(
-            color: kBrown, fontWeight: FontWeight.w900))),
+        title: const Text('Momenten beheren',
+            style: TextStyle(color: kBrown, fontWeight: FontWeight.w900))),
       floatingActionButton: FloatingActionButton.extended(
         backgroundColor: kPeach,
         onPressed: () => _voegToe(context, uid),
@@ -919,7 +938,7 @@ class MomentenBeherenScherm extends StatelessWidget {
       body: uid == null ? const SizedBox()
         : StreamBuilder<QuerySnapshot>(
         stream: FirebaseFirestore.instance.collection('dagelijkse_momenten')
-            .where('vanUid', isEqualTo: uid)
+            .where('familieUid', isEqualTo: uid)
             .where('actief', isEqualTo: true).snapshots(),
         builder: (ctx, snap) {
           if (!snap.hasData) return const Center(
@@ -980,13 +999,12 @@ class MomentenBeherenScherm extends StatelessWidget {
     final result = await showDialog<Map<String, dynamic>>(
       context: context, builder: (ctx) => _NieuwMomentDialog());
     if (result != null) {
-      final familieDoc = await FirebaseFirestore.instance
-          .collection('gebruikers').doc(uid).get();
-      final ontvangerUid = familieDoc.data()?['ontvangerUid'] ?? '';
       await FirebaseFirestore.instance.collection('dagelijkse_momenten').add({
-        'naarUid': ontvangerUid, 'vanUid': uid,
-        'emoji': result['emoji'], 'label': result['label'],
-        'uur': result['uur'], 'minuut': result['minuut'],
+        'familieUid': uid,
+        'emoji': result['emoji'],
+        'label': result['label'],
+        'uur': result['uur'],
+        'minuut': result['minuut'],
         'mediaType': '', 'mediaUrl': '', 'tekstBericht': '',
         'actief': true,
         'aangemaaktOp': FieldValue.serverTimestamp(),
@@ -1054,7 +1072,8 @@ class _NieuwMomentDialogState extends State<_NieuwMomentDialog> {
           const SizedBox(height: 20),
           Row(mainAxisAlignment: MainAxisAlignment.end, children: [
             TextButton(onPressed: () => Navigator.pop(context),
-              child: const Text('Annuleren', style: TextStyle(color: kTextMuted))),
+              child: const Text('Annuleren',
+                  style: TextStyle(color: kTextMuted))),
             ElevatedButton(
               style: ElevatedButton.styleFrom(backgroundColor: kPeach),
               onPressed: () {
@@ -1064,14 +1083,16 @@ class _NieuwMomentDialogState extends State<_NieuwMomentDialog> {
                   'uur': _tijd.hour, 'minuut': _tijd.minute,
                 });
               },
-              child: const Text('Toevoegen', style: TextStyle(color: kWhite,
-                  fontWeight: FontWeight.w800))),
+              child: const Text('Toevoegen',
+                  style: TextStyle(color: kWhite, fontWeight: FontWeight.w800))),
           ]),
         ])));
   }
 }
 
-// ONTVANGER INFO SCHERM
+// ════════════════════════════════════════════════════════════
+// ONTVANGER INFO
+// ════════════════════════════════════════════════════════════
 class OntvangerInfoScherm extends StatefulWidget {
   const OntvangerInfoScherm({super.key});
   @override
@@ -1087,11 +1108,17 @@ class _OntvangerInfoSchermState extends State<OntvangerInfoScherm> {
   Uint8List? _fotoBytes;
   String _huidigeFotoUrl = '';
   String _gekozenGeluid = 'twinkel';
+  final _geluidPreviewPlayer = AudioPlayer();
   bool _bezig = false;
-  String _ontvangerUid = '';
 
   @override
   void initState() { super.initState(); _laad(); }
+
+  @override
+  void dispose() {
+    _geluidPreviewPlayer.dispose();
+    super.dispose();
+  }
 
   Future<void> _laad() async {
     final uid = FirebaseAuth.instance.currentUser?.uid;
@@ -1101,27 +1128,17 @@ class _OntvangerInfoSchermState extends State<OntvangerInfoScherm> {
     final d = doc.data() ?? {};
     setState(() {
       _naamCtrl.text = d['ontvangerNaam'] ?? '';
-      _lievelingsdingenCtrl.text = d['ontvangerLievelingsdingen'] ?? '';
-      _woonplaatsCtrl.text = d['ontvangerWoonplaats'] ?? '';
-      _noodNaamCtrl.text = d['ontvangerNoodcontactNaam'] ?? '';
-      _noodTelCtrl.text = d['ontvangerNoodcontactTel'] ?? '';
-      _huidigeFotoUrl = d['ontvangerProfielFoto'] ?? '';
+      _lievelingsdingenCtrl.text = d['lievelingsdingen'] ?? '';
+      _woonplaatsCtrl.text = d['woonplaats'] ?? '';
+      _noodNaamCtrl.text = d['noodcontactNaam'] ?? '';
+      _noodTelCtrl.text = d['noodcontactTel'] ?? '';
+      _huidigeFotoUrl = d['ontvangerFoto'] ?? '';
       _gekozenGeluid = d['herkenningsgeluid'] ?? 'twinkel';
-      _ontvangerUid = d['ontvangerUid'] ?? '';
     });
   }
 
   @override
   Widget build(BuildContext context) {
-    const geluiden = [
-      {'id': 'twinkel', 'emoji': '✨', 'naam': 'Twinkel'},
-      {'id': 'bel', 'emoji': '🔔', 'naam': 'Zachte bel'},
-      {'id': 'vogel', 'emoji': '🐦', 'naam': 'Vogel-tjilp'},
-      {'id': 'piano', 'emoji': '🎹', 'naam': 'Piano-toon'},
-      {'id': 'kerkklok', 'emoji': '⛪', 'naam': 'Kerkklokje'},
-      {'id': 'hart', 'emoji': '💕', 'naam': 'Liefdes-melodie'},
-    ];
-
     return Scaffold(
       backgroundColor: kCream,
       appBar: AppBar(backgroundColor: Colors.transparent, elevation: 0,
@@ -1129,7 +1146,6 @@ class _OntvangerInfoSchermState extends State<OntvangerInfoScherm> {
         title: const Text('Ontvanger-profiel',
             style: TextStyle(color: kBrown, fontWeight: FontWeight.w900))),
       body: ListView(padding: const EdgeInsets.all(20), children: [
-        // FOTO
         Center(child: GestureDetector(
           onTap: _kiesFoto,
           child: Container(width: 120, height: 120,
@@ -1147,11 +1163,9 @@ class _OntvangerInfoSchermState extends State<OntvangerInfoScherm> {
           ),
         )),
         const SizedBox(height: 8),
-        const Center(child: Text('Tik om profielfoto te wijzigen',
+        const Center(child: Text('Tik om foto te wijzigen',
             style: TextStyle(fontSize: 11, color: kTextMuted))),
         const SizedBox(height: 24),
-
-        // VELDEN
         _veld('👤', 'Naam', _naamCtrl),
         const SizedBox(height: 10),
         _veld('💕', 'Lievelingsdingen', _lievelingsdingenCtrl),
@@ -1162,34 +1176,36 @@ class _OntvangerInfoSchermState extends State<OntvangerInfoScherm> {
         const SizedBox(height: 10),
         _veld('☎️', 'Noodcontact telefoon', _noodTelCtrl),
         const SizedBox(height: 24),
-
-        // GELUID
         const Text('HERKENNINGSGELUID',
             style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800,
                 color: kTextMuted, letterSpacing: 0.8)),
         const SizedBox(height: 8),
-        Wrap(spacing: 8, runSpacing: 8, children: geluiden.map((g) =>
-          GestureDetector(
-            onTap: () => setState(() => _gekozenGeluid = g['id']!),
-            child: Container(padding: const EdgeInsets.symmetric(
-                horizontal: 14, vertical: 10),
+        ...kGeluiden.map((g) => Padding(
+          padding: const EdgeInsets.only(bottom: 8),
+          child: GestureDetector(
+            onTap: () {
+              setState(() => _gekozenGeluid = g['id']!);
+              _speelPreview(g['url']!);
+            },
+            child: Container(padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
                 color: _gekozenGeluid == g['id'] ? kPeach : kWhite,
                 borderRadius: BorderRadius.circular(12),
                 border: Border.all(color: _gekozenGeluid == g['id']
                     ? kPeach : kPeachLight, width: 2)),
-              child: Row(mainAxisSize: MainAxisSize.min, children: [
-                Text(g['emoji']!, style: const TextStyle(fontSize: 16)),
-                const SizedBox(width: 6),
-                Text(g['naam']!, style: TextStyle(fontSize: 12,
+              child: Row(children: [
+                Text(g['emoji']!, style: const TextStyle(fontSize: 22)),
+                const SizedBox(width: 10),
+                Expanded(child: Text(g['naam']!, style: TextStyle(fontSize: 14,
                     fontWeight: FontWeight.w800,
-                    color: _gekozenGeluid == g['id'] ? kWhite : kBrown)),
+                    color: _gekozenGeluid == g['id'] ? kWhite : kBrown))),
+                Icon(Icons.play_circle_outline_rounded,
+                    color: _gekozenGeluid == g['id'] ? kWhite : kPeach, size: 24),
               ]),
             ),
-          )).toList()),
+          ),
+        )),
         const SizedBox(height: 30),
-
-        // OPSLAAN
         GestureDetector(onTap: _bezig ? null : _opslaan,
           child: Container(width: double.infinity,
             padding: const EdgeInsets.all(16),
@@ -1197,7 +1213,8 @@ class _OntvangerInfoSchermState extends State<OntvangerInfoScherm> {
               gradient: const LinearGradient(colors: [kPeach, kRose]),
               borderRadius: BorderRadius.circular(16)),
             child: Center(child: _bezig
-              ? const CircularProgressIndicator(color: kWhite)
+              ? const SizedBox(width: 22, height: 22,
+                  child: CircularProgressIndicator(color: kWhite, strokeWidth: 3))
               : const Text('Opslaan',
                   style: TextStyle(fontSize: 16, color: kWhite,
                       fontWeight: FontWeight.w800))))),
@@ -1220,6 +1237,14 @@ class _OntvangerInfoSchermState extends State<OntvangerInfoScherm> {
       ]),
     );
 
+  Future<void> _speelPreview(String url) async {
+    try {
+      await _geluidPreviewPlayer.stop();
+      await _geluidPreviewPlayer.setUrl(url);
+      await _geluidPreviewPlayer.play();
+    } catch (_) {}
+  }
+
   Future<void> _kiesFoto() async {
     final picker = ImagePicker();
     final foto = await picker.pickImage(source: ImageSource.gallery,
@@ -1238,31 +1263,19 @@ class _OntvangerInfoSchermState extends State<OntvangerInfoScherm> {
       String fotoUrl = _huidigeFotoUrl;
       if (_fotoBytes != null) {
         final ref = FirebaseStorage.instance.ref()
-            .child('profielfotos').child('$_ontvangerUid.jpg');
+            .child('profielfotos').child('$uid.jpg');
         await ref.putData(_fotoBytes!, SettableMetadata(contentType: 'image/jpeg'));
         fotoUrl = await ref.getDownloadURL();
       }
       await FirebaseFirestore.instance.collection('gebruikers').doc(uid).update({
         'ontvangerNaam': _naamCtrl.text.trim(),
-        'ontvangerProfielFoto': fotoUrl,
-        'ontvangerLievelingsdingen': _lievelingsdingenCtrl.text.trim(),
-        'ontvangerWoonplaats': _woonplaatsCtrl.text.trim(),
-        'ontvangerNoodcontactNaam': _noodNaamCtrl.text.trim(),
-        'ontvangerNoodcontactTel': _noodTelCtrl.text.trim(),
+        'ontvangerFoto': fotoUrl,
+        'lievelingsdingen': _lievelingsdingenCtrl.text.trim(),
+        'woonplaats': _woonplaatsCtrl.text.trim(),
+        'noodcontactNaam': _noodNaamCtrl.text.trim(),
+        'noodcontactTel': _noodTelCtrl.text.trim(),
         'herkenningsgeluid': _gekozenGeluid,
       });
-      if (_ontvangerUid.isNotEmpty) {
-        await FirebaseFirestore.instance.collection('gebruikers')
-            .doc(_ontvangerUid).update({
-          'naam': _naamCtrl.text.trim(),
-          'profielFoto': fotoUrl,
-          'lievelingsdingen': _lievelingsdingenCtrl.text.trim(),
-          'woonplaats': _woonplaatsCtrl.text.trim(),
-          'noodcontactNaam': _noodNaamCtrl.text.trim(),
-          'noodcontactTel': _noodTelCtrl.text.trim(),
-          'herkenningsgeluid': _gekozenGeluid,
-        });
-      }
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
             content: Text('Opgeslagen ✓'), backgroundColor: kGreen));
@@ -1277,37 +1290,35 @@ class _OntvangerInfoSchermState extends State<OntvangerInfoScherm> {
   }
 }
 
+// ════════════════════════════════════════════════════════════
 // HULP DIALOG
+// ════════════════════════════════════════════════════════════
 class _HulpDialog extends StatelessWidget {
   final List<_FAQ> _faqs = [
     _FAQ('Hoe stuur ik direct iets naar de ontvanger?',
-        'Ga naar Sturen, zet de "Test-modus" knop AAN (wordt blauw). Kies type, '
-        'media, klik "Stuur NU". Het verschijnt direct in het ontvanger-scherm.'),
+        'Ga naar Sturen, zorg dat Test-modus AAN staat (blauwe banner). Kies '
+        'type, voeg media toe, klik "Stuur NU". Het verschijnt binnen enkele '
+        'seconden op het ontvanger-apparaat.'),
+    _FAQ('Wat is het verschil tussen Familie- en Ontvanger-modus?',
+        'Beide gebruiken hetzelfde account. Familie-modus = je kunt sturen, '
+        'plannen en beheren. Ontvanger-modus = kiosk-weergave met klok, '
+        'achtergrondfoto en automatische popups.'),
+    _FAQ('Hoe stel ik een ander apparaat in als ontvanger?',
+        'Open de app op het andere apparaat. Kies "Ontvanger". Log in met '
+        'jullie gezamenlijke gegevens. Dat apparaat blijft dan altijd in '
+        'kiosk-modus.'),
+    _FAQ('Kunnen meerdere familieleden hetzelfde account gebruiken?',
+        'Ja! Tot 8 personen kunnen tegelijk inloggen op hun eigen telefoon, '
+        'allemaal met dezelfde inloggegevens. Iedereen ziet en stuurt vanuit '
+        'het gezamenlijke profiel.'),
     _FAQ('Hoe neem ik een stem-bericht op?',
-        'Kies "🎙️ Stem" in Sturen tab. Tik op de microfoon-knop om te starten. '
-        'Spreek je bericht in. Tik nogmaals om te stoppen. Luister naar de '
-        'preview, en klik "Plan en stuur" of "Stuur NU".'),
-    _FAQ('Hoe plan ik een toekomstig moment?',
-        'Zet Test-modus UIT. Kies type, media, datum en tijd. Klik "Plan en stuur". '
-        'Het bericht verschijnt automatisch op dat tijdstip bij de ontvanger.'),
+        'Kies "🎙️ Stem". Tik op de microfoon-knop. Spreek je bericht in. '
+        'Tik nogmaals om te stoppen. Beluister voorbeeld. Klik Stuur.'),
     _FAQ('Wat zijn dagelijkse momenten?',
-        'Vaste tijden waarop er automatisch een melding verschijnt — bijv. elke '
-        'ochtend om 08:30 "Goedemorgen". Beheer ze in Instellingen → '
-        'Momenten beheren.'),
-    _FAQ('Hoe wijzig ik de profielfoto?',
-        'Instellingen → Ontvanger-profiel → tik op de cirkel met foto. '
-        'Kies nieuwe foto. Klik Opslaan.'),
-    _FAQ('Wat is het herkenningsgeluid?',
-        'Een vriendelijk geluidje dat klinkt elke keer als er iets nieuws aankomt. '
-        'Helpt de ontvanger te herkennen dat er iets liefs is. Kies een geluid in '
-        'Instellingen → Ontvanger-profiel.'),
-    _FAQ('Hoe gebruikt de ontvanger de app?',
-        'Open de app op het apparaat van de ontvanger, log in met de speciale '
-        'ontvanger-gegevens. De app blijft altijd open en toont automatisch nieuwe '
-        'berichten. De ontvanger hoeft niks te doen — alleen kijken en luisteren.'),
+        'Vaste tijden waarop er automatisch iets verschijnt. Beheer ze in '
+        'Instellingen → Momenten beheren.'),
     _FAQ('Wat kost Ons Moment?',
-        'Eerste 5 dagen gratis. Daarna €7,99 per maand voor het hele gezin '
-        '(tot 8 personen).'),
+        'Eerste 5 dagen gratis. Daarna €7,99 per maand voor het hele gezin.'),
   ];
 
   @override
