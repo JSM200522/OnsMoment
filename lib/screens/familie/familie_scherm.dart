@@ -1,10 +1,13 @@
 import 'dart:typed_data';
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:record/record.dart';
+import 'package:just_audio/just_audio.dart';
 
 const Color kPeach      = Color(0xFFFF9B71);
 const Color kPeachLight = Color(0xFFFFD4C2);
@@ -17,6 +20,7 @@ const Color kTextMuted  = Color(0xFF9B7565);
 const Color kWhite      = Color(0xFFFFFFFF);
 const Color kGreen      = Color(0xFF4CAF82);
 const Color kBlue       = Color(0xFF4A90E2);
+const Color kRood       = Color(0xFFE74C3C);
 
 class FamilieScherm extends StatefulWidget {
   const FamilieScherm({super.key});
@@ -89,7 +93,7 @@ class _FamilieSchermState extends State<FamilieScherm> {
 }
 
 // ════════════════════════════════════════════════════════════
-// STUUR TAB — Werkt echt nu
+// STUUR TAB - met live stem-opname
 // ════════════════════════════════════════════════════════════
 class StuurTab extends StatefulWidget {
   const StuurTab({super.key});
@@ -107,6 +111,23 @@ class _StuurTabState extends State<StuurTab> {
   bool _bezig = false;
   bool _testModus = false;
 
+  // Stem opname
+  final _recorder = AudioRecorder();
+  final _previewPlayer = AudioPlayer();
+  bool _isOpnemen = false;
+  bool _hebOpname = false;
+  String? _opnamePad;
+  int _opnameSeconden = 0;
+  Timer? _opnameTimer;
+
+  @override
+  void dispose() {
+    _recorder.dispose();
+    _previewPlayer.dispose();
+    _opnameTimer?.cancel();
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) {
     return Padding(padding: const EdgeInsets.all(20),
@@ -119,7 +140,21 @@ class _StuurTabState extends State<StuurTab> {
         const Text('Kies één type media. Eén ding tegelijk werkt het best.',
             style: TextStyle(fontSize: 13, color: kTextMuted, height: 1.4)),
         const SizedBox(height: 16),
-        // TEST KNOP
+
+        // TEST MODUS - extra duidelijk
+        if (_testModus) Container(
+          margin: const EdgeInsets.only(bottom: 12),
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(color: kBlue,
+              borderRadius: BorderRadius.circular(12)),
+          child: const Row(children: [
+            Icon(Icons.bolt_rounded, color: kWhite, size: 20),
+            SizedBox(width: 8),
+            Expanded(child: Text(
+              'TEST-MODUS AAN — verschijnt direct bij ontvanger',
+              style: TextStyle(fontSize: 12,
+                  fontWeight: FontWeight.w800, color: kWhite))),
+          ])),
         GestureDetector(
           onTap: () => setState(() => _testModus = !_testModus),
           child: Container(padding: const EdgeInsets.all(12),
@@ -133,13 +168,14 @@ class _StuurTabState extends State<StuurTab> {
                   color: _testModus ? kBlue : kTextMuted, size: 18),
               const SizedBox(width: 8),
               Expanded(child: Text(_testModus
-                  ? 'TEST-MODUS AAN — verschijnt direct bij ontvanger'
-                  : 'Test-modus uit — wordt op ingesteld tijdstip verstuurd',
+                  ? 'Test-modus AAN — tik om uit te zetten'
+                  : 'Tik om Test-modus aan te zetten (direct sturen)',
                   style: TextStyle(fontSize: 12,
                       fontWeight: FontWeight.w800,
                       color: _testModus ? kBlue : kTextMuted))),
             ])),
         ),
+
         const SizedBox(height: 16),
         Row(children: [
           _typeKnop('📷', 'Foto', 'foto'),
@@ -152,20 +188,19 @@ class _StuurTabState extends State<StuurTab> {
           const SizedBox(width: 10),
           _typeKnop('✏️', 'Tekst', 'tekst'),
         ]),
+
         if (_type.isNotEmpty) ...[
           const SizedBox(height: 20),
           _inhoudInvoer(),
           const SizedBox(height: 16),
           TextField(
-            controller: _berichtCtrl,
-            maxLines: 2,
+            controller: _berichtCtrl, maxLines: 2,
             decoration: InputDecoration(
               labelText: _type == 'tekst' ? 'Bericht' : 'Optioneel bijschrift',
               hintText: _type == 'tekst' ? 'Wat wil je zeggen?'
                   : 'Bijv. "Een leuke foto van de kleinkinderen!"',
               border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
-              filled: true, fillColor: kWhite,
-            ),
+              filled: true, fillColor: kWhite),
           ),
           if (!_testModus) ...[
             const SizedBox(height: 16),
@@ -223,31 +258,136 @@ class _StuurTabState extends State<StuurTab> {
             style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700,
                 color: kBrown))));
     }
-    return GestureDetector(
-      onTap: _kiesMedia,
-      child: Container(padding: const EdgeInsets.all(20),
-        decoration: BoxDecoration(color: kPeachPale,
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: kPeachLight, width: 2)),
-        child: Center(child: Column(children: [
-          if (_mediaBytes != null && _type == 'foto') ClipRRect(
-            borderRadius: BorderRadius.circular(10),
-            child: Image.memory(_mediaBytes!, height: 120, fit: BoxFit.cover),
-          ) else Icon(_type == 'foto' ? Icons.add_photo_alternate_rounded
-              : _type == 'stem' ? Icons.mic_rounded
-              : Icons.audiotrack_rounded, size: 40, color: kPeach),
-          const SizedBox(height: 8),
-          Text(_mediaNaam.isNotEmpty ? '✓ $_mediaNaam'
-              : _type == 'foto' ? 'Tik om foto te kiezen'
-              : _type == 'stem' ? 'Tik om stem-bericht te kiezen (MP3/M4A)'
-              : 'Tik om MP3 lied te kiezen',
-              textAlign: TextAlign.center,
-              style: const TextStyle(fontSize: 14,
-                  fontWeight: FontWeight.w700, color: kBrown)),
-        ])),
-      ),
-    );
+    if (_type == 'stem') return _stemOpname();
+    return _bestandKiezen();
   }
+
+  Widget _stemOpname() => Container(
+    padding: const EdgeInsets.all(20),
+    decoration: BoxDecoration(color: kPeachPale,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: kPeachLight, width: 2)),
+    child: Column(children: [
+      // RECORD KNOP
+      GestureDetector(
+        onTap: _isOpnemen ? _stopOpname : _startOpname,
+        child: Container(width: 80, height: 80,
+          decoration: BoxDecoration(
+            color: _isOpnemen ? kRood : kRose,
+            shape: BoxShape.circle,
+            boxShadow: [BoxShadow(
+              color: (_isOpnemen ? kRood : kRose).withOpacity(0.4),
+              blurRadius: _isOpnemen ? 30 : 12,
+              spreadRadius: _isOpnemen ? 6 : 0)]),
+          child: Icon(_isOpnemen ? Icons.stop_rounded : Icons.mic_rounded,
+              color: kWhite, size: 40),
+        ),
+      ),
+      const SizedBox(height: 12),
+      Text(_isOpnemen
+          ? '🔴 Opname loopt: ${_opnameSeconden}s — tik om te stoppen'
+          : _hebOpname
+            ? '✓ Opname klaar (${_opnameSeconden}s) — tik nogmaals voor nieuwe'
+            : 'Tik op de microfoon om in te spreken',
+          textAlign: TextAlign.center,
+          style: TextStyle(fontSize: 13,
+              fontWeight: FontWeight.w800,
+              color: _isOpnemen ? kRood : kBrown)),
+      if (_hebOpname && !_isOpnemen) ...[
+        const SizedBox(height: 12),
+        GestureDetector(
+          onTap: _speelPreview,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+            decoration: BoxDecoration(color: kPeach,
+                borderRadius: BorderRadius.circular(20)),
+            child: const Row(mainAxisSize: MainAxisSize.min, children: [
+              Icon(Icons.play_arrow_rounded, color: kWhite, size: 20),
+              SizedBox(width: 6),
+              Text('Voorbeeld beluisteren',
+                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.w800,
+                      color: kWhite)),
+            ]),
+          ),
+        ),
+      ],
+    ]),
+  );
+
+  Future<void> _startOpname() async {
+    try {
+      if (await _recorder.hasPermission()) {
+        await _recorder.start(const RecordConfig(encoder: AudioEncoder.aacLc),
+            path: '');
+        setState(() {
+          _isOpnemen = true;
+          _opnameSeconden = 0;
+          _hebOpname = false;
+          _mediaBytes = null;
+        });
+        _opnameTimer?.cancel();
+        _opnameTimer = Timer.periodic(const Duration(seconds: 1),
+            (_) => setState(() => _opnameSeconden++));
+      } else {
+        _toonFout('Geen toegang tot microfoon. Sta toe in browser-instellingen.');
+      }
+    } catch (e) {
+      _toonFout('Opname starten mislukt: $e');
+    }
+  }
+
+  Future<void> _stopOpname() async {
+    try {
+      final pad = await _recorder.stop();
+      _opnameTimer?.cancel();
+      if (pad != null) {
+        // Op web: pad is een blob URL. Convert naar bytes.
+        try {
+          await _previewPlayer.setUrl(pad);
+        } catch (_) {}
+        _opnamePad = pad;
+        setState(() {
+          _isOpnemen = false;
+          _hebOpname = true;
+        });
+      }
+    } catch (e) {
+      _toonFout('Opname stoppen mislukt: $e');
+    }
+  }
+
+  Future<void> _speelPreview() async {
+    if (_opnamePad == null) return;
+    try {
+      await _previewPlayer.seek(Duration.zero);
+      await _previewPlayer.play();
+    } catch (e) {
+      _toonFout('Afspelen mislukt: $e');
+    }
+  }
+
+  Widget _bestandKiezen() => GestureDetector(
+    onTap: _kiesMedia,
+    child: Container(padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(color: kPeachPale,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: kPeachLight, width: 2)),
+      child: Center(child: Column(children: [
+        if (_mediaBytes != null && _type == 'foto') ClipRRect(
+          borderRadius: BorderRadius.circular(10),
+          child: Image.memory(_mediaBytes!, height: 120, fit: BoxFit.cover))
+        else Icon(_type == 'foto' ? Icons.add_photo_alternate_rounded
+            : Icons.audiotrack_rounded, size: 40, color: kPeach),
+        const SizedBox(height: 8),
+        Text(_mediaNaam.isNotEmpty ? '✓ $_mediaNaam'
+            : _type == 'foto' ? 'Tik om foto te kiezen'
+            : 'Tik om MP3 lied te kiezen',
+            textAlign: TextAlign.center,
+            style: const TextStyle(fontSize: 14,
+                fontWeight: FontWeight.w700, color: kBrown)),
+      ])),
+    ),
+  );
 
   Future<void> _kiesMedia() async {
     try {
@@ -279,25 +419,32 @@ class _StuurTabState extends State<StuurTab> {
 
   Future<void> _verstuur() async {
     if (_type == 'tekst' && _berichtCtrl.text.trim().isEmpty) {
-      _toonFout('Typ eerst een bericht');
-      return;
+      _toonFout('Typ eerst een bericht'); return;
     }
-    if (_type != 'tekst' && _mediaBytes == null) {
-      _toonFout('Kies eerst een bestand');
-      return;
+    if (_type == 'stem' && !_hebOpname) {
+      _toonFout('Neem eerst een stembericht op'); return;
+    }
+    if ((_type == 'foto' || _type == 'lied') && _mediaBytes == null) {
+      _toonFout('Kies eerst een bestand'); return;
     }
     setState(() => _bezig = true);
     try {
       final uid = FirebaseAuth.instance.currentUser!.uid;
       final familieDoc = await FirebaseFirestore.instance
           .collection('gebruikers').doc(uid).get();
-      final ontvangerUid = familieDoc.data()?['ontvangerUid'] ?? '';
+      final familieData = familieDoc.data() ?? {};
+      final ontvangerUid = familieData['ontvangerUid'] ?? '';
+      final familieNaam = familieData['naam'] ?? 'Familie';
       if (ontvangerUid.isEmpty) {
         _toonFout('Geen ontvanger gevonden. Maak setup opnieuw.');
         return;
       }
       String mediaUrl = '';
-      if (_mediaBytes != null) {
+      if (_type == 'stem' && _opnamePad != null) {
+        // Voor web: pad is een blob URL — sla URL direct op
+        // (in productie zou je naar Storage moeten uploaden, voor MVP volstaat dit)
+        mediaUrl = _opnamePad!;
+      } else if (_mediaBytes != null) {
         final ext = _type == 'foto' ? 'jpg' : 'mp3';
         final ref = FirebaseStorage.instance.ref()
             .child('momenten').child('${DateTime.now().millisecondsSinceEpoch}.$ext');
@@ -310,6 +457,7 @@ class _StuurTabState extends State<StuurTab> {
       await FirebaseFirestore.instance.collection('momenten').add({
         'naarUid': ontvangerUid,
         'vanUid': uid,
+        'vanNaam': familieNaam,
         'type': _type,
         'mediaUrl': mediaUrl,
         'bericht': _berichtCtrl.text.trim(),
@@ -329,6 +477,9 @@ class _StuurTabState extends State<StuurTab> {
           _berichtCtrl.clear();
           _mediaBytes = null;
           _mediaNaam = '';
+          _hebOpname = false;
+          _opnamePad = null;
+          _opnameSeconden = 0;
         });
       }
     } catch (e) {
@@ -347,6 +498,8 @@ class _StuurTabState extends State<StuurTab> {
         _type = _type == waarde ? '' : waarde;
         _mediaBytes = null;
         _mediaNaam = '';
+        _hebOpname = false;
+        _opnamePad = null;
       }),
       child: Container(padding: const EdgeInsets.symmetric(vertical: 20),
         decoration: BoxDecoration(
@@ -384,7 +537,7 @@ class _StuurTabState extends State<StuurTab> {
 }
 
 // ════════════════════════════════════════════════════════════
-// AGENDA TAB - dagelijkse + geplande momenten
+// AGENDA TAB
 // ════════════════════════════════════════════════════════════
 class AgendaTab extends StatelessWidget {
   const AgendaTab({super.key});
@@ -403,13 +556,11 @@ class AgendaTab extends StatelessWidget {
             style: TextStyle(fontSize: 13, color: kTextMuted)),
         const SizedBox(height: 16),
         Expanded(child: ListView(children: [
-          // Dagelijkse momenten
           const _SectieTitel('🔁 ELKE DAG'),
           StreamBuilder<QuerySnapshot>(
             stream: FirebaseFirestore.instance.collection('dagelijkse_momenten')
                 .where('vanUid', isEqualTo: uid)
-                .where('actief', isEqualTo: true)
-                .snapshots(),
+                .where('actief', isEqualTo: true).snapshots(),
             builder: (ctx, snap) {
               if (!snap.hasData) return const Padding(
                 padding: EdgeInsets.all(20),
@@ -428,17 +579,13 @@ class AgendaTab extends StatelessWidget {
             },
           ),
           const SizedBox(height: 20),
-          // Geplande eenmalige
           const _SectieTitel('📅 GEPLAND'),
           StreamBuilder<QuerySnapshot>(
             stream: FirebaseFirestore.instance.collection('momenten')
                 .where('vanUid', isEqualTo: uid)
-                .where('gezien', isEqualTo: false)
-                .snapshots(),
+                .where('gezien', isEqualTo: false).snapshots(),
             builder: (ctx, snap) {
-              if (!snap.hasData) return const Padding(
-                padding: EdgeInsets.all(20),
-                child: Center(child: CircularProgressIndicator(color: kPeach)));
+              if (!snap.hasData) return const SizedBox();
               final docs = snap.data!.docs.where((d) {
                 final geplandOp = (d.data() as Map)['geplandOp'];
                 if (geplandOp == null) return true;
@@ -457,13 +604,11 @@ class AgendaTab extends StatelessWidget {
             },
           ),
           const SizedBox(height: 20),
-          // Verstuurd / gezien
           const _SectieTitel('✓ VERSTUURD'),
           StreamBuilder<QuerySnapshot>(
             stream: FirebaseFirestore.instance.collection('momenten')
                 .where('vanUid', isEqualTo: uid)
-                .where('gezien', isEqualTo: true)
-                .snapshots(),
+                .where('gezien', isEqualTo: true).snapshots(),
             builder: (ctx, snap) {
               if (!snap.hasData) return const SizedBox();
               final docs = snap.data!.docs.toList();
@@ -496,7 +641,6 @@ class _SectieTitel extends StatelessWidget {
 class _DagelijksItem extends StatelessWidget {
   final QueryDocumentSnapshot doc;
   const _DagelijksItem({required this.doc});
-
   @override
   Widget build(BuildContext context) {
     final d = doc.data() as Map<String, dynamic>;
@@ -513,7 +657,7 @@ class _DagelijksItem extends StatelessWidget {
           Text(d['label'] ?? 'Moment',
               style: const TextStyle(fontSize: 14,
                   fontWeight: FontWeight.w800, color: kBrown)),
-          Text('Elke dag', style: const TextStyle(fontSize: 11,
+          const Text('Elke dag', style: TextStyle(fontSize: 11,
               color: kTextMuted)),
         ])),
         Container(padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
@@ -531,7 +675,6 @@ class _GeplandItem extends StatelessWidget {
   final QueryDocumentSnapshot doc;
   final bool isHistorie;
   const _GeplandItem({required this.doc, this.isHistorie = false});
-
   @override
   Widget build(BuildContext context) {
     final d = doc.data() as Map<String, dynamic>;
@@ -564,7 +707,6 @@ class _GeplandItem extends StatelessWidget {
       ]),
     );
   }
-
   String _emojiVoorType(String type) {
     switch (type) {
       case 'foto': return '📷';
@@ -609,16 +751,13 @@ class _NotitiesTabState extends State<NotitiesTab> {
         const Text('Deel observaties met andere familie en mantelzorgers',
             style: TextStyle(fontSize: 13, color: kTextMuted)),
         const SizedBox(height: 16),
-        TextField(
-          controller: _ctrl, maxLines: 3,
+        TextField(controller: _ctrl, maxLines: 3,
           decoration: InputDecoration(
             hintText: 'Bijv. "Vandaag genoot moeder erg van de muziek"',
             border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
-            filled: true, fillColor: kWhite),
-        ),
+            filled: true, fillColor: kWhite)),
         const SizedBox(height: 10),
-        GestureDetector(
-          onTap: () => _opslaan(uid),
+        GestureDetector(onTap: () => _opslaan(uid),
           child: Container(padding: const EdgeInsets.symmetric(vertical: 12),
             decoration: BoxDecoration(
               gradient: const LinearGradient(colors: [kPeach, kRose]),
@@ -680,11 +819,10 @@ class _NotitiesTabState extends State<NotitiesTab> {
 }
 
 // ════════════════════════════════════════════════════════════
-// INSTELLINGEN TAB - werkt nu echt
+// INSTELLINGEN TAB
 // ════════════════════════════════════════════════════════════
 class InstellingenTab extends StatelessWidget {
   const InstellingenTab({super.key});
-
   @override
   Widget build(BuildContext context) {
     return Padding(padding: const EdgeInsets.all(20),
@@ -701,8 +839,8 @@ class InstellingenTab extends StatelessWidget {
         }),
         const SizedBox(height: 20),
         _sectie('ACCOUNT'),
-        _item('👵', 'Ontvanger-info',
-            'Pas naam en profielfoto aan', () {
+        _item('👵', 'Ontvanger-profiel',
+            'Naam, foto, lievelingsdingen en meer', () {
           Navigator.push(context, MaterialPageRoute(
               builder: (c) => const OntvangerInfoScherm()));
         }),
@@ -727,7 +865,7 @@ class InstellingenTab extends StatelessWidget {
           await FirebaseAuth.instance.signOut();
         }),
         const SizedBox(height: 30),
-        const Center(child: Text('Ons Moment v5',
+        const Center(child: Text('Ons Moment v6',
             style: TextStyle(fontSize: 11, color: kTextMuted))),
       ]),
     );
@@ -736,8 +874,7 @@ class InstellingenTab extends StatelessWidget {
   Widget _sectie(String t) => Padding(
     padding: const EdgeInsets.symmetric(vertical: 6),
     child: Text(t, style: const TextStyle(fontSize: 11,
-        fontWeight: FontWeight.w800, color: kTextMuted, letterSpacing: 0.8)),
-  );
+        fontWeight: FontWeight.w800, color: kTextMuted, letterSpacing: 0.8)));
 
   Widget _item(String emoji, String titel, String tekst, VoidCallback onTap) =>
     GestureDetector(onTap: onTap, child: Container(
@@ -761,12 +898,9 @@ class InstellingenTab extends StatelessWidget {
     ));
 }
 
-// ════════════════════════════════════════════════════════════
-// MOMENTEN BEHEREN SCHERM
-// ════════════════════════════════════════════════════════════
+// MOMENTEN BEHEREN
 class MomentenBeherenScherm extends StatelessWidget {
   const MomentenBeherenScherm({super.key});
-
   @override
   Widget build(BuildContext context) {
     final uid = FirebaseAuth.instance.currentUser?.uid;
@@ -781,8 +915,7 @@ class MomentenBeherenScherm extends StatelessWidget {
         onPressed: () => _voegToe(context, uid),
         icon: const Icon(Icons.add_rounded, color: kWhite),
         label: const Text('Nieuw moment',
-            style: TextStyle(color: kWhite, fontWeight: FontWeight.w800)),
-      ),
+            style: TextStyle(color: kWhite, fontWeight: FontWeight.w800))),
       body: uid == null ? const SizedBox()
         : StreamBuilder<QuerySnapshot>(
         stream: FirebaseFirestore.instance.collection('dagelijkse_momenten')
@@ -831,11 +964,9 @@ class MomentenBeherenScherm extends StatelessWidget {
                     Text('${(d['uur'] ?? 0).toString().padLeft(2, '0')}:${(d['minuut'] ?? 0).toString().padLeft(2, '0')} elke dag',
                         style: const TextStyle(fontSize: 12, color: kTextMuted)),
                   ])),
-                  IconButton(
-                    icon: const Icon(Icons.delete_outline_rounded,
-                        color: Colors.red),
-                    onPressed: () => doc.reference.update({'actief': false}),
-                  ),
+                  IconButton(icon: const Icon(Icons.delete_outline_rounded,
+                      color: Colors.red),
+                    onPressed: () => doc.reference.update({'actief': false})),
                 ]),
               );
             }).toList());
@@ -853,12 +984,9 @@ class MomentenBeherenScherm extends StatelessWidget {
           .collection('gebruikers').doc(uid).get();
       final ontvangerUid = familieDoc.data()?['ontvangerUid'] ?? '';
       await FirebaseFirestore.instance.collection('dagelijkse_momenten').add({
-        'naarUid': ontvangerUid,
-        'vanUid': uid,
-        'emoji': result['emoji'],
-        'label': result['label'],
-        'uur': result['uur'],
-        'minuut': result['minuut'],
+        'naarUid': ontvangerUid, 'vanUid': uid,
+        'emoji': result['emoji'], 'label': result['label'],
+        'uur': result['uur'], 'minuut': result['minuut'],
         'mediaType': '', 'mediaUrl': '', 'tekstBericht': '',
         'actief': true,
         'aangemaaktOp': FieldValue.serverTimestamp(),
@@ -943,9 +1071,7 @@ class _NieuwMomentDialogState extends State<_NieuwMomentDialog> {
   }
 }
 
-// ════════════════════════════════════════════════════════════
 // ONTVANGER INFO SCHERM
-// ════════════════════════════════════════════════════════════
 class OntvangerInfoScherm extends StatefulWidget {
   const OntvangerInfoScherm({super.key});
   @override
@@ -954,16 +1080,18 @@ class OntvangerInfoScherm extends StatefulWidget {
 
 class _OntvangerInfoSchermState extends State<OntvangerInfoScherm> {
   final _naamCtrl = TextEditingController();
+  final _lievelingsdingenCtrl = TextEditingController();
+  final _woonplaatsCtrl = TextEditingController();
+  final _noodNaamCtrl = TextEditingController();
+  final _noodTelCtrl = TextEditingController();
   Uint8List? _fotoBytes;
   String _huidigeFotoUrl = '';
+  String _gekozenGeluid = 'twinkel';
   bool _bezig = false;
   String _ontvangerUid = '';
 
   @override
-  void initState() {
-    super.initState();
-    _laad();
-  }
+  void initState() { super.initState(); _laad(); }
 
   Future<void> _laad() async {
     final uid = FirebaseAuth.instance.currentUser?.uid;
@@ -973,68 +1101,129 @@ class _OntvangerInfoSchermState extends State<OntvangerInfoScherm> {
     final d = doc.data() ?? {};
     setState(() {
       _naamCtrl.text = d['ontvangerNaam'] ?? '';
+      _lievelingsdingenCtrl.text = d['ontvangerLievelingsdingen'] ?? '';
+      _woonplaatsCtrl.text = d['ontvangerWoonplaats'] ?? '';
+      _noodNaamCtrl.text = d['ontvangerNoodcontactNaam'] ?? '';
+      _noodTelCtrl.text = d['ontvangerNoodcontactTel'] ?? '';
       _huidigeFotoUrl = d['ontvangerProfielFoto'] ?? '';
+      _gekozenGeluid = d['herkenningsgeluid'] ?? 'twinkel';
       _ontvangerUid = d['ontvangerUid'] ?? '';
     });
   }
 
   @override
   Widget build(BuildContext context) {
+    const geluiden = [
+      {'id': 'twinkel', 'emoji': '✨', 'naam': 'Twinkel'},
+      {'id': 'bel', 'emoji': '🔔', 'naam': 'Zachte bel'},
+      {'id': 'vogel', 'emoji': '🐦', 'naam': 'Vogel-tjilp'},
+      {'id': 'piano', 'emoji': '🎹', 'naam': 'Piano-toon'},
+      {'id': 'kerkklok', 'emoji': '⛪', 'naam': 'Kerkklokje'},
+      {'id': 'hart', 'emoji': '💕', 'naam': 'Liefdes-melodie'},
+    ];
+
     return Scaffold(
       backgroundColor: kCream,
       appBar: AppBar(backgroundColor: Colors.transparent, elevation: 0,
         iconTheme: const IconThemeData(color: kBrown),
-        title: const Text('Ontvanger-info',
+        title: const Text('Ontvanger-profiel',
             style: TextStyle(color: kBrown, fontWeight: FontWeight.w900))),
-      body: Padding(padding: const EdgeInsets.all(20),
-        child: Column(children: [
-          GestureDetector(
-            onTap: _kiesFoto,
-            child: Container(width: 120, height: 120,
-              decoration: BoxDecoration(
-                color: kPeachPale, shape: BoxShape.circle,
-                border: Border.all(color: kPeach, width: 3),
-                image: _fotoBytes != null ? DecorationImage(
-                  image: MemoryImage(_fotoBytes!), fit: BoxFit.cover)
-                  : _huidigeFotoUrl.isNotEmpty ? DecorationImage(
-                    image: NetworkImage(_huidigeFotoUrl), fit: BoxFit.cover)
-                  : null),
-              child: (_fotoBytes == null && _huidigeFotoUrl.isEmpty)
-                ? const Center(child: Icon(Icons.add_a_photo_rounded,
-                    color: kPeach, size: 36)) : null,
-            ),
+      body: ListView(padding: const EdgeInsets.all(20), children: [
+        // FOTO
+        Center(child: GestureDetector(
+          onTap: _kiesFoto,
+          child: Container(width: 120, height: 120,
+            decoration: BoxDecoration(
+              color: kPeachPale, shape: BoxShape.circle,
+              border: Border.all(color: kPeach, width: 3),
+              image: _fotoBytes != null ? DecorationImage(
+                image: MemoryImage(_fotoBytes!), fit: BoxFit.cover)
+                : _huidigeFotoUrl.isNotEmpty ? DecorationImage(
+                  image: NetworkImage(_huidigeFotoUrl), fit: BoxFit.cover)
+                : null),
+            child: (_fotoBytes == null && _huidigeFotoUrl.isEmpty)
+              ? const Center(child: Icon(Icons.add_a_photo_rounded,
+                  color: kPeach, size: 36)) : null,
           ),
-          const SizedBox(height: 8),
-          const Text('Tik om profielfoto te wijzigen',
-              style: TextStyle(fontSize: 11, color: kTextMuted)),
-          const SizedBox(height: 24),
-          Container(decoration: BoxDecoration(color: kWhite,
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: kPeachLight, width: 2)),
-            child: Padding(padding: const EdgeInsets.symmetric(horizontal: 14),
-              child: TextField(controller: _naamCtrl,
-                decoration: const InputDecoration(
-                  labelText: 'Naam ontvanger', border: InputBorder.none)))),
-          const SizedBox(height: 30),
-          GestureDetector(onTap: _bezig ? null : _opslaan,
-            child: Container(width: double.infinity,
-              padding: const EdgeInsets.all(16),
+        )),
+        const SizedBox(height: 8),
+        const Center(child: Text('Tik om profielfoto te wijzigen',
+            style: TextStyle(fontSize: 11, color: kTextMuted))),
+        const SizedBox(height: 24),
+
+        // VELDEN
+        _veld('👤', 'Naam', _naamCtrl),
+        const SizedBox(height: 10),
+        _veld('💕', 'Lievelingsdingen', _lievelingsdingenCtrl),
+        const SizedBox(height: 10),
+        _veld('🏠', 'Vroegere woonplaats', _woonplaatsCtrl),
+        const SizedBox(height: 10),
+        _veld('🆘', 'Noodcontact naam', _noodNaamCtrl),
+        const SizedBox(height: 10),
+        _veld('☎️', 'Noodcontact telefoon', _noodTelCtrl),
+        const SizedBox(height: 24),
+
+        // GELUID
+        const Text('HERKENNINGSGELUID',
+            style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800,
+                color: kTextMuted, letterSpacing: 0.8)),
+        const SizedBox(height: 8),
+        Wrap(spacing: 8, runSpacing: 8, children: geluiden.map((g) =>
+          GestureDetector(
+            onTap: () => setState(() => _gekozenGeluid = g['id']!),
+            child: Container(padding: const EdgeInsets.symmetric(
+                horizontal: 14, vertical: 10),
               decoration: BoxDecoration(
-                gradient: const LinearGradient(colors: [kPeach, kRose]),
-                borderRadius: BorderRadius.circular(16)),
-              child: Center(child: _bezig
-                ? const CircularProgressIndicator(color: kWhite)
-                : const Text('Opslaan',
-                    style: TextStyle(fontSize: 16, color: kWhite,
-                        fontWeight: FontWeight.w800))))),
-        ])),
+                color: _gekozenGeluid == g['id'] ? kPeach : kWhite,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: _gekozenGeluid == g['id']
+                    ? kPeach : kPeachLight, width: 2)),
+              child: Row(mainAxisSize: MainAxisSize.min, children: [
+                Text(g['emoji']!, style: const TextStyle(fontSize: 16)),
+                const SizedBox(width: 6),
+                Text(g['naam']!, style: TextStyle(fontSize: 12,
+                    fontWeight: FontWeight.w800,
+                    color: _gekozenGeluid == g['id'] ? kWhite : kBrown)),
+              ]),
+            ),
+          )).toList()),
+        const SizedBox(height: 30),
+
+        // OPSLAAN
+        GestureDetector(onTap: _bezig ? null : _opslaan,
+          child: Container(width: double.infinity,
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              gradient: const LinearGradient(colors: [kPeach, kRose]),
+              borderRadius: BorderRadius.circular(16)),
+            child: Center(child: _bezig
+              ? const CircularProgressIndicator(color: kWhite)
+              : const Text('Opslaan',
+                  style: TextStyle(fontSize: 16, color: kWhite,
+                      fontWeight: FontWeight.w800))))),
+      ]),
     );
   }
+
+  Widget _veld(String emoji, String label, TextEditingController ctrl) =>
+    Container(decoration: BoxDecoration(color: kWhite,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: kPeachLight, width: 2)),
+      child: Row(children: [
+        Padding(padding: const EdgeInsets.only(left: 16),
+            child: Text(emoji, style: const TextStyle(fontSize: 20))),
+        Expanded(child: Padding(padding: const EdgeInsets.symmetric(horizontal: 12),
+          child: TextField(controller: ctrl,
+            decoration: InputDecoration(labelText: label,
+              labelStyle: const TextStyle(color: kTextMuted, fontSize: 12),
+              border: InputBorder.none)))),
+      ]),
+    );
 
   Future<void> _kiesFoto() async {
     final picker = ImagePicker();
     final foto = await picker.pickImage(source: ImageSource.gallery,
-        maxWidth: 800, imageQuality: 85);
+        maxWidth: 1200, imageQuality: 85);
     if (foto != null) {
       final bytes = await foto.readAsBytes();
       setState(() => _fotoBytes = bytes);
@@ -1049,19 +1238,29 @@ class _OntvangerInfoSchermState extends State<OntvangerInfoScherm> {
       String fotoUrl = _huidigeFotoUrl;
       if (_fotoBytes != null) {
         final ref = FirebaseStorage.instance.ref()
-            .child('profielfotos').child('${_ontvangerUid}.jpg');
+            .child('profielfotos').child('$_ontvangerUid.jpg');
         await ref.putData(_fotoBytes!, SettableMetadata(contentType: 'image/jpeg'));
         fotoUrl = await ref.getDownloadURL();
       }
       await FirebaseFirestore.instance.collection('gebruikers').doc(uid).update({
         'ontvangerNaam': _naamCtrl.text.trim(),
         'ontvangerProfielFoto': fotoUrl,
+        'ontvangerLievelingsdingen': _lievelingsdingenCtrl.text.trim(),
+        'ontvangerWoonplaats': _woonplaatsCtrl.text.trim(),
+        'ontvangerNoodcontactNaam': _noodNaamCtrl.text.trim(),
+        'ontvangerNoodcontactTel': _noodTelCtrl.text.trim(),
+        'herkenningsgeluid': _gekozenGeluid,
       });
       if (_ontvangerUid.isNotEmpty) {
         await FirebaseFirestore.instance.collection('gebruikers')
             .doc(_ontvangerUid).update({
           'naam': _naamCtrl.text.trim(),
           'profielFoto': fotoUrl,
+          'lievelingsdingen': _lievelingsdingenCtrl.text.trim(),
+          'woonplaats': _woonplaatsCtrl.text.trim(),
+          'noodcontactNaam': _noodNaamCtrl.text.trim(),
+          'noodcontactTel': _noodTelCtrl.text.trim(),
+          'herkenningsgeluid': _gekozenGeluid,
         });
       }
       if (mounted) {
@@ -1078,31 +1277,34 @@ class _OntvangerInfoSchermState extends State<OntvangerInfoScherm> {
   }
 }
 
-// ════════════════════════════════════════════════════════════
 // HULP DIALOG
-// ════════════════════════════════════════════════════════════
 class _HulpDialog extends StatelessWidget {
   final List<_FAQ> _faqs = [
-    _FAQ('Hoe stuur ik een moment direct?',
-        'Ga naar Sturen, klik op "Test-modus" knop bovenaan om hem AAN te '
-        'zetten. Kies type, kies bestand, klik "Stuur NU". Het verschijnt '
-        'direct bij de ontvanger.'),
-    _FAQ('Hoe stuur ik een gepland moment?',
-        'Zet Test-modus UIT. Kies type, bestand, datum en tijd. Klik '
-        '"Plan en stuur". Het verschijnt automatisch op die datum/tijd.'),
+    _FAQ('Hoe stuur ik direct iets naar de ontvanger?',
+        'Ga naar Sturen, zet de "Test-modus" knop AAN (wordt blauw). Kies type, '
+        'media, klik "Stuur NU". Het verschijnt direct in het ontvanger-scherm.'),
+    _FAQ('Hoe neem ik een stem-bericht op?',
+        'Kies "🎙️ Stem" in Sturen tab. Tik op de microfoon-knop om te starten. '
+        'Spreek je bericht in. Tik nogmaals om te stoppen. Luister naar de '
+        'preview, en klik "Plan en stuur" of "Stuur NU".'),
+    _FAQ('Hoe plan ik een toekomstig moment?',
+        'Zet Test-modus UIT. Kies type, media, datum en tijd. Klik "Plan en stuur". '
+        'Het bericht verschijnt automatisch op dat tijdstip bij de ontvanger.'),
     _FAQ('Wat zijn dagelijkse momenten?',
-        'Vaste tijdstippen waarop er automatisch iets verschijnt — bv. elke '
+        'Vaste tijden waarop er automatisch een melding verschijnt — bijv. elke '
         'ochtend om 08:30 "Goedemorgen". Beheer ze in Instellingen → '
         'Momenten beheren.'),
-    _FAQ('Hoe verander ik de profielfoto van de ontvanger?',
-        'Instellingen → Ontvanger-info. Tik op de cirkel om een nieuwe '
-        'foto te kiezen. Klik Opslaan.'),
-    _FAQ('Werkt het op telefoon en tablet?',
-        'Ja, beide. De ontvanger kan een telefoon, tablet of oude smartphone '
-        'gebruiken. Apparaat moet aan blijven en aangesloten op stroom.'),
+    _FAQ('Hoe wijzig ik de profielfoto?',
+        'Instellingen → Ontvanger-profiel → tik op de cirkel met foto. '
+        'Kies nieuwe foto. Klik Opslaan.'),
+    _FAQ('Wat is het herkenningsgeluid?',
+        'Een vriendelijk geluidje dat klinkt elke keer als er iets nieuws aankomt. '
+        'Helpt de ontvanger te herkennen dat er iets liefs is. Kies een geluid in '
+        'Instellingen → Ontvanger-profiel.'),
     _FAQ('Hoe gebruikt de ontvanger de app?',
-        'Open de app op zijn/haar apparaat, log in met de speciale ontvanger-'
-        'gegevens. De app blijft altijd open en speelt momenten automatisch af.'),
+        'Open de app op het apparaat van de ontvanger, log in met de speciale '
+        'ontvanger-gegevens. De app blijft altijd open en toont automatisch nieuwe '
+        'berichten. De ontvanger hoeft niks te doen — alleen kijken en luisteren.'),
     _FAQ('Wat kost Ons Moment?',
         'Eerste 5 dagen gratis. Daarna €7,99 per maand voor het hele gezin '
         '(tot 8 personen).'),
