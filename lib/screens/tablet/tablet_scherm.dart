@@ -15,16 +15,6 @@ const Color kBrownLight = Color(0xFF8B6354);
 const Color kTextMuted  = Color(0xFF9B7565);
 const Color kWhite      = Color(0xFFFFFFFF);
 
-// Herkenningsgeluid URLs (publieke web audio - kun je later vervangen door eigen)
-const Map<String, String> kGeluidUrls = {
-  'twinkel': 'https://www.soundjay.com/buttons/sounds/button-09a.mp3',
-  'bel': 'https://www.soundjay.com/buttons/sounds/button-3.mp3',
-  'vogel': 'https://www.soundjay.com/buttons/sounds/button-09.mp3',
-  'piano': 'https://www.soundjay.com/buttons/sounds/button-10.mp3',
-  'kerkklok': 'https://www.soundjay.com/buttons/sounds/button-19.mp3',
-  'hart': 'https://www.soundjay.com/buttons/sounds/button-2.mp3',
-};
-
 class TabletScherm extends StatefulWidget {
   const TabletScherm({super.key});
   @override
@@ -39,11 +29,6 @@ class _TabletSchermState extends State<TabletScherm> {
   Timer? _autoSluitTimer;
   DateTime _nu = DateTime.now();
 
-  String _ontvangerNaam = '';
-  String _profielFotoUrl = '';
-  String _herkenningsgeluid = 'twinkel';
-  String _familieUid = '';
-
   Map<String, dynamic>? _huidigPopup;
   String? _huidigPopupId;
 
@@ -51,7 +36,6 @@ class _TabletSchermState extends State<TabletScherm> {
   void initState() {
     super.initState();
     WakelockPlus.enable();
-    _laadInfo();
     _klokTimer = Timer.periodic(const Duration(seconds: 1),
         (_) => setState(() => _nu = DateTime.now()));
     _checkTimer = Timer.periodic(const Duration(seconds: 5),
@@ -59,7 +43,6 @@ class _TabletSchermState extends State<TabletScherm> {
     Future.delayed(const Duration(milliseconds: 500), _checkMomenten);
 
     _audioPlayer.playerStateStream.listen((state) {
-      // Sluit popup automatisch wanneer audio klaar is
       if (state.processingState == ProcessingState.completed
           && (_huidigPopup?['type'] == 'stem' || _huidigPopup?['type'] == 'lied')) {
         _sluitPopup();
@@ -78,25 +61,11 @@ class _TabletSchermState extends State<TabletScherm> {
     super.dispose();
   }
 
-  Future<void> _laadInfo() async {
-    final uid = FirebaseAuth.instance.currentUser?.uid;
-    if (uid == null) return;
-    final doc = await FirebaseFirestore.instance
-        .collection('gebruikers').doc(uid).get();
-    final d = doc.data() ?? {};
-    setState(() {
-      _ontvangerNaam = d['naam'] ?? '';
-      _profielFotoUrl = d['profielFoto'] ?? '';
-      _herkenningsgeluid = d['herkenningsgeluid'] ?? 'twinkel';
-      _familieUid = d['familieUid'] ?? '';
-    });
-  }
-
   Future<void> _checkMomenten() async {
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null || _huidigPopup != null) return;
     final nu = DateTime.now();
-    final voor5min = nu.subtract(const Duration(minutes: 5));
+    final voor30min = nu.subtract(const Duration(minutes: 30));
     try {
       final snap = await FirebaseFirestore.instance.collection('momenten')
           .where('naarUid', isEqualTo: uid)
@@ -105,32 +74,32 @@ class _TabletSchermState extends State<TabletScherm> {
         final d = doc.data();
         final geplandOp = (d['geplandOp'] as Timestamp?)?.toDate();
         if (geplandOp == null) continue;
-        if (geplandOp.isBefore(nu) && geplandOp.isAfter(voor5min)) {
+        if (geplandOp.isBefore(nu) && geplandOp.isAfter(voor30min)) {
           _toonPopup(doc.id, d);
           return;
         }
       }
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('Check fout: $e');
+    }
   }
 
-  Future<void> _toonPopup(String id, Map<String, dynamic> d) async {
+  Future<void> _toonPopup(String id, Map<String, dynamic> d, {String? geluidUrl}) async {
     if (_huidigPopupId == id) return;
-    // Speel herkenningsgeluid eerst
-    try {
-      final geluidUrl = kGeluidUrls[_herkenningsgeluid];
-      if (geluidUrl != null) {
+    // Speel herkenningsgeluid eerst (indien geconfigureerd)
+    if (geluidUrl != null && geluidUrl.isNotEmpty) {
+      try {
         await _geluidPlayer.setUrl(geluidUrl);
         await _geluidPlayer.play();
-      }
-    } catch (_) {}
-    await Future.delayed(const Duration(milliseconds: 800));
+        await Future.delayed(const Duration(milliseconds: 1500));
+      } catch (_) {}
+    }
 
     setState(() {
       _huidigPopup = d;
       _huidigPopupId = id;
     });
 
-    // Speel audio voor stem/lied
     if (d['type'] == 'stem' || d['type'] == 'lied') {
       final url = d['mediaUrl'] ?? '';
       if (url.isNotEmpty) {
@@ -140,7 +109,6 @@ class _TabletSchermState extends State<TabletScherm> {
         } catch (_) {}
       }
     } else {
-      // Voor foto/tekst: auto-sluit na 30 sec
       _autoSluitTimer?.cancel();
       _autoSluitTimer = Timer(const Duration(seconds: 30), _sluitPopup);
     }
@@ -165,53 +133,99 @@ class _TabletSchermState extends State<TabletScherm> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: kCream,
-      body: Stack(children: [
-        _homeScherm(),
-        if (_huidigPopup != null) GestureDetector(
-          onTap: _sluitPopup,
-          child: _popupOverlay()),
-      ]),
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return const Scaffold(backgroundColor: kCream);
+
+    // Gebruik StreamBuilder zodat profielfoto LIVE update als familie hem wijzigt
+    return StreamBuilder<DocumentSnapshot>(
+      stream: FirebaseFirestore.instance.collection('gebruikers')
+          .doc(uid).snapshots(),
+      builder: (ctx, userSnap) {
+        final userData = userSnap.data?.data() as Map<String, dynamic>? ?? {};
+        final profielFotoUrl = userData['profielFoto'] ?? '';
+        final ontvangerNaam = userData['naam'] ?? '';
+
+        return Scaffold(
+          body: Stack(children: [
+            // ════ ACHTERGROND: PROFIELFOTO VULT HELE SCHERM ════
+            Positioned.fill(child: profielFotoUrl.isNotEmpty
+              ? Image.network(profielFotoUrl, fit: BoxFit.cover,
+                  errorBuilder: (c, e, s) => Container(color: kCream))
+              : Container(decoration: const BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter, end: Alignment.bottomCenter,
+                    colors: [kPeachPale, kCream]))),
+            ),
+            // ════ DONKERE OVERLAY voor leesbare tekst ════
+            Positioned.fill(child: Container(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [
+                    Colors.black.withOpacity(0.55),
+                    Colors.black.withOpacity(0.25),
+                    Colors.black.withOpacity(0.55),
+                  ],
+                  stops: const [0.0, 0.5, 1.0],
+                ),
+              ),
+            )),
+            // ════ INHOUD GECENTREERD ════
+            SafeArea(child: _homeInhoud(ontvangerNaam)),
+            // ════ POPUP OVERLAY ════
+            if (_huidigPopup != null) GestureDetector(
+              onTap: _sluitPopup, child: _popupOverlay()),
+          ]),
+        );
+      },
     );
   }
 
-  Widget _homeScherm() {
-    return SafeArea(child: Padding(
-      padding: const EdgeInsets.all(24),
-      child: Column(children: [
-        const SizedBox(height: 12),
-        // KLOK + DATUM bovenaan, gecentreerd
-        Text(_formatTijd(_nu),
-            style: const TextStyle(fontSize: 64,
-                fontWeight: FontWeight.w900, color: kBrown, height: 1)),
-        Text(_formatDatum(_nu),
-            style: const TextStyle(fontSize: 16,
-                fontWeight: FontWeight.w700, color: kBrownLight)),
-        const SizedBox(height: 32),
-        // PROFIELFOTO groot in midden
-        Container(width: 220, height: 220,
-          decoration: BoxDecoration(
-            color: kPeachPale, shape: BoxShape.circle,
-            border: Border.all(color: kPeach, width: 4),
-            image: _profielFotoUrl.isNotEmpty ? DecorationImage(
-              image: NetworkImage(_profielFotoUrl), fit: BoxFit.cover) : null,
-            boxShadow: [BoxShadow(color: kPeach.withOpacity(0.25),
-                blurRadius: 40, spreadRadius: 4)]),
-          child: _profielFotoUrl.isEmpty
-            ? const Center(child: Text('💕', style: TextStyle(fontSize: 90))) : null,
-        ),
-        const SizedBox(height: 20),
-        if (_ontvangerNaam.isNotEmpty) Text('Hallo $_ontvangerNaam',
-            style: const TextStyle(fontSize: 32,
-                fontWeight: FontWeight.w900, color: kBrown)),
-        const SizedBox(height: 24),
-        // VOLGENDE MOMENT KAART
-        _volgendeMomentKaart(),
-        const Spacer(),
-        // EERDER VANDAAG
-        _eerderVandaag(),
-      ]),
+  Widget _homeInhoud(String ontvangerNaam) {
+    return Center(child: ConstrainedBox(
+      constraints: const BoxConstraints(maxWidth: 600),
+      child: Padding(padding: const EdgeInsets.symmetric(horizontal: 24),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            // ━━ KLOK ━━
+            Text(_formatTijd(_nu),
+                textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 110,
+                    fontWeight: FontWeight.w900, color: kWhite, height: 1,
+                    shadows: [Shadow(color: Colors.black.withOpacity(0.5),
+                        blurRadius: 16, offset: const Offset(0, 4))])),
+            const SizedBox(height: 4),
+            Text(_formatDatum(_nu),
+                textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 20,
+                    fontWeight: FontWeight.w700, color: kWhite,
+                    shadows: [Shadow(color: Colors.black.withOpacity(0.5),
+                        blurRadius: 12, offset: const Offset(0, 2))])),
+            const SizedBox(height: 32),
+            // ━━ BEGROETING ━━
+            if (ontvangerNaam.isNotEmpty) Container(
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+              decoration: BoxDecoration(
+                color: kWhite.withOpacity(0.25),
+                borderRadius: BorderRadius.circular(50),
+                border: Border.all(color: kWhite.withOpacity(0.5), width: 1.5)),
+              child: Text('Hallo $ontvangerNaam 💕',
+                  style: const TextStyle(fontSize: 24,
+                      fontWeight: FontWeight.w800, color: kWhite,
+                      shadows: [Shadow(color: Colors.black54,
+                          blurRadius: 6, offset: Offset(0, 2))])),
+            ),
+            const SizedBox(height: 24),
+            // ━━ VOLGENDE MOMENT KAART ━━
+            _volgendeMomentKaart(),
+            const SizedBox(height: 12),
+            // ━━ EERDER VANDAAG ━━
+            _eerderVandaag(),
+          ]),
+      ),
     ));
   }
 
@@ -227,7 +241,6 @@ class _TabletSchermState extends State<TabletScherm> {
         final docs = snap.data!.docs.toList();
         final nu = DateTime.now();
         final huidigMin = nu.hour * 60 + nu.minute;
-        // Zoek eerstvolgende moment
         Map<String, dynamic>? volgende;
         int volgendeMin = 24 * 60;
         for (final doc in docs) {
@@ -238,7 +251,6 @@ class _TabletSchermState extends State<TabletScherm> {
             volgendeMin = min;
           }
         }
-        // Als geen vandaag: pak eerste morgen
         if (volgende == null) {
           int vroegsteMin = 24 * 60;
           for (final doc in docs) {
@@ -252,19 +264,18 @@ class _TabletSchermState extends State<TabletScherm> {
         }
         if (volgende == null) return const SizedBox();
         return Container(
-          margin: const EdgeInsets.symmetric(horizontal: 8),
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
-            color: kWhite, borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: kPeachLight, width: 2),
-            boxShadow: [BoxShadow(color: kPeach.withOpacity(0.1),
-                blurRadius: 12, offset: const Offset(0, 4))]),
-          child: Row(children: [
+            color: kWhite.withOpacity(0.92),
+            borderRadius: BorderRadius.circular(20),
+            boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.2),
+                blurRadius: 20, offset: const Offset(0, 6))]),
+          child: Row(mainAxisSize: MainAxisSize.min, children: [
             Text(volgende['emoji'] ?? '⭐',
-                style: const TextStyle(fontSize: 36)),
-            const SizedBox(width: 16),
-            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
+                style: const TextStyle(fontSize: 40)),
+            const SizedBox(width: 14),
+            Column(crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min, children: [
               const Text('Volgende moment',
                   style: TextStyle(fontSize: 11, color: kTextMuted,
                       fontWeight: FontWeight.w800, letterSpacing: 0.8)),
@@ -272,7 +283,8 @@ class _TabletSchermState extends State<TabletScherm> {
               Text(volgende['label'] ?? 'Moment',
                   style: const TextStyle(fontSize: 18,
                       fontWeight: FontWeight.w800, color: kBrown)),
-            ])),
+            ]),
+            const SizedBox(width: 14),
             Container(padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
               decoration: BoxDecoration(color: kPeachPale,
                   borderRadius: BorderRadius.circular(12)),
@@ -301,37 +313,40 @@ class _TabletSchermState extends State<TabletScherm> {
           return t != null && t.isAfter(beginVandaag);
         }).toList();
         if (docs.isEmpty) return const SizedBox();
-        return Padding(padding: const EdgeInsets.only(top: 12),
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            const Padding(padding: EdgeInsets.symmetric(horizontal: 8),
-              child: Text('EERDER VANDAAG',
-                style: TextStyle(fontSize: 10, color: kTextMuted,
-                    fontWeight: FontWeight.w800, letterSpacing: 0.8))),
-            const SizedBox(height: 8),
-            SizedBox(height: 72,
-              child: ListView.builder(
-                scrollDirection: Axis.horizontal,
-                padding: const EdgeInsets.symmetric(horizontal: 4),
-                itemCount: docs.length,
-                itemBuilder: (c, i) {
-                  final d = docs[i].data() as Map<String, dynamic>;
-                  return GestureDetector(
-                    onTap: () => _toonPopup(docs[i].id, {...d, 'gezien': false}),
-                    child: Container(
-                      margin: const EdgeInsets.symmetric(horizontal: 4),
-                      width: 64,
-                      decoration: BoxDecoration(color: kWhite,
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: kPeachLight, width: 1.5)),
-                      child: Center(child: Text(_emojiVoorType(d['type'] ?? ''),
-                          style: const TextStyle(fontSize: 28))),
-                    ),
-                  );
-                },
-              ),
-            ),
-          ]),
-        );
+        return Column(mainAxisSize: MainAxisSize.min, children: [
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+            decoration: BoxDecoration(
+              color: kWhite.withOpacity(0.2),
+              borderRadius: BorderRadius.circular(20)),
+            child: const Text('Eerder vandaag',
+              style: TextStyle(fontSize: 11, color: kWhite,
+                  fontWeight: FontWeight.w800, letterSpacing: 0.8)),
+          ),
+          const SizedBox(height: 10),
+          SizedBox(height: 64, child: ListView.builder(
+            scrollDirection: Axis.horizontal,
+            shrinkWrap: true,
+            itemCount: docs.length,
+            itemBuilder: (c, i) {
+              final d = docs[i].data() as Map<String, dynamic>;
+              return GestureDetector(
+                onTap: () => _toonPopup(docs[i].id, {...d, 'gezien': false}),
+                child: Container(
+                  margin: const EdgeInsets.symmetric(horizontal: 4),
+                  width: 56, height: 56,
+                  decoration: BoxDecoration(
+                    color: kWhite.withOpacity(0.85),
+                    borderRadius: BorderRadius.circular(14),
+                    boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.15),
+                        blurRadius: 8)]),
+                  child: Center(child: Text(_emojiVoorType(d['type'] ?? ''),
+                      style: const TextStyle(fontSize: 24))),
+                ),
+              );
+            },
+          )),
+        ]);
       },
     );
   }
@@ -341,12 +356,12 @@ class _TabletSchermState extends State<TabletScherm> {
     final type = d['type'] ?? '';
     final vanNaam = d['vanNaam'] ?? 'Familie';
     final geplandOp = (d['geplandOp'] as Timestamp?)?.toDate();
-    return Container(color: kBrown.withOpacity(0.92),
+    return Container(color: kBrown.withOpacity(0.94),
       child: SafeArea(child: Padding(
         padding: const EdgeInsets.all(20),
-        child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-          Container(
-            constraints: const BoxConstraints(maxWidth: 600),
+        child: Center(child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 600),
+          child: Container(
             decoration: BoxDecoration(color: kCream,
                 borderRadius: BorderRadius.circular(28),
                 boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.3),
@@ -356,6 +371,7 @@ class _TabletSchermState extends State<TabletScherm> {
                 Text(_emojiVoorType(type), style: const TextStyle(fontSize: 48)),
                 const SizedBox(height: 8),
                 Text('$vanNaam stuurt je iets liefs 💕',
+                    textAlign: TextAlign.center,
                     style: const TextStyle(fontSize: 18,
                         fontWeight: FontWeight.w800, color: kBrown)),
                 const SizedBox(height: 20),
@@ -366,13 +382,13 @@ class _TabletSchermState extends State<TabletScherm> {
                       style: const TextStyle(fontSize: 12,
                           color: kTextMuted, fontStyle: FontStyle.italic)),
                 ],
-                const SizedBox(height: 20),
+                const SizedBox(height: 16),
                 Text(type == 'stem' || type == 'lied'
                     ? 'Sluit automatisch wanneer klaar' : 'Tik om te sluiten',
                     style: const TextStyle(fontSize: 11, color: kTextMuted)),
               ])),
           ),
-        ]),
+        )),
       )),
     );
   }
@@ -383,12 +399,15 @@ class _TabletSchermState extends State<TabletScherm> {
     final url = d['mediaUrl'] ?? '';
     switch (type) {
       case 'foto':
-        return Column(children: [
+        return Column(mainAxisSize: MainAxisSize.min, children: [
           if (url.isNotEmpty) ClipRRect(
             borderRadius: BorderRadius.circular(16),
-            child: Image.network(url, height: 280, fit: BoxFit.cover,
-              errorBuilder: (c, e, s) => const Icon(Icons.broken_image,
-                  size: 80, color: kPeach))),
+            child: Image.network(url,
+              height: 280, fit: BoxFit.cover,
+              errorBuilder: (c, e, s) => Container(
+                height: 280, color: kPeachPale,
+                child: const Center(child: Icon(Icons.broken_image,
+                    size: 80, color: kPeach))))),
           if (bericht.isNotEmpty) ...[
             const SizedBox(height: 16),
             Text(bericht, textAlign: TextAlign.center,
@@ -397,9 +416,9 @@ class _TabletSchermState extends State<TabletScherm> {
         ]);
       case 'stem':
       case 'lied':
-        return Column(children: [
+        return Column(mainAxisSize: MainAxisSize.min, children: [
           Container(padding: const EdgeInsets.all(20),
-            decoration: BoxDecoration(color: kPeachPale,
+            decoration: const BoxDecoration(color: kPeachPale,
                 shape: BoxShape.circle),
             child: const Icon(Icons.volume_up_rounded, color: kPeach, size: 72)),
           const SizedBox(height: 12),
