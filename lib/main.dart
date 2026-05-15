@@ -6,44 +6,23 @@ import 'screens/familie/familie_scherm.dart';
 import 'screens/tablet/tablet_scherm.dart';
 import 'services/device_modus_service.dart';
 
-const Color kPeach      = Color(0xFFFF9B71);
-const Color kPeachPale  = Color(0xFFFFF0EA);
-const Color kCream      = Color(0xFFFFFAF7);
-const Color kBrown      = Color(0xFF5C3D2E);
+const Color kPeach     = Color(0xFFFF9B71);
+const Color kPeachPale = Color(0xFFFFF0EA);
+const Color kCream     = Color(0xFFFFFAF7);
+const Color kBrown     = Color(0xFF5C3D2E);
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  // Firebase wordt geïnitialiseerd via index.html web config of
-  // bestaande firebase_options.dart in de GitHub repo.
   await Firebase.initializeApp();
   runApp(const OnsMomentApp());
 }
 
-class OnsMomentApp extends StatefulWidget {
+class OnsMomentApp extends StatelessWidget {
   const OnsMomentApp({super.key});
-
-  /// Globale herstart: forceert volledige rebuild van de MaterialApp.
-  /// Gebruikt na modus-wissel zodat de router opnieuw evalueert.
-  static void herstart(BuildContext context) {
-    final state = context.findAncestorStateOfType<_OnsMomentAppState>();
-    state?._herstart();
-  }
-
-  @override
-  State<OnsMomentApp> createState() => _OnsMomentAppState();
-}
-
-class _OnsMomentAppState extends State<OnsMomentApp> {
-  Key _key = UniqueKey();
-
-  void _herstart() {
-    setState(() => _key = UniqueKey());
-  }
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      key: _key,
       title: 'Ons Moment',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
@@ -61,11 +40,6 @@ class _OnsMomentAppState extends State<OnsMomentApp> {
 /// - Ingelogd + modus onbekend      -> SetupWizard
 /// - Ingelogd + modus = familie     -> FamilieScherm
 /// - Ingelogd + modus = ontvanger   -> TabletScherm
-///
-/// Modus wordt per apparaat opgeslagen via DeviceModusService (SharedPreferences).
-/// Dezelfde Firebase Auth account kan op verschillende apparaten dus
-/// verschillende rollen hebben - precies wat we willen: 1 gezinsaccount,
-/// per apparaat een eigen rol.
 class RouterScherm extends StatefulWidget {
   const RouterScherm({super.key});
   @override
