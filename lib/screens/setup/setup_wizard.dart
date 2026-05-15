@@ -18,7 +18,7 @@ const Color kTextMuted  = Color(0xFF9B7565);
 const Color kWhite      = Color(0xFFFFFFFF);
 const Color kGreen      = Color(0xFF4CAF82);
 
-const List<Map<String, String>> kGeluiden = [
+final List<Map<String, String>> kGeluiden = [
   {'id': 'twinkel', 'emoji': '✨', 'naam': 'Twinkel',
    'url': 'https://cdn.pixabay.com/audio/2022/03/24/audio_8e8e3e6f17.mp3'},
   {'id': 'bel', 'emoji': '🔔', 'naam': 'Zachte bel',
