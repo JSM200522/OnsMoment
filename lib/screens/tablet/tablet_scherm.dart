@@ -33,23 +33,20 @@ class TabletScherm extends StatefulWidget {
 class _TabletSchermState extends State<TabletScherm> {
   final _audioPlayer = AudioPlayer();
   final _geluidPlayer = AudioPlayer();
-  Timer? _klokTimer;
   Timer? _autoSluitTimer;
-  DateTime _nu = DateTime.now();
   StreamSubscription? _momentenListener;
+  StreamSubscription<DocumentSnapshot>? _gebruikerSub;
 
   Map<String, dynamic>? _huidigPopup;
   String? _huidigPopupId;
   String _herkenningsgeluid = 'twinkel';
-  final Set<String> _alGetoond = {};  // popup IDs die al ge-trigger zijn
 
   @override
   void initState() {
     super.initState();
     WakelockPlus.enable();
-    _klokTimer = Timer.periodic(const Duration(seconds: 1),
-        (_) => setState(() => _nu = DateTime.now()));
     _startMomentenListener();
+    _startGebruikerListener();
 
     _audioPlayer.playerStateStream.listen((state) {
       if (state.processingState == ProcessingState.completed
@@ -61,9 +58,9 @@ class _TabletSchermState extends State<TabletScherm> {
 
   @override
   void dispose() {
-    _klokTimer?.cancel();
     _autoSluitTimer?.cancel();
     _momentenListener?.cancel();
+    _gebruikerSub?.cancel();
     _audioPlayer.dispose();
     _geluidPlayer.dispose();
     WakelockPlus.disable();
@@ -81,18 +78,30 @@ class _TabletSchermState extends State<TabletScherm> {
         .listen(_verwerkMomenten);
   }
 
+  void _startGebruikerListener() {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return;
+    _gebruikerSub = FirebaseFirestore.instance
+        .collection('gebruikers').doc(uid).snapshots()
+        .listen((doc) {
+      final data = doc.data() as Map<String, dynamic>?;
+      final nieuwGeluid = data?['herkenningsgeluid'] as String? ?? 'twinkel';
+      if (mounted && _herkenningsgeluid != nieuwGeluid) {
+        setState(() => _herkenningsgeluid = nieuwGeluid);
+      }
+    });
+  }
+
   void _verwerkMomenten(QuerySnapshot snap) {
-    if (_huidigPopup != null) return;
+    if (_huidigPopupId != null) return;
     final nu = DateTime.now();
     final voor24uur = nu.subtract(const Duration(hours: 24));
     for (final doc in snap.docs) {
-      if (_alGetoond.contains(doc.id)) continue;
       final d = doc.data() as Map<String, dynamic>;
       final geplandOp = (d['geplandOp'] as Timestamp?)?.toDate();
       if (geplandOp == null) continue;
       // Toon als gepland tijd al voorbij is en niet ouder dan 24 uur
       if (geplandOp.isBefore(nu) && geplandOp.isAfter(voor24uur)) {
-        _alGetoond.add(doc.id);
         _toonPopup(doc.id, d);
         return;
       }
@@ -100,7 +109,18 @@ class _TabletSchermState extends State<TabletScherm> {
   }
 
   Future<void> _toonPopup(String id, Map<String, dynamic> d) async {
-    if (_huidigPopupId == id) return;
+    if (_huidigPopupId != null) return;
+    // Claim slot direct (synchroon) zodat _verwerkMomenten geen tweede
+    // popup start tijdens de async setup hieronder.
+    _huidigPopupId = id;
+
+    // Markeer gezien zodat na tablet-reboot niet alle ongeziene momenten
+    // van afgelopen 24u opnieuw als popup verschijnen.
+    try {
+      await FirebaseFirestore.instance.collection('momenten')
+          .doc(id).update({'gezien': true});
+    } catch (_) {}
+
     // Speel herkenningsgeluid - wacht alleen 1200ms als afspelen daadwerkelijk lukte
     final geluidAsset = kGeluidAssets[_herkenningsgeluid];
     if (geluidAsset != null) {
@@ -117,10 +137,12 @@ class _TabletSchermState extends State<TabletScherm> {
       }
     }
 
-    if (!mounted) return;
+    if (!mounted) {
+      _huidigPopupId = null;
+      return;
+    }
     setState(() {
       _huidigPopup = d;
-      _huidigPopupId = id;
     });
 
     if (d['type'] == 'stem' || d['type'] == 'lied') {
@@ -135,20 +157,16 @@ class _TabletSchermState extends State<TabletScherm> {
       _autoSluitTimer?.cancel();
       _autoSluitTimer = Timer(const Duration(seconds: 60), _sluitPopup);
     } else {
+      // Foto/tekst: 60s zodat dementie-doelgroep tijd heeft om te verwerken
       _autoSluitTimer?.cancel();
-      _autoSluitTimer = Timer(const Duration(seconds: 30), _sluitPopup);
+      _autoSluitTimer = Timer(const Duration(seconds: 60), _sluitPopup);
     }
   }
 
   Future<void> _sluitPopup() async {
     await _audioPlayer.stop();
     _autoSluitTimer?.cancel();
-    if (_huidigPopupId != null) {
-      try {
-        await FirebaseFirestore.instance.collection('momenten')
-            .doc(_huidigPopupId).update({'gezien': true});
-      } catch (_) {}
-    }
+    // gezien:true is al gezet aan het begin van _toonPopup
     if (mounted) {
       setState(() {
         _huidigPopup = null;
@@ -170,10 +188,6 @@ class _TabletSchermState extends State<TabletScherm> {
         final userData = userSnap.data?.data() as Map<String, dynamic>? ?? {};
         final profielFotoUrl = userData['ontvangerFoto'] ?? '';
         final ontvangerNaam = userData['ontvangerNaam'] ?? '';
-        final nieuwGeluid = userData['herkenningsgeluid'] ?? 'twinkel';
-        if (_herkenningsgeluid != nieuwGeluid) {
-          _herkenningsgeluid = nieuwGeluid;
-        }
 
         return Scaffold(
           body: Stack(children: [
@@ -244,18 +258,7 @@ class _TabletSchermState extends State<TabletScherm> {
           mainAxisAlignment: MainAxisAlignment.center,
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
-            // KLOK
-            Text(_formatTijd(_nu),
-                textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 110,
-                    fontWeight: FontWeight.w900, color: textColor, height: 1,
-                    shadows: shadow)),
-            const SizedBox(height: 4),
-            Text(_formatDatum(_nu),
-                textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 20,
-                    fontWeight: FontWeight.w700, color: textColor,
-                    shadows: shadow)),
+            _Klok(textColor: textColor, shadow: shadow),
             const SizedBox(height: 36),
 
             // BEGROETING
@@ -300,6 +303,7 @@ class _TabletSchermState extends State<TabletScherm> {
         final huidigMin = nu.hour * 60 + nu.minute;
         Map<String, dynamic>? volgende;
         int volgendeMin = 24 * 60;
+        bool isMorgen = false;
         for (final doc in docs) {
           final d = doc.data() as Map<String, dynamic>;
           final min = (d['uur'] as int) * 60 + (d['minuut'] as int);
@@ -310,6 +314,7 @@ class _TabletSchermState extends State<TabletScherm> {
         }
         if (volgende == null) {
           // Geen vandaag, pak vroegste van morgen
+          isMorgen = true;
           int vroegsteMin = 24 * 60;
           for (final doc in docs) {
             final d = doc.data() as Map<String, dynamic>;
@@ -334,8 +339,8 @@ class _TabletSchermState extends State<TabletScherm> {
             const SizedBox(width: 16),
             Column(crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min, children: [
-              const Text('Volgende moment',
-                  style: TextStyle(fontSize: 11, color: kTextMuted,
+              Text(isMorgen ? 'Morgen' : 'Vandaag',
+                  style: const TextStyle(fontSize: 11, color: kTextMuted,
                       fontWeight: FontWeight.w800, letterSpacing: 0.8)),
               const SizedBox(height: 2),
               Text(volgende['label'] ?? 'Moment',
@@ -392,10 +397,7 @@ class _TabletSchermState extends State<TabletScherm> {
             itemBuilder: (c, i) {
               final d = docs[i].data() as Map<String, dynamic>;
               return GestureDetector(
-                onTap: () {
-                  _alGetoond.remove(docs[i].id);
-                  _toonPopup(docs[i].id, d);
-                },
+                onTap: () => _toonPopup(docs[i].id, d),
                 child: Container(
                   margin: const EdgeInsets.symmetric(horizontal: 4),
                   width: 56, height: 56,
@@ -521,6 +523,53 @@ class _TabletSchermState extends State<TabletScherm> {
     }
   }
 
+  String _formatPopupTijd(DateTime d) {
+    return 'Verstuurd om ${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}';
+  }
+}
+
+class _Klok extends StatefulWidget {
+  final Color textColor;
+  final List<Shadow> shadow;
+  const _Klok({required this.textColor, required this.shadow});
+  @override
+  State<_Klok> createState() => _KlokState();
+}
+
+class _KlokState extends State<_Klok> {
+  Timer? _timer;
+  DateTime _nu = DateTime.now();
+
+  @override
+  void initState() {
+    super.initState();
+    _timer = Timer.periodic(const Duration(seconds: 1),
+        (_) => setState(() => _nu = DateTime.now()));
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(mainAxisSize: MainAxisSize.min, children: [
+      Text(_formatTijd(_nu),
+          textAlign: TextAlign.center,
+          style: TextStyle(fontSize: 110,
+              fontWeight: FontWeight.w900, color: widget.textColor, height: 1,
+              shadows: widget.shadow)),
+      const SizedBox(height: 4),
+      Text(_formatDatum(_nu),
+          textAlign: TextAlign.center,
+          style: TextStyle(fontSize: 20,
+              fontWeight: FontWeight.w700, color: widget.textColor,
+              shadows: widget.shadow)),
+    ]);
+  }
+
   String _formatTijd(DateTime t) =>
       '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
 
@@ -530,9 +579,5 @@ class _TabletSchermState extends State<TabletScherm> {
     const maanden = ['januari', 'februari', 'maart', 'april', 'mei', 'juni',
                      'juli', 'augustus', 'september', 'oktober', 'november', 'december'];
     return '${dagen[d.weekday - 1]} ${d.day} ${maanden[d.month - 1]}';
-  }
-
-  String _formatPopupTijd(DateTime d) {
-    return 'Verstuurd om ${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}';
   }
 }
