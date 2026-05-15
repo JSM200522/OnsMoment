@@ -595,7 +595,13 @@ class AgendaTab extends StatelessWidget {
                 .where('gezien', isEqualTo: false).snapshots(),
             builder: (ctx, snap) {
               if (!snap.hasData) return const SizedBox();
-              final docs = snap.data!.docs.toList();
+              final nu = DateTime.now();
+              final docs = snap.data!.docs.where((d) {
+                final data = d.data() as Map<String, dynamic>;
+                if (data['testModus'] == true) return false;
+                final geplandOp = (data['geplandOp'] as Timestamp?)?.toDate();
+                return geplandOp != null && geplandOp.isAfter(nu);
+              }).toList();
               if (docs.isEmpty) return _leeg('Geen geplande momenten');
               docs.sort((a, b) {
                 final ta = (a.data() as Map)['geplandOp'] as Timestamp?;
@@ -781,7 +787,15 @@ class _NotitiesTabState extends State<NotitiesTab> {
           builder: (ctx, snap) {
             if (!snap.hasData) return const Center(
                 child: CircularProgressIndicator(color: kPeach));
-            final docs = snap.data!.docs;
+            final docs = snap.data!.docs.toList()
+              ..sort((a, b) {
+                final ta = (a.data() as Map)['aangemaaktOp'] as Timestamp?;
+                final tb = (b.data() as Map)['aangemaaktOp'] as Timestamp?;
+                if (ta == null && tb == null) return 0;
+                if (ta == null) return 1;
+                if (tb == null) return -1;
+                return tb.compareTo(ta);
+              });
             if (docs.isEmpty) return const Center(child: Column(
               mainAxisAlignment: MainAxisAlignment.center, children: [
               Text('📝', style: TextStyle(fontSize: 48)),
@@ -1134,6 +1148,7 @@ class _OntvangerInfoSchermState extends State<OntvangerInfoScherm> {
     if (uid == null) return;
     final doc = await FirebaseFirestore.instance
         .collection('gebruikers').doc(uid).get();
+    if (!mounted) return;
     final d = doc.data() ?? {};
     setState(() {
       _naamCtrl.text = d['ontvangerNaam'] ?? '';

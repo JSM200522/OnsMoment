@@ -503,6 +503,11 @@ class _SetupWizardState extends State<SetupWizard> {
           _toonFout('Vul alle velden in (wachtwoord min. 6 tekens)');
           return;
         }
+        if (!RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$')
+            .hasMatch(_emailCtrl.text.trim())) {
+          _toonFout('Ongeldig e-mailadres');
+          return;
+        }
         setState(() => _stap = 2);
       }
     } else if (_rol == 'familie' && _stap == 2 && !_isInloggen) {

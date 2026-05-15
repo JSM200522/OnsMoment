@@ -370,7 +370,7 @@ class _TabletSchermState extends State<TabletScherm> {
         final docs = snap.data!.docs.where((d) {
           final t = ((d.data() as Map)['geplandOp'] as Timestamp?)?.toDate();
           return t != null && t.isAfter(beginVandaag);
-        }).toList();
+        }).take(20).toList();
         if (docs.isEmpty) return const SizedBox();
         return Column(mainAxisSize: MainAxisSize.min, children: [
           Container(
