@@ -1,12 +1,17 @@
-name: Build Ons Moment APK
+name: Build Ons Moment
 
 on:
   push:
     branches: [ main ]
   workflow_dispatch:
 
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
 jobs:
-  build:
+  build_android:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -32,49 +37,30 @@ jobs:
           flutter create --platforms=android --org=com.onsmoment --project-name=ons_moment .
           cp -r android $GITHUB_WORKSPACE/android
 
-      - name: Fix applicationId naar com.onsmoment.app
+      - name: Fix applicationId
         run: |
           sed -i 's|applicationId = "com.onsmoment.ons_moment"|applicationId = "com.onsmoment.app"|g' android/app/build.gradle.kts 2>/dev/null || true
-          sed -i 's|applicationId "com.onsmoment.ons_moment"|applicationId "com.onsmoment.app"|g' android/app/build.gradle 2>/dev/null || true
 
       - name: Verhoog minSdkVersion naar 23
         run: |
           sed -i 's|minSdk = flutter.minSdkVersion|minSdk = 23|g' android/app/build.gradle.kts 2>/dev/null || true
-          sed -i 's|minSdkVersion flutter.minSdkVersion|minSdkVersion 23|g' android/app/build.gradle 2>/dev/null || true
-          sed -i 's|minSdk flutter.minSdkVersion|minSdk 23|g' android/app/build.gradle 2>/dev/null || true
 
-      - name: Upgrade Kotlin naar 1.9.22 in settings.gradle.kts
+      - name: Upgrade Kotlin naar 1.9.22
         run: |
-          if [ -f android/settings.gradle.kts ]; then
-            sed -i 's|id("org.jetbrains.kotlin.android") version "[^"]*"|id("org.jetbrains.kotlin.android") version "1.9.22"|g' android/settings.gradle.kts
-            cat android/settings.gradle.kts
-          fi
-
-      - name: Upgrade Kotlin in settings.gradle (Groovy)
-        run: |
-          if [ -f android/settings.gradle ] && [ ! -f android/settings.gradle.kts ]; then
-            sed -i "s|id ['\"]org.jetbrains.kotlin.android['\"] version ['\"][^'\"]*['\"]|id 'org.jetbrains.kotlin.android' version '1.9.22'|g" android/settings.gradle
-          fi
+          sed -i 's|id("org.jetbrains.kotlin.android") version "[^"]*"|id("org.jetbrains.kotlin.android") version "1.9.22"|g' android/settings.gradle.kts
 
       - name: Upgrade Android Gradle Plugin naar 8.3.0
         run: |
-          if [ -f android/settings.gradle.kts ]; then
-            sed -i 's|id("com.android.application") version "[^"]*"|id("com.android.application") version "8.3.0"|g' android/settings.gradle.kts
-          fi
-          if [ -f android/settings.gradle ] && [ ! -f android/settings.gradle.kts ]; then
-            sed -i "s|id ['\"]com.android.application['\"] version ['\"][^'\"]*['\"]|id 'com.android.application' version '8.3.0'|g" android/settings.gradle
-          fi
+          sed -i 's|id("com.android.application") version "[^"]*"|id("com.android.application") version "8.3.0"|g' android/settings.gradle.kts
 
       - name: Upgrade gradle wrapper naar 8.4
         run: |
           sed -i 's|gradle-[0-9.]*-all.zip|gradle-8.4-all.zip|g' android/gradle/wrapper/gradle-wrapper.properties
           sed -i 's|gradle-[0-9.]*-bin.zip|gradle-8.4-bin.zip|g' android/gradle/wrapper/gradle-wrapper.properties
-          cat android/gradle/wrapper/gradle-wrapper.properties
 
-      - name: Registreer google-services plugin in settings.gradle.kts
+      - name: Registreer google-services plugin
         run: |
-          if [ -f android/settings.gradle.kts ]; then
-            python3 << 'EOF'
+          python3 << 'EOF'
           with open('android/settings.gradle.kts', 'r') as f:
               content = f.read()
           import re
@@ -84,27 +70,10 @@ jobs:
           with open('android/settings.gradle.kts', 'w') as f:
               f.write(content)
           EOF
-          fi
 
-      - name: Registreer google-services plugin in settings.gradle (Groovy)
+      - name: Pas google-services plugin toe
         run: |
-          if [ -f android/settings.gradle ] && [ ! -f android/settings.gradle.kts ]; then
-            python3 << 'EOF'
-          with open('android/settings.gradle', 'r') as f:
-              content = f.read()
-          import re
-          pattern = r"(id\s+['\"]com\.android\.application['\"]\s+version\s+['\"][^'\"]+['\"]\s+apply\s+false)"
-          if 'com.google.gms.google-services' not in content:
-              content = re.sub(pattern, r"\1\n    id 'com.google.gms.google-services' version '4.4.2' apply false", content)
-          with open('android/settings.gradle', 'w') as f:
-              f.write(content)
-          EOF
-          fi
-
-      - name: Pas google-services plugin toe in app/build.gradle.kts
-        run: |
-          if [ -f android/app/build.gradle.kts ]; then
-            python3 << 'EOF'
+          python3 << 'EOF'
           with open('android/app/build.gradle.kts', 'r') as f:
               content = f.read()
           if 'com.google.gms.google-services' not in content:
@@ -116,23 +85,11 @@ jobs:
           with open('android/app/build.gradle.kts', 'w') as f:
               f.write(content)
           EOF
-          fi
-
-      - name: Pas google-services plugin toe in app/build.gradle (Groovy)
-        run: |
-          if [ -f android/app/build.gradle ] && [ ! -f android/app/build.gradle.kts ]; then
-            if ! grep -q "google-services" android/app/build.gradle; then
-              echo "" >> android/app/build.gradle
-              echo "apply plugin: 'com.google.gms.google-services'" >> android/app/build.gradle
-            fi
-          fi
 
       - name: Plaats google-services.json
-        run: |
-          cp google-services.json android/app/google-services.json
-          ls -la android/app/google-services.json
+        run: cp google-services.json android/app/google-services.json
 
-      - name: Voeg permissions toe aan AndroidManifest
+      - name: Voeg permissions toe
         run: |
           python3 << 'EOF'
           import re
@@ -153,7 +110,7 @@ jobs:
               f.write(content)
           EOF
 
-      - name: Fix wakelock_plus import in tablet_scherm
+      - name: Fix wakelock import
         run: |
           python3 << 'EOF'
           with open('lib/screens/tablet/tablet_scherm.dart', 'r') as f:
@@ -168,7 +125,6 @@ jobs:
               content = '\n'.join(lines)
               with open('lib/screens/tablet/tablet_scherm.dart', 'w') as f:
                   f.write(content)
-              print("Import toegevoegd aan tablet_scherm.dart")
           EOF
 
       - name: Pub get
@@ -177,14 +133,101 @@ jobs:
       - name: Build release APK
         run: flutter build apk --release
 
-      - name: Toon APK info
-        run: |
-          ls -la build/app/outputs/flutter-apk/
-          du -h build/app/outputs/flutter-apk/app-release.apk
-
-      - name: Upload APK als artifact
+      - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: ons-moment-apk
           path: build/app/outputs/flutter-apk/app-release.apk
-          retention-days: 90
+
+  build_web:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Flutter 3.19
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.19.6'
+          channel: 'stable'
+          cache: true
+
+      - name: Genereer web platform folder
+        run: |
+          mkdir -p /tmp/flutter_template
+          cd /tmp/flutter_template
+          flutter create --platforms=web --org=com.onsmoment --project-name=ons_moment .
+          cp -r web $GITHUB_WORKSPACE/web
+
+      - name: Fix wakelock import
+        run: |
+          python3 << 'EOF'
+          with open('lib/screens/tablet/tablet_scherm.dart', 'r') as f:
+              content = f.read()
+          if "import 'package:wakelock_plus/wakelock_plus.dart'" not in content:
+              lines = content.split('\n')
+              last_import_idx = 0
+              for i, line in enumerate(lines):
+                  if line.startswith('import '):
+                      last_import_idx = i
+              lines.insert(last_import_idx + 1, "import 'package:wakelock_plus/wakelock_plus.dart';")
+              content = '\n'.join(lines)
+              with open('lib/screens/tablet/tablet_scherm.dart', 'w') as f:
+                  f.write(content)
+          EOF
+
+      - name: Voeg Firebase config toe aan web/index.html
+        run: |
+          python3 << 'EOF'
+          import json
+          with open('google-services.json', 'r') as f:
+              config = json.load(f)
+          client = config['client'][0]
+          firebase_config = {
+              'apiKey': client['api_key'][0]['current_key'],
+              'authDomain': f"{config['project_info']['project_id']}.firebaseapp.com",
+              'projectId': config['project_info']['project_id'],
+              'storageBucket': config['project_info']['storage_bucket'],
+              'messagingSenderId': config['project_info']['project_number'],
+              'appId': client['client_info']['mobilesdk_app_id'],
+          }
+          with open('web/index.html', 'r') as f:
+              html = f.read()
+          firebase_script = f'''
+            <script type="module">
+              import {{ initializeApp }} from 'https://www.gstatic.com/firebasejs/10.7.0/firebase-app.js';
+              const firebaseConfig = {json.dumps(firebase_config, indent=2)};
+              const app = initializeApp(firebaseConfig);
+              window.firebaseApp = app;
+            </script>
+          '''
+          html = html.replace('</head>', firebase_script + '</head>')
+          with open('web/index.html', 'w') as f:
+              f.write(html)
+          print("Firebase config toegevoegd aan web/index.html")
+          EOF
+
+      - name: Pub get
+        run: flutter pub get
+
+      - name: Build web release
+        run: flutter build web --release --base-href "/OnsMoment/"
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v4
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: build/web
+
+  deploy_web:
+    needs: build_web
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
