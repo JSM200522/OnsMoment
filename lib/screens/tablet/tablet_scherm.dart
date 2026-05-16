@@ -24,16 +24,25 @@ class _TabletSchermState extends State<TabletScherm> {
   String? _huidigPopupId;
   String _herkenningsgeluid = 'twinkel';
 
+  Timer? _checkTimer;
+  StreamSubscription<QuerySnapshot>? _dagelijkseSub;
+  List<QueryDocumentSnapshot>? _dagelijkseDocs;
+
   @override
   void initState() {
     super.initState();
     WakelockPlus.enable();
     _startMomentenListener();
     _startGebruikerListener();
+    _startDagelijksListener();
+    _checkTimer = Timer.periodic(
+        const Duration(seconds: 30), (_) => _checkGeplandeMomenten());
 
     _audioPlayer.playerStateStream.listen((state) {
       if (state.processingState == ProcessingState.completed
-          && (_huidigPopup?['type'] == 'stem' || _huidigPopup?['type'] == 'lied')) {
+          && (_huidigPopup?['type'] == 'stem'
+              || _huidigPopup?['type'] == 'lied'
+              || _huidigPopup?['type'] == 'dagelijks')) {
         _sluitPopup();
       }
     });
@@ -42,8 +51,10 @@ class _TabletSchermState extends State<TabletScherm> {
   @override
   void dispose() {
     _autoSluitTimer?.cancel();
+    _checkTimer?.cancel();
     _momentenListener?.cancel();
     _gebruikerSub?.cancel();
+    _dagelijkseSub?.cancel();
     _audioPlayer.dispose();
     _geluidPlayer.dispose();
     WakelockPlus.disable();
@@ -75,6 +86,17 @@ class _TabletSchermState extends State<TabletScherm> {
     });
   }
 
+  void _startDagelijksListener() {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return;
+    _dagelijkseSub = FirebaseFirestore.instance
+        .collection('dagelijkse_momenten')
+        .where('familieUid', isEqualTo: uid)
+        .where('actief', isEqualTo: true)
+        .snapshots()
+        .listen((snap) => _dagelijkseDocs = snap.docs);
+  }
+
   void _verwerkMomenten(QuerySnapshot snap) {
     if (_huidigPopupId != null) return;
     final nu = DateTime.now();
@@ -89,6 +111,42 @@ class _TabletSchermState extends State<TabletScherm> {
         return;
       }
     }
+  }
+
+  Future<void> _checkGeplandeMomenten() async {
+    if (_huidigPopupId != null || _dagelijkseDocs == null) return;
+    final nu = DateTime.now();
+    final huidigMin = nu.hour * 60 + nu.minute;
+    final vandaagKey = '${nu.year}-'
+        '${nu.month.toString().padLeft(2, '0')}-'
+        '${nu.day.toString().padLeft(2, '0')}';
+    for (final doc in _dagelijkseDocs!) {
+      final d = doc.data() as Map<String, dynamic>;
+      final momentMin = (d['uur'] as int? ?? 0) * 60
+                      + (d['minuut'] as int? ?? 0);
+      // Window van 60s: trigger als moment net of 1 minuut geleden is.
+      if (momentMin > huidigMin) continue;
+      if (huidigMin - momentMin > 1) continue;
+      if (d['laatstGetoond'] == vandaagKey) continue;
+      try {
+        await doc.reference.update({'laatstGetoond': vandaagKey});
+      } catch (_) {}
+      _toonDagelijksPopup(doc.id, d);
+      return;
+    }
+  }
+
+  Future<void> _toonDagelijksPopup(
+      String id, Map<String, dynamic> d) async {
+    final synthetic = <String, dynamic>{
+      'type': 'dagelijks',
+      'emoji': d['emoji'],
+      'label': d['label'],
+      'mediaUrl': d['audioUrl'] ?? '',  // plan 4 zet dit veld
+      'vanNaam': 'Een naaste',
+      'geplandOp': Timestamp.now(),
+    };
+    await _toonPopup('dagelijks_$id', synthetic);
   }
 
   Future<void> _toonPopup(String id, Map<String, dynamic> d) async {
@@ -126,7 +184,8 @@ class _TabletSchermState extends State<TabletScherm> {
       _huidigPopup = d;
     });
 
-    if (d['type'] == 'stem' || d['type'] == 'lied') {
+    final type = d['type'];
+    if (type == 'stem' || type == 'lied' || type == 'dagelijks') {
       final url = d['mediaUrl'] ?? '';
       if (url.isNotEmpty) {
         try {
@@ -134,14 +193,11 @@ class _TabletSchermState extends State<TabletScherm> {
           await _audioPlayer.play();
         } catch (_) {}
       }
-      // Fallback: ook na 60 sec sluiten als audio niet eindigt
-      _autoSluitTimer?.cancel();
-      _autoSluitTimer = Timer(const Duration(seconds: 60), _sluitPopup);
-    } else {
-      // Foto/tekst: 60s zodat dementie-doelgroep tijd heeft om te verwerken
-      _autoSluitTimer?.cancel();
-      _autoSluitTimer = Timer(const Duration(seconds: 60), _sluitPopup);
     }
+    // 60s zodat dementie-doelgroep tijd heeft om te verwerken;
+    // ook fallback als audio niet eindigt of niet aanwezig is.
+    _autoSluitTimer?.cancel();
+    _autoSluitTimer = Timer(const Duration(seconds: 60), _sluitPopup);
   }
 
   Future<void> _sluitPopup() async {
@@ -417,13 +473,15 @@ class _TabletSchermState extends State<TabletScherm> {
               child: Column(mainAxisSize: MainAxisSize.min, children: [
                 Text(_emojiVoorType(type), style: const TextStyle(fontSize: 48)),
                 const SizedBox(height: 8),
-                Text('$vanNaam stuurt je iets liefs 💕',
+                Text(type == 'dagelijks'
+                    ? 'Het is tijd voor:'
+                    : '$vanNaam stuurt je iets liefs 💕',
                     textAlign: TextAlign.center,
                     style: const TextStyle(fontSize: 18,
                         fontWeight: FontWeight.w800, color: kBrown)),
                 const SizedBox(height: 20),
                 _popupInhoud(d),
-                if (geplandOp != null) ...[
+                if (geplandOp != null && type != 'dagelijks') ...[
                   const SizedBox(height: 16),
                   Text(_formatPopupTijd(geplandOp),
                       style: const TextStyle(fontSize: 12,
@@ -431,7 +489,10 @@ class _TabletSchermState extends State<TabletScherm> {
                 ],
                 const SizedBox(height: 16),
                 Text(type == 'stem' || type == 'lied'
-                    ? 'Sluit automatisch wanneer klaar' : 'Tik om te sluiten',
+                    ? 'Sluit automatisch wanneer klaar'
+                    : (type == 'dagelijks'
+                        ? 'Sluit automatisch'
+                        : 'Tik om te sluiten'),
                     style: const TextStyle(fontSize: 11, color: kTextMuted)),
               ])),
           ))),
@@ -489,6 +550,16 @@ class _TabletSchermState extends State<TabletScherm> {
             textAlign: TextAlign.center,
             style: const TextStyle(fontSize: 22, color: kBrown,
                 height: 1.5, fontWeight: FontWeight.w600));
+      case 'dagelijks':
+        return Column(mainAxisSize: MainAxisSize.min, children: [
+          Text(d['emoji'] as String? ?? '⭐',
+              style: const TextStyle(fontSize: 96)),
+          const SizedBox(height: 16),
+          Text(d['label'] as String? ?? '',
+              textAlign: TextAlign.center,
+              style: const TextStyle(fontSize: 28,
+                  fontWeight: FontWeight.w800, color: kBrown)),
+        ]);
       default:
         return const SizedBox();
     }
@@ -500,6 +571,7 @@ class _TabletSchermState extends State<TabletScherm> {
       case 'stem': return '🎙️';
       case 'lied': return '🎵';
       case 'tekst': return '✏️';
+      case 'dagelijks': return '⏰';
       default: return '💕';
     }
   }
