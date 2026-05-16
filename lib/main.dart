@@ -76,12 +76,11 @@ class _RouterSchermState extends State<RouterScherm> {
         if (authSnap.connectionState == ConnectionState.waiting) {
           return const _LaadScherm();
         }
-        if (!authSnap.hasData) return const SetupWizard();
         if (!_initieelGeladen) return const _LaadScherm();
         return ValueListenableBuilder<String?>(
           valueListenable: DeviceModusService.notifier,
           builder: (context, modus, _) {
-            if (modus == null) return const SetupWizard();
+            if (!authSnap.hasData || modus == null) return const SetupWizard();
             if (modus == DeviceModusService.ONTVANGER) {
               return const TabletScherm();
             }
