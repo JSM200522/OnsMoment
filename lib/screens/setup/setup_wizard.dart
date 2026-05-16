@@ -5,6 +5,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:just_audio/just_audio.dart';
+import '../../services/apparaat_service.dart';
 import '../../services/device_modus_service.dart';
 import '../../theme/kleuren.dart';
 import '../../data/geluiden.dart';
@@ -58,7 +59,7 @@ class _SetupWizardState extends State<SetupWizard> {
             if (_stap > 0) _topBalk(),
             Expanded(child: SingleChildScrollView(child: _huidigeStap())),
             const SizedBox(height: 12),
-            if (_stap > 0) _knop(),
+            if (_stap > 0 && !(_rol == 'ontvanger' && _stap == 2)) _knop(),
           ]),
         ),
       ),
@@ -183,9 +184,11 @@ class _SetupWizardState extends State<SetupWizard> {
     if (_rol == 'familie') {
       if (_stap == 1) return _accountStap();
       if (_stap == 2 && !_isInloggen) return _ontvangerProfielStap();
+      if (_stap == 2 && _isInloggen) return _persoonsnaamStap();
     } else {
       // ontvanger
       if (_stap == 1) return _accountStap();
+      if (_stap == 2) return _weergaveModusStap();
     }
     return const SizedBox();
   }
@@ -562,6 +565,7 @@ class _SetupWizardState extends State<SetupWizard> {
 
   String _knopTekst() {
     if (_rol == 'familie' && _isInloggen && _stap == 1) return 'Inloggen';
+    if (_rol == 'familie' && _isInloggen && _stap == 2) return 'Klaar 💕';
     if (_rol == 'familie' && !_isInloggen && _stap == 1) return 'Volgende →';
     if (_rol == 'familie' && !_isInloggen && _stap == 2) return '✨ App starten!';
     if (_rol == 'ontvanger' && _stap == 1) return 'Inloggen op dit apparaat';
@@ -592,6 +596,8 @@ class _SetupWizardState extends State<SetupWizard> {
         return;
       }
       await _familieRegistreren();
+    } else if (_rol == 'familie' && _stap == 2 && _isInloggen) {
+      await _voltooiFamilieInloggen();
     } else if (_rol == 'ontvanger' && _stap == 1) {
       await _ontvangerInloggenActie();
     }
@@ -602,7 +608,10 @@ class _SetupWizardState extends State<SetupWizard> {
     try {
       await FirebaseAuth.instance.signInWithEmailAndPassword(
           email: _emailCtrl.text.trim(), password: _wachtwoordCtrl.text);
-      await DeviceModusService.zet(DeviceModusService.FAMILIE);
+      // Niet meteen modus zetten — gebruiker doorloopt eerst stap 2
+      // (persoonsnaam) zodat we apparaat kunnen registreren met naam.
+      _naamCtrl.clear();
+      if (mounted) setState(() => _stap = 2);
     } catch (e) {
       _toonFout('Inloggen mislukt. Klopt e-mail en wachtwoord?');
     } finally {
@@ -677,6 +686,15 @@ class _SetupWizardState extends State<SetupWizard> {
           duration: Duration(seconds: 5),
         ));
       }
+      // Apparaat registreren in sub-collectie zodat kringleden-overzicht
+      // (sub-commit C) dit apparaat kan tonen.
+      final apparaatId = await DeviceModusService.krijgApparaatId();
+      await ApparaatService.registreer(
+        familieUid: uid,
+        apparaatId: apparaatId,
+        persoonsNaam: _naamCtrl.text.trim(),
+        modus: 'familie',
+      );
       await DeviceModusService.zet(DeviceModusService.FAMILIE);
     } catch (e) {
       if (cred?.user != null) {
@@ -695,9 +713,139 @@ class _SetupWizardState extends State<SetupWizard> {
     try {
       await FirebaseAuth.instance.signInWithEmailAndPassword(
           email: _emailCtrl.text.trim(), password: _wachtwoordCtrl.text);
-      await DeviceModusService.zet(DeviceModusService.ONTVANGER);
+      // Niet meteen modus zetten — gebruiker kiest eerst weergaveModus
+      // (vergrendeld of meldingen) in stap 2.
+      if (mounted) setState(() => _stap = 2);
     } catch (e) {
       _toonFout('Inloggen mislukt. Klopt e-mail en wachtwoord?');
+    } finally {
+      if (mounted) setState(() => _bezig = false);
+    }
+  }
+
+  // ───────────────────────────────────────────────────
+  // STAP 2: PERSOONSNAAM (route B — familie inloggen)
+  // ───────────────────────────────────────────────────
+  Widget _persoonsnaamStap() => Column(
+    crossAxisAlignment: CrossAxisAlignment.start, children: [
+    const Text('Welkom in de kring 💕',
+        style: TextStyle(fontSize: 28, fontWeight: FontWeight.w900,
+            color: kBrown, height: 1.2)),
+    const SizedBox(height: 8),
+    const Text('Hoe heet jij?',
+        style: TextStyle(fontSize: 14, color: kTextMuted, height: 1.4)),
+    const SizedBox(height: 24),
+    _input('👤', 'Jouw naam', 'Bijv. Sara', _naamCtrl, false),
+    const SizedBox(height: 12),
+    const Text(
+      'We tonen je naam bij berichten die je stuurt, '
+      'zodat anderen weten van wie het komt.',
+      style: TextStyle(fontSize: 12, color: kTextMuted, height: 1.4)),
+  ]);
+
+  Future<void> _voltooiFamilieInloggen() async {
+    if (_naamCtrl.text.trim().isEmpty) {
+      _toonFout('Vul je naam in');
+      return;
+    }
+    setState(() => _bezig = true);
+    try {
+      final uid = FirebaseAuth.instance.currentUser!.uid;
+      final apparaatId = await DeviceModusService.krijgApparaatId();
+      await ApparaatService.registreer(
+        familieUid: uid,
+        apparaatId: apparaatId,
+        persoonsNaam: _naamCtrl.text.trim(),
+        modus: 'familie',
+      );
+      await DeviceModusService.zet(DeviceModusService.FAMILIE);
+    } finally {
+      if (mounted) setState(() => _bezig = false);
+    }
+  }
+
+  // ───────────────────────────────────────────────────
+  // STAP 2: WEERGAVEMODUS (route C — ontvanger)
+  // ───────────────────────────────────────────────────
+  Widget _weergaveModusStap() {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    return FutureBuilder<DocumentSnapshot?>(
+      future: uid == null
+          ? Future.value(null)
+          : FirebaseFirestore.instance.collection('gebruikers').doc(uid).get(),
+      builder: (ctx, snap) {
+        final naam = (snap.data?.data() as Map?)?['ontvangerNaam'] as String?
+                     ?? 'je dierbare';
+        return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text('Hoe gebruikt $naam dit apparaat?',
+              style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w900,
+                  color: kBrown, height: 1.2)),
+          const SizedBox(height: 20),
+          _modusKaart(
+            emoji: '🔒',
+            titel: 'Alleen voor Ons Moment',
+            uitleg: 'Het apparaat wordt vergrendeld. $naam kan geen andere '
+                'apps openen, niet bellen, niet internetten.',
+            onTap: () => _voltooiOntvanger(DeviceModusService.VERGRENDELD),
+          ),
+          const SizedBox(height: 12),
+          _modusKaart(
+            emoji: '📱',
+            titel: 'Ook voor andere dingen',
+            uitleg: '$naam gebruikt het apparaat als normaal. Berichten '
+                'komen binnen als melding.\n\nLet op: $naam kan zelf sturen '
+                'en de agenda zien, maar de notities-tab is voor $naam '
+                'verborgen. Dit beschermt zorgcommunicatie tussen familie.',
+            onTap: () => _voltooiOntvanger(DeviceModusService.MELDINGEN),
+          ),
+        ]);
+      },
+    );
+  }
+
+  Widget _modusKaart({required String emoji, required String titel,
+      required String uitleg, required VoidCallback onTap}) =>
+    GestureDetector(onTap: _bezig ? null : onTap, child: Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(color: kWhite,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: kPeachLight, width: 2),
+        boxShadow: [BoxShadow(color: kPeach.withOpacity(0.08),
+            blurRadius: 12, offset: const Offset(0, 4))]),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          Text(emoji, style: const TextStyle(fontSize: 22)),
+          const SizedBox(width: 10),
+          Expanded(child: Text(titel, style: const TextStyle(
+              fontSize: 15, fontWeight: FontWeight.w800, color: kBrown))),
+        ]),
+        const SizedBox(height: 8),
+        Text(uitleg, style: const TextStyle(
+            fontSize: 12, color: kBrownLight, height: 1.5)),
+      ]),
+    ));
+
+  Future<void> _voltooiOntvanger(String weergaveModus) async {
+    setState(() => _bezig = true);
+    try {
+      final uid = FirebaseAuth.instance.currentUser!.uid;
+      final apparaatId = await DeviceModusService.krijgApparaatId();
+      // Voor ontvanger-apparaat gebruiken we ontvangerNaam als persoonsnaam.
+      String naam = 'Ontvanger';
+      try {
+        final doc = await FirebaseFirestore.instance
+            .collection('gebruikers').doc(uid).get();
+        naam = (doc.data()?['ontvangerNaam'] as String?) ?? 'Ontvanger';
+      } catch (_) {}
+      await ApparaatService.registreer(
+        familieUid: uid,
+        apparaatId: apparaatId,
+        persoonsNaam: naam,
+        modus: 'ontvanger',
+        weergaveModus: weergaveModus,
+      );
+      await DeviceModusService.zetWeergaveModus(weergaveModus);
+      await DeviceModusService.zet(DeviceModusService.ONTVANGER);
     } finally {
       if (mounted) setState(() => _bezig = false);
     }

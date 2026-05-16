@@ -1,3 +1,4 @@
+import 'dart:math' show Random;
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -11,12 +12,21 @@ import 'package:shared_preferences/shared_preferences.dart';
 /// apparaat als familie ingelogd zijn en op het andere als ontvanger.
 class DeviceModusService {
   static const String _key = 'ons_moment_device_modus';
+  static const String _weergaveKey = 'ons_moment_weergave_modus';
+  static const String _apparaatIdKey = 'ons_moment_apparaat_id';
   static const String FAMILIE = 'familie';
   static const String ONTVANGER = 'ontvanger';
+  static const String VERGRENDELD = 'vergrendeld';
+  static const String MELDINGEN = 'meldingen';
 
   /// Reactief gepubliceerde modus — wordt door [get], [zet] en [wis]
   /// up-to-date gehouden zodat de UI zonder polling kan reageren.
   static final ValueNotifier<String?> notifier = ValueNotifier<String?>(null);
+
+  /// Reactief gepubliceerde weergaveModus voor ontvanger-apparaten
+  /// ('vergrendeld' of 'meldingen'). Null als niet ingesteld.
+  static final ValueNotifier<String?> weergaveModusNotifier =
+      ValueNotifier<String?>(null);
 
   /// Lees huidige modus uit storage en publiceer naar [notifier]. Null als nog niet ingesteld.
   static Future<String?> get() async {
@@ -49,7 +59,48 @@ class DeviceModusService {
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.remove(_key);
+      await prefs.remove(_weergaveKey);
       notifier.value = null;
+      weergaveModusNotifier.value = null;
+    } catch (_) {}
+  }
+
+  /// Geeft een stabiele apparaat-id terug. Genereert er één bij eerste oproep
+  /// en bewaart in SharedPreferences zodat dit apparaat persistent herkenbaar is.
+  static Future<String> krijgApparaatId() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final bestaand = prefs.getString(_apparaatIdKey);
+      if (bestaand != null && bestaand.isNotEmpty) return bestaand;
+      final nieuw = '${DateTime.now().millisecondsSinceEpoch}_'
+          '${Random().nextInt(0xFFFFFFFF).toRadixString(16)}';
+      await prefs.setString(_apparaatIdKey, nieuw);
+      return nieuw;
+    } catch (_) {
+      return DateTime.now().millisecondsSinceEpoch.toString();
+    }
+  }
+
+  /// Lees weergaveModus uit storage en publiceer naar [weergaveModusNotifier].
+  static Future<String?> krijgWeergaveModus() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final waarde = prefs.getString(_weergaveKey);
+      final resultaat = (waarde == VERGRENDELD || waarde == MELDINGEN) ? waarde : null;
+      weergaveModusNotifier.value = resultaat;
+      return resultaat;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Zet weergaveModus voor dit apparaat. Faalt silent.
+  static Future<void> zetWeergaveModus(String modus) async {
+    if (modus != VERGRENDELD && modus != MELDINGEN) return;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final ok = await prefs.setString(_weergaveKey, modus);
+      if (ok) weergaveModusNotifier.value = modus;
     } catch (_) {}
   }
 }

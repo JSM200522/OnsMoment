@@ -4,6 +4,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'screens/setup/setup_wizard.dart';
 import 'screens/familie/familie_scherm.dart';
 import 'screens/tablet/tablet_scherm.dart';
+import 'services/apparaat_service.dart';
 import 'services/device_modus_service.dart';
 import 'theme/kleuren.dart';
 
@@ -54,6 +55,15 @@ class _RouterSchermState extends State<RouterScherm> {
   Future<void> _laadInitieel() async {
     await DeviceModusService.get()
         .timeout(const Duration(seconds: 5), onTimeout: () => null);
+    await DeviceModusService.krijgWeergaveModus();
+    // Fire-and-forget: update laatstActief als gebruiker al ingelogd is.
+    // Faalt silent als apparaat nog niet geregistreerd is (bestaande gebruikers).
+    final user = FirebaseAuth.instance.currentUser;
+    if (user != null) {
+      final apparaatId = await DeviceModusService.krijgApparaatId();
+      ApparaatService.updateLaatstActief(
+          familieUid: user.uid, apparaatId: apparaatId);
+    }
     if (!mounted) return;
     setState(() => _initieelGeladen = true);
   }
