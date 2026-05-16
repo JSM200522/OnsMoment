@@ -440,7 +440,7 @@ class _StuurTabState extends State<StuurTab> {
       final familieDoc = await FirebaseFirestore.instance
           .collection('gebruikers').doc(user.uid).get();
       final familieData = familieDoc.data() ?? {};
-      final familieNaam = familieData['familieNaam'] ?? 'Familie';
+      final familieNaam = familieData['familieNaam'] ?? 'Een naaste';
 
       String mediaUrl = '';
       if (_type == 'stem' && _opnamePad != null) {
@@ -760,7 +760,7 @@ class _NotitiesTabState extends State<NotitiesTab> {
             style: TextStyle(fontSize: 24, fontWeight: FontWeight.w900,
                 color: kBrown)),
         const SizedBox(height: 8),
-        const Text('Deel observaties met andere familie en mantelzorgers',
+        const Text('Deel observaties met andere kringleden en mantelzorgers',
             style: TextStyle(fontSize: 13, color: kTextMuted)),
         const SizedBox(height: 16),
         TextField(controller: _ctrl, maxLines: 3,
@@ -829,7 +829,7 @@ class _NotitiesTabState extends State<NotitiesTab> {
     if (uid == null || _ctrl.text.trim().isEmpty) return;
     final familieDoc = await FirebaseFirestore.instance
         .collection('gebruikers').doc(uid).get();
-    final familieNaam = familieDoc.data()?['familieNaam'] ?? 'Familielid';
+    final familieNaam = familieDoc.data()?['familieNaam'] ?? 'Kringlid';
     await FirebaseFirestore.instance.collection('notities').add({
       'familieUid': uid,
       'vanNaam': familieNaam,
@@ -1358,15 +1358,15 @@ class _HulpDialog extends StatelessWidget {
         'Ga naar Sturen, zorg dat Test-modus AAN staat (blauwe banner). Kies '
         'type, voeg media toe, klik "Stuur NU". Het verschijnt binnen enkele '
         'seconden op het ontvanger-apparaat.'),
-    _FAQ('Wat is het verschil tussen Familie- en Ontvanger-modus?',
-        'Beide gebruiken hetzelfde account. Familie-modus = je kunt sturen, '
+    _FAQ('Wat is het verschil tussen Kring- en Ontvanger-modus?',
+        'Beide gebruiken hetzelfde account. Kring-modus = je kunt sturen, '
         'plannen en beheren. Ontvanger-modus = kiosk-weergave met klok, '
         'achtergrondfoto en automatische popups.'),
     _FAQ('Hoe stel ik een ander apparaat in als ontvanger?',
         'Open de app op het andere apparaat. Kies "Ontvanger". Log in met '
         'jullie gezamenlijke gegevens. Dat apparaat blijft dan altijd in '
         'kiosk-modus.'),
-    _FAQ('Kunnen meerdere familieleden hetzelfde account gebruiken?',
+    _FAQ('Kunnen meerdere kringleden hetzelfde account gebruiken?',
         'Ja! Tot 8 personen kunnen tegelijk inloggen op hun eigen telefoon, '
         'allemaal met dezelfde inloggegevens. Iedereen ziet en stuurt vanuit '
         'het gezamenlijke profiel.'),
@@ -1377,7 +1377,7 @@ class _HulpDialog extends StatelessWidget {
         'Vaste tijden waarop er automatisch iets verschijnt. Beheer ze in '
         'Instellingen → Momenten beheren.'),
     _FAQ('Wat kost Ons Moment?',
-        'Eerste 5 dagen gratis. Daarna €7,99 per maand voor het hele gezin.'),
+        'Eerste 5 dagen gratis. Daarna €7,99 per maand voor de hele kring.'),
   ];
 
   @override

@@ -401,7 +401,7 @@ class _TabletSchermState extends State<TabletScherm> {
   Widget _popupOverlay() {
     final d = _huidigPopup!;
     final type = d['type'] ?? '';
-    final vanNaam = d['vanNaam'] ?? 'Familie';
+    final vanNaam = d['vanNaam'] ?? 'Een naaste';
     final geplandOp = (d['geplandOp'] as Timestamp?)?.toDate();
     return Container(color: kBrown.withOpacity(0.94),
       child: SafeArea(child: Padding(

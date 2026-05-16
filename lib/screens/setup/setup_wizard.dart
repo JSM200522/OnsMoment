@@ -144,18 +144,18 @@ class _SetupWizardState extends State<SetupWizard> {
           Text('⚠️', style: TextStyle(fontSize: 22)),
           SizedBox(width: 10),
           Expanded(child: Text(
-            'Is het familie-account al aangemaakt?',
+            'Is het kringaccount al aangemaakt?',
             style: TextStyle(fontSize: 18,
                 fontWeight: FontWeight.w900, color: kBrown))),
         ]),
         content: const Text(
           'Dit apparaat wordt zo ingesteld voor je dierbare — het '
           'ontvangt straks de berichten, foto\'s en stemberichten van '
-          'de familie.\n\n'
-          'Daarvoor moet eerst iemand van de familie een familie-account '
+          'de kring.\n\n'
+          'Daarvoor moet eerst iemand van de kring een kringaccount '
           'hebben aangemaakt op hun eigen telefoon. Dit apparaat logt '
           'straks in met diezelfde gegevens.\n\n'
-          'Is het familie-account al aangemaakt?',
+          'Is het kringaccount al aangemaakt?',
           style: TextStyle(fontSize: 14, color: kBrownLight, height: 1.5)),
         actions: [
           TextButton(
@@ -223,8 +223,8 @@ class _SetupWizardState extends State<SetupWizard> {
         ]),
         SizedBox(height: 8),
         Text(
-          'Maak EERST het familie-account aan op de telefoon van een '
-          'familielid.\n\nStel pas DAARNA het apparaat van je dierbare in.',
+          'Maak EERST het kringaccount aan op de telefoon van iemand '
+          'uit de kring.\n\nStel pas DAARNA het apparaat van je dierbare in.',
           style: TextStyle(fontSize: 13,
               fontWeight: FontWeight.w700, color: kWhite, height: 1.4)),
       ])),
@@ -243,7 +243,7 @@ class _SetupWizardState extends State<SetupWizard> {
         ]),
         SizedBox(height: 6),
         Text(
-          '• Eén account voor het hele gezin (tot 8 personen)\n'
+          '• Eén account voor de hele kring (tot 8 personen)\n'
           '• De ontvanger logt in met dezelfde gegevens op zijn/haar apparaat\n'
           '• Iedereen ziet en stuurt vanuit hetzelfde gezamenlijke profiel',
           style: TextStyle(fontSize: 12, color: kBrownLight, height: 1.6)),
@@ -253,7 +253,7 @@ class _SetupWizardState extends State<SetupWizard> {
         style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800,
             color: kBrown)),
     const SizedBox(height: 12),
-    _rolKaart('👨‍👩‍👧 Familie of mantelzorger',
+    _rolKaart('👨‍👩‍👧 Kringlid of mantelzorger',
       'Ik stuur foto\'s, stemberichtjes en herinneringen naar mijn dierbare',
       () => _kiesRol('familie')),
     const SizedBox(height: 12),
@@ -291,7 +291,7 @@ class _SetupWizardState extends State<SetupWizard> {
     final titel = _rol == 'ontvanger' ? 'Log in op dit apparaat'
         : (_isInloggen ? 'Welkom terug 👋' : 'Maak je account aan');
     final uitleg = _rol == 'ontvanger'
-        ? 'Vraag je familielid om de inloggegevens van het gezamenlijke account.'
+        ? 'Vraag iemand uit de kring om de inloggegevens van het gezamenlijke account.'
         : (_isInloggen ? 'Log in met je e-mail en wachtwoord'
             : 'Eerst je gezamenlijke account. Daarna stel je samen met ons in voor wie je dit doet.');
 
@@ -313,7 +313,7 @@ class _SetupWizardState extends State<SetupWizard> {
       if (_rol == 'familie') GestureDetector(
         onTap: () => setState(() => _isInloggen = !_isInloggen),
         child: Center(child: Text(
-          _isInloggen ? 'Nieuw gezin? Maak een account aan'
+          _isInloggen ? 'Nieuwe kring? Maak een account aan'
               : 'Al een account? Log in',
           style: const TextStyle(fontSize: 13,
               fontWeight: FontWeight.w800, color: kPeach,
@@ -366,7 +366,7 @@ class _SetupWizardState extends State<SetupWizard> {
     const SizedBox(height: 24),
 
     _sectieKop('👤 Naam en informatie',
-        'De naam staat op het home-scherm. Extra info helpt familie '
+        'De naam staat op het home-scherm. Extra info helpt de kring '
         'gerichte berichten te sturen.'),
     const SizedBox(height: 12),
     _input('👵', 'Naam ontvanger', 'Bijv. Jan, Opa, Moeder', _ontvangerNaamCtrl, false),
@@ -452,7 +452,7 @@ class _SetupWizardState extends State<SetupWizard> {
         Text('🎉', style: TextStyle(fontSize: 18)),
         SizedBox(width: 10),
         Expanded(child: Text(
-          'Klaar? Klik "App starten". Je komt in het familie-portaal waar '
+          'Klaar? Klik "App starten". Je komt in het kring-portaal waar '
           'je foto\'s, stem en muziek kunt sturen.',
           style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700,
               color: kBrownLight, height: 1.4))),
