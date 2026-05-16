@@ -297,7 +297,7 @@ class _StuurTabState extends State<StuurTab> {
   Future<void> _startOpname() async {
     try {
       if (await _recorder.hasPermission()) {
-        await _recorder.start(const RecordConfig(encoder: AudioEncoder.aacLc),
+        await _recorder.start(const RecordConfig(encoder: AudioEncoder.opus),
             path: '');
         setState(() {
           _isOpnemen = true;
