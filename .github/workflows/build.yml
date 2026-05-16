@@ -113,7 +113,6 @@ jobs:
               projectId: 'onsmonent',
               authDomain: 'onsmonent.firebaseapp.com',
               storageBucket: 'onsmonent.firebasestorage.app',
-              measurementId: 'G-005V32ZWZW',
             );
 
             static const FirebaseOptions android = FirebaseOptions(
