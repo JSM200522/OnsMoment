@@ -83,8 +83,8 @@ jobs:
               config = json.load(f)
           client = config['client'][0]
           project_id = config['project_info']['project_id']
-          api_key = client['api_key'][0]['current_key']
-          app_id = client['client_info']['mobilesdk_app_id']
+          android_api_key = client['api_key'][0]['current_key']
+          android_app_id = client['client_info']['mobilesdk_app_id']
           messaging_sender_id = config['project_info']['project_number']
           storage_bucket = config['project_info']['storage_bucket']
 
@@ -107,17 +107,18 @@ jobs:
             }}
 
             static const FirebaseOptions web = FirebaseOptions(
-              apiKey: '{api_key}',
-              appId: '{app_id}',
-              messagingSenderId: '{messaging_sender_id}',
-              projectId: '{project_id}',
-              authDomain: '{project_id}.firebaseapp.com',
-              storageBucket: '{storage_bucket}',
+              apiKey: 'AIzaSyCETrCtK-bdJTyQN3j2i470mKG-SojjpIY',
+              appId: '1:1051901056201:web:ee53681d9b90ffa9476918',
+              messagingSenderId: '1051901056201',
+              projectId: 'onsmonent',
+              authDomain: 'onsmonent.firebaseapp.com',
+              storageBucket: 'onsmonent.firebasestorage.app',
+              measurementId: 'G-005V32ZWZW',
             );
 
             static const FirebaseOptions android = FirebaseOptions(
-              apiKey: '{api_key}',
-              appId: '{app_id}',
+              apiKey: '{android_api_key}',
+              appId: '{android_app_id}',
               messagingSenderId: '{messaging_sender_id}',
               projectId: '{project_id}',
               storageBucket: '{storage_bucket}',

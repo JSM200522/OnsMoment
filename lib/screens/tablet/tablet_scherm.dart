@@ -58,7 +58,13 @@ class _TabletSchermState extends State<TabletScherm> {
         .where('familieUid', isEqualTo: uid)
         .where('gezien', isEqualTo: false)
         .snapshots()
-        .listen(_verwerkMomenten);
+        .listen(_verwerkMomenten, onError: (e) {
+      debugPrint('Momenten stream-fout: $e — herstart over 3s');
+      _momentenListener?.cancel();
+      Future.delayed(const Duration(seconds: 3), () {
+        if (mounted) _startMomentenListener();
+      });
+    });
   }
 
   void _startGebruikerListener() {
@@ -72,6 +78,12 @@ class _TabletSchermState extends State<TabletScherm> {
       if (mounted && _herkenningsgeluid != nieuwGeluid) {
         setState(() => _herkenningsgeluid = nieuwGeluid);
       }
+    }, onError: (e) {
+      debugPrint('Gebruiker stream-fout: $e — herstart over 3s');
+      _gebruikerSub?.cancel();
+      Future.delayed(const Duration(seconds: 3), () {
+        if (mounted) _startGebruikerListener();
+      });
     });
   }
 
