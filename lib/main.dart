@@ -82,7 +82,16 @@ class _RouterSchermState extends State<RouterScherm> {
           builder: (context, modus, _) {
             if (!authSnap.hasData || modus == null) return const SetupWizard();
             if (modus == DeviceModusService.ONTVANGER) {
-              return const TabletScherm();
+              return ValueListenableBuilder<String?>(
+                valueListenable: DeviceModusService.weergaveModusNotifier,
+                builder: (context, weergave, _) {
+                  if (weergave == DeviceModusService.MELDINGEN) {
+                    return const FamilieScherm(alsOntvanger: true);
+                  }
+                  // 'vergrendeld' of null (backwards compat) → kiosk
+                  return const TabletScherm();
+                },
+              );
             }
             return const FamilieScherm();
           },

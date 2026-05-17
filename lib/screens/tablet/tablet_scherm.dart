@@ -4,6 +4,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
+import '../../services/device_modus_service.dart';
 import '../../theme/kleuren.dart';
 import '../../data/geluiden.dart';
 
@@ -27,11 +28,15 @@ class _TabletSchermState extends State<TabletScherm> {
   Timer? _checkTimer;
   StreamSubscription<QuerySnapshot>? _dagelijkseSub;
   List<QueryDocumentSnapshot>? _dagelijkseDocs;
+  String? _mijnApparaatId;
 
   @override
   void initState() {
     super.initState();
     WakelockPlus.enable();
+    DeviceModusService.krijgApparaatId().then((id) {
+      if (mounted) _mijnApparaatId = id;
+    });
     _startMomentenListener();
     _startGebruikerListener();
     _startDagelijksListener();
@@ -103,6 +108,12 @@ class _TabletSchermState extends State<TabletScherm> {
     final voor24uur = nu.subtract(const Duration(hours: 24));
     for (final doc in snap.docs) {
       final d = doc.data() as Map<String, dynamic>;
+      // Skip: niet voor mij bedoeld (broadcast=null = wel voor mij)
+      final aan = d['aanApparaatId'] as String?;
+      if (aan != null && aan != _mijnApparaatId) continue;
+      // Skip: eigen bericht (relevant als tablet in meldingen-modus stuurt)
+      final van = d['vanApparaatId'] as String?;
+      if (van != null && van == _mijnApparaatId) continue;
       final geplandOp = (d['geplandOp'] as Timestamp?)?.toDate();
       if (geplandOp == null) continue;
       // Toon als gepland tijd al voorbij is en niet ouder dan 24 uur

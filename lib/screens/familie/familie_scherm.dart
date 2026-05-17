@@ -9,12 +9,14 @@ import 'package:file_picker/file_picker.dart';
 import 'package:record/record.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:http/http.dart' as http;
+import '../../services/apparaat_service.dart';
 import '../../services/device_modus_service.dart';
 import '../../theme/kleuren.dart';
 import '../../data/geluiden.dart';
 
 class FamilieScherm extends StatefulWidget {
-  const FamilieScherm({super.key});
+  final bool alsOntvanger;
+  const FamilieScherm({super.key, this.alsOntvanger = false});
   @override
   State<FamilieScherm> createState() => _FamilieSchermState();
 }
@@ -49,14 +51,24 @@ class _FamilieSchermState extends State<FamilieScherm> {
         child: SafeArea(child: Row(children: [
           _navItem(0, Icons.send_rounded, 'Sturen'),
           _navItem(1, Icons.calendar_today_rounded, 'Agenda'),
-          _navItem(2, Icons.note_alt_rounded, 'Notities'),
-          _navItem(3, Icons.settings_rounded, 'Instellingen'),
+          if (!widget.alsOntvanger)
+            _navItem(2, Icons.note_alt_rounded, 'Notities'),
+          _navItem(widget.alsOntvanger ? 2 : 3,
+              Icons.settings_rounded, 'Instellingen'),
         ])),
       ),
     );
   }
 
   Widget _huidigeTab() {
+    if (widget.alsOntvanger) {
+      switch (_tab) {
+        case 0: return const StuurTab();
+        case 1: return const AgendaTab();
+        case 2: return const InstellingenTab();
+        default: return const SizedBox();
+      }
+    }
     switch (_tab) {
       case 0: return const StuurTab();
       case 1: return const AgendaTab();
@@ -110,6 +122,22 @@ class _StuurTabState extends State<StuurTab> {
   int _opnameSeconden = 0;
   Timer? _opnameTimer;
 
+  String? _gekozenApparaatId;  // null = iedereen in kring
+  String? _mijnApparaatId;
+  Future<List<Map<String, dynamic>>>? _kringFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    DeviceModusService.krijgApparaatId().then((id) {
+      if (mounted) setState(() => _mijnApparaatId = id);
+    });
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid != null) {
+      _kringFuture = ApparaatService.kringLeden(uid);
+    }
+  }
+
   @override
   void dispose() {
     _recorder.dispose();
@@ -156,6 +184,9 @@ class _StuurTabState extends State<StuurTab> {
                 onChanged: (v) => setState(() => _testModus = v),
                 activeColor: kWhite, activeTrackColor: kBlue.withOpacity(0.5)),
           ])),
+
+        const SizedBox(height: 16),
+        _adresKeuze(),
 
         const SizedBox(height: 16),
         Row(children: [
@@ -470,6 +501,8 @@ class _StuurTabState extends State<StuurTab> {
       await FirebaseFirestore.instance.collection('momenten').add({
         'familieUid': user.uid,
         'vanNaam': familieNaam,
+        'vanApparaatId': _mijnApparaatId,
+        'aanApparaatId': _gekozenApparaatId,  // null = iedereen in kring
         'type': _type,
         'mediaUrl': mediaUrl,
         'bericht': _berichtCtrl.text.trim(),
@@ -504,6 +537,47 @@ class _StuurTabState extends State<StuurTab> {
 
   void _toonFout(String m) => ScaffoldMessenger.of(context)
       .showSnackBar(SnackBar(content: Text(m), backgroundColor: Colors.red));
+
+  Widget _adresKeuze() => FutureBuilder<List<Map<String, dynamic>>>(
+    future: _kringFuture,
+    builder: (ctx, snap) {
+      final leden = (snap.data ?? [])
+          .where((l) => l['apparaatId'] != _mijnApparaatId).toList();
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+        decoration: BoxDecoration(color: kWhite,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: kPeachLight, width: 2)),
+        child: Row(children: [
+          const Text('👥', style: TextStyle(fontSize: 20)),
+          const SizedBox(width: 10),
+          Expanded(child: DropdownButton<String?>(
+            value: _gekozenApparaatId,
+            isExpanded: true,
+            underline: const SizedBox(),
+            hint: const Text('Naar wie?',
+                style: TextStyle(color: kTextMuted)),
+            items: [
+              const DropdownMenuItem<String?>(
+                value: null,
+                child: Text('Iedereen in de kring',
+                    style: TextStyle(color: kBrown,
+                        fontWeight: FontWeight.w700)),
+              ),
+              ...leden.map((l) => DropdownMenuItem<String?>(
+                value: l['apparaatId'] as String,
+                child: Text(
+                  '${l['persoonsNaam']} (${l['apparaatLabel']})',
+                  style: const TextStyle(color: kBrown,
+                      fontWeight: FontWeight.w700)),
+              )),
+            ],
+            onChanged: (val) => setState(() => _gekozenApparaatId = val),
+          )),
+        ]),
+      );
+    },
+  );
 
   Widget _typeKnop(String emoji, String label, String waarde) =>
     Expanded(child: GestureDetector(
@@ -750,6 +824,23 @@ class NotitiesTab extends StatefulWidget {
 
 class _NotitiesTabState extends State<NotitiesTab> {
   final _ctrl = TextEditingController();
+  String? _ontvangerNaam;
+
+  @override
+  void initState() {
+    super.initState();
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid != null) {
+      FirebaseFirestore.instance.collection('gebruikers').doc(uid).get()
+          .then((doc) {
+        if (!mounted) return;
+        setState(() {
+          _ontvangerNaam =
+              (doc.data()?['ontvangerNaam'] as String?) ?? 'je dierbare';
+        });
+      });
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -821,6 +912,22 @@ class _NotitiesTabState extends State<NotitiesTab> {
               });
           },
         )),
+        const SizedBox(height: 12),
+        Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: kPeachPale,
+            borderRadius: BorderRadius.circular(8)),
+          child: Row(children: [
+            const Text('🔒', style: TextStyle(fontSize: 16)),
+            const SizedBox(width: 8),
+            Expanded(child: Text(
+              'Notities zijn alleen zichtbaar voor familieleden en '
+              'mantelzorgers. ${_ontvangerNaam ?? "je dierbare"} ziet deze niet.',
+              style: const TextStyle(fontSize: 11,
+                  color: kBrownLight, height: 1.4))),
+          ]),
+        ),
       ]),
     );
   }
