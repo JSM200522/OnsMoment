@@ -328,14 +328,14 @@ class _FamilieSchermState extends State<FamilieScherm> {
   Widget _huidigeTab() {
     if (widget.alsOntvanger) {
       switch (_tab) {
-        case 0: return const StuurTab();
+        case 0: return StuurTab(alsOntvanger: widget.alsOntvanger);
         case 1: return const AgendaTab();
         case 2: return const InstellingenTab();
         default: return const SizedBox();
       }
     }
     switch (_tab) {
-      case 0: return const StuurTab();
+      case 0: return StuurTab(alsOntvanger: widget.alsOntvanger);
       case 1: return const AgendaTab();
       case 2: return const NotitiesTab();
       case 3: return const InstellingenTab();
@@ -364,7 +364,8 @@ class _FamilieSchermState extends State<FamilieScherm> {
 // STUUR TAB
 // ════════════════════════════════════════════════════════════
 class StuurTab extends StatefulWidget {
-  const StuurTab({super.key});
+  final bool alsOntvanger;
+  const StuurTab({super.key, this.alsOntvanger = false});
   @override
   State<StuurTab> createState() => _StuurTabState();
 }
@@ -390,6 +391,7 @@ class _StuurTabState extends State<StuurTab> {
   String? _gekozenApparaatId;  // null = iedereen in kring
   String? _gekozenPersoonsNaam;
   String? _mijnApparaatId;
+  String? _ontvangerNaam;
   Future<List<Map<String, dynamic>>>? _kringFuture;
 
   @override
@@ -401,6 +403,14 @@ class _StuurTabState extends State<StuurTab> {
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid != null) {
       _kringFuture = ApparaatService.kringLeden(uid);
+      FirebaseFirestore.instance.collection('gebruikers').doc(uid).get()
+          .then((doc) {
+        if (!mounted) return;
+        setState(() {
+          _ontvangerNaam =
+              (doc.data()?['ontvangerNaam'] as String?) ?? 'ontvanger';
+        });
+      });
     }
   }
 
@@ -452,9 +462,10 @@ class _StuurTabState extends State<StuurTab> {
           ])),
 
         const SizedBox(height: 16),
-        _adresKeuze(),
-
-        const SizedBox(height: 16),
+        if (widget.alsOntvanger) ...[
+          _adresKeuze(),
+          const SizedBox(height: 16),
+        ],
         Row(children: [
           _typeKnop('📷', 'Foto', 'foto'),
           const SizedBox(width: 10),
@@ -518,9 +529,11 @@ class _StuurTabState extends State<StuurTab> {
                     child: CircularProgressIndicator(color: kWhite, strokeWidth: 3))
                 : Text(
                     _testModus
-                        ? (_gekozenApparaatId == null
-                            ? '⚡ Stuur NU naar de kring'
-                            : '⚡ Stuur NU naar ${_gekozenPersoonsNaam ?? "deze persoon"}')
+                        ? (widget.alsOntvanger
+                            ? (_gekozenApparaatId == null
+                                ? '⚡ Stuur NU naar de kring'
+                                : '⚡ Stuur NU naar ${_gekozenPersoonsNaam ?? "deze persoon"}')
+                            : '⚡ Stuur NU naar ${_ontvangerNaam ?? "ontvanger"}')
                         : 'Plan en stuur 💕',
                     style: const TextStyle(fontSize: 16,
                         fontWeight: FontWeight.w800, color: kWhite))),
@@ -836,13 +849,17 @@ class _StuurTabState extends State<StuurTab> {
                     style: TextStyle(color: kBrown,
                         fontWeight: FontWeight.w700)),
               ),
-              ...leden.map((l) => DropdownMenuItem<String?>(
-                value: l['apparaatId'] as String,
-                child: Text(
-                  l['persoonsNaam'] as String,
-                  style: const TextStyle(color: kBrown,
-                      fontWeight: FontWeight.w700)),
-              )),
+              ...leden.map((l) {
+                final isOntv = l['modus'] == 'ontvanger';
+                final label = isOntv
+                    ? '${l['persoonsNaam']} (ontvanger)'
+                    : l['persoonsNaam'] as String;
+                return DropdownMenuItem<String?>(
+                  value: l['apparaatId'] as String,
+                  child: Text(label, style: const TextStyle(
+                      color: kBrown, fontWeight: FontWeight.w700)),
+                );
+              }),
             ],
             onChanged: (val) => setState(() {
               _gekozenApparaatId = val;
