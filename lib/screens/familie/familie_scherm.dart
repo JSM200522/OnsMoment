@@ -24,6 +24,263 @@ class FamilieScherm extends StatefulWidget {
 class _FamilieSchermState extends State<FamilieScherm> {
   int _tab = 0;
 
+  final _audioPlayer = AudioPlayer();
+  final _geluidPlayer = AudioPlayer();
+  StreamSubscription<QuerySnapshot>? _momentenListener;
+  StreamSubscription<DocumentSnapshot>? _gebruikerSub;
+  Map<String, dynamic>? _huidigPopup;
+  String? _huidigPopupId;
+  String _herkenningsgeluid = 'twinkel';
+  String? _mijnApparaatId;
+  Timer? _autoSluitTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    DeviceModusService.krijgApparaatId().then((id) {
+      if (mounted) _mijnApparaatId = id;
+    });
+    _startMomentenListener();
+    _startGebruikerListener();
+    _audioPlayer.playerStateStream.listen((state) {
+      if (state.processingState == ProcessingState.completed
+          && (_huidigPopup?['type'] == 'stem'
+              || _huidigPopup?['type'] == 'lied')) {
+        _sluitPopup();
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _autoSluitTimer?.cancel();
+    _momentenListener?.cancel();
+    _gebruikerSub?.cancel();
+    _audioPlayer.dispose();
+    _geluidPlayer.dispose();
+    super.dispose();
+  }
+
+  void _startMomentenListener() {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return;
+    _momentenListener = FirebaseFirestore.instance.collection('momenten')
+        .where('familieUid', isEqualTo: uid)
+        .where('gezien', isEqualTo: false)
+        .snapshots()
+        .listen(_verwerkMomenten);
+  }
+
+  void _startGebruikerListener() {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return;
+    _gebruikerSub = FirebaseFirestore.instance
+        .collection('gebruikers').doc(uid).snapshots()
+        .listen((doc) {
+      final data = doc.data() as Map<String, dynamic>?;
+      final nieuwGeluid = data?['herkenningsgeluid'] as String? ?? 'twinkel';
+      if (mounted && _herkenningsgeluid != nieuwGeluid) {
+        setState(() => _herkenningsgeluid = nieuwGeluid);
+      }
+    });
+  }
+
+  void _verwerkMomenten(QuerySnapshot snap) {
+    if (_huidigPopupId != null) return;
+    if (_mijnApparaatId == null) return;
+    final nu = DateTime.now();
+    final voor24uur = nu.subtract(const Duration(hours: 24));
+    for (final doc in snap.docs) {
+      final d = doc.data() as Map<String, dynamic>;
+      // Niet voor mij bedoeld (specifiek aan ander apparaat)
+      final aan = d['aanApparaatId'] as String?;
+      if (aan != null && aan != _mijnApparaatId) continue;
+      // Eigen bericht skip
+      final van = d['vanApparaatId'] as String?;
+      if (van != null && van == _mijnApparaatId) continue;
+      // In gewone familie-modus: alleen popups van ontvanger-apparaten
+      // (familie→familie geeft geen popup)
+      if (!widget.alsOntvanger) {
+        final vanModus = d['vanApparaatModus'] as String?;
+        if (vanModus != 'ontvanger') continue;
+      }
+      final geplandOp = (d['geplandOp'] as Timestamp?)?.toDate();
+      if (geplandOp == null) continue;
+      if (geplandOp.isBefore(nu) && geplandOp.isAfter(voor24uur)) {
+        _toonPopup(doc.id, d);
+        return;
+      }
+    }
+  }
+
+  Future<void> _toonPopup(String id, Map<String, dynamic> d) async {
+    if (_huidigPopupId != null) return;
+    _huidigPopupId = id;
+
+    try {
+      await FirebaseFirestore.instance.collection('momenten')
+          .doc(id).update({'gezien': true});
+    } catch (_) {}
+
+    final geluidAsset = kGeluidAssets[_herkenningsgeluid];
+    if (geluidAsset != null) {
+      bool geluidGespeeld = false;
+      try {
+        await _geluidPlayer.setAsset(geluidAsset);
+        await _geluidPlayer.play();
+        geluidGespeeld = true;
+      } catch (_) {}
+      if (geluidGespeeld) {
+        await Future.delayed(const Duration(milliseconds: 1200));
+      }
+    }
+
+    if (!mounted) {
+      _huidigPopupId = null;
+      return;
+    }
+    setState(() {
+      _huidigPopup = d;
+    });
+
+    if (d['type'] == 'stem' || d['type'] == 'lied') {
+      final url = d['mediaUrl'] ?? '';
+      if (url.isNotEmpty) {
+        try {
+          await _audioPlayer.setUrl(url);
+          await _audioPlayer.play();
+        } catch (_) {}
+      }
+    }
+    _autoSluitTimer?.cancel();
+    _autoSluitTimer = Timer(const Duration(seconds: 60), _sluitPopup);
+  }
+
+  Future<void> _sluitPopup() async {
+    await _audioPlayer.stop();
+    _autoSluitTimer?.cancel();
+    if (mounted) {
+      setState(() {
+        _huidigPopup = null;
+        _huidigPopupId = null;
+      });
+    }
+  }
+
+  Widget _popupOverlay() {
+    final d = _huidigPopup!;
+    final type = d['type'] ?? '';
+    final vanNaam = d['vanNaam'] ?? 'Een naaste';
+    final geplandOp = (d['geplandOp'] as Timestamp?)?.toDate();
+    return Container(color: kBrown.withOpacity(0.94),
+      child: SafeArea(child: Padding(
+        padding: const EdgeInsets.all(20),
+        child: Center(child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 600),
+          child: SingleChildScrollView(child: Container(
+            decoration: BoxDecoration(color: kCream,
+                borderRadius: BorderRadius.circular(28),
+                boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.3),
+                    blurRadius: 40)]),
+            child: Padding(padding: const EdgeInsets.all(28),
+              child: Column(mainAxisSize: MainAxisSize.min, children: [
+                Text(_emojiVoorType(type), style: const TextStyle(fontSize: 48)),
+                const SizedBox(height: 8),
+                Text('$vanNaam stuurt je iets liefs 💕',
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(fontSize: 18,
+                        fontWeight: FontWeight.w800, color: kBrown)),
+                const SizedBox(height: 20),
+                _popupInhoud(d),
+                if (geplandOp != null) ...[
+                  const SizedBox(height: 16),
+                  Text(_formatPopupTijd(geplandOp),
+                      style: const TextStyle(fontSize: 12,
+                          color: kTextMuted, fontStyle: FontStyle.italic)),
+                ],
+                const SizedBox(height: 16),
+                Text(type == 'stem' || type == 'lied'
+                    ? 'Sluit automatisch wanneer klaar'
+                    : 'Tik om te sluiten',
+                    style: const TextStyle(fontSize: 11, color: kTextMuted)),
+              ])),
+          ))),
+        )),
+      ),
+    );
+  }
+
+  Widget _popupInhoud(Map<String, dynamic> d) {
+    final type = d['type'] ?? '';
+    final bericht = d['bericht'] ?? '';
+    final url = d['mediaUrl'] ?? '';
+    switch (type) {
+      case 'foto':
+        return Column(mainAxisSize: MainAxisSize.min, children: [
+          if (url.isNotEmpty) ClipRRect(
+            borderRadius: BorderRadius.circular(16),
+            child: Image.network(url,
+              height: 280, fit: BoxFit.cover,
+              loadingBuilder: (c, child, prog) {
+                if (prog == null) return child;
+                return Container(height: 280, color: kPeachPale,
+                  child: const Center(
+                      child: CircularProgressIndicator(color: kPeach)));
+              },
+              errorBuilder: (c, e, s) => Container(
+                height: 280, color: kPeachPale,
+                child: const Center(child: Icon(Icons.broken_image,
+                    size: 80, color: kPeach))))),
+          if (bericht.isNotEmpty) ...[
+            const SizedBox(height: 16),
+            Text(bericht, textAlign: TextAlign.center,
+                style: const TextStyle(fontSize: 18,
+                    color: kBrown, height: 1.4)),
+          ],
+        ]);
+      case 'stem':
+      case 'lied':
+        return Column(mainAxisSize: MainAxisSize.min, children: [
+          Container(padding: const EdgeInsets.all(20),
+            decoration: const BoxDecoration(color: kPeachPale,
+                shape: BoxShape.circle),
+            child: const Icon(Icons.volume_up_rounded,
+                color: kPeach, size: 72)),
+          const SizedBox(height: 12),
+          Text(type == 'stem' ? '🎙️ Stembericht' : '🎵 Liedje',
+              style: const TextStyle(fontSize: 16,
+                  fontWeight: FontWeight.w800, color: kBrown)),
+          if (bericht.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            Text(bericht, textAlign: TextAlign.center,
+                style: const TextStyle(fontSize: 16,
+                    color: kBrownLight, height: 1.4)),
+          ],
+        ]);
+      case 'tekst':
+        return Text(bericht.isEmpty ? 'Een lief bericht voor jou' : bericht,
+            textAlign: TextAlign.center,
+            style: const TextStyle(fontSize: 22, color: kBrown,
+                height: 1.5, fontWeight: FontWeight.w600));
+      default:
+        return const SizedBox();
+    }
+  }
+
+  String _emojiVoorType(String type) {
+    switch (type) {
+      case 'foto': return '📷';
+      case 'stem': return '🎙️';
+      case 'lied': return '🎵';
+      case 'tekst': return '✏️';
+      default: return '💕';
+    }
+  }
+
+  String _formatPopupTijd(DateTime d) =>
+      'Verstuurd om ${d.hour.toString().padLeft(2, '0')}:'
+      '${d.minute.toString().padLeft(2, '0')}';
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -43,7 +300,15 @@ class _FamilieSchermState extends State<FamilieScherm> {
           ),
         ],
       ),
-      body: _huidigeTab(),
+      body: Stack(children: [
+        _huidigeTab(),
+        if (_huidigPopup != null) Positioned.fill(
+          child: GestureDetector(
+            onTap: _sluitPopup,
+            child: _popupOverlay(),
+          ),
+        ),
+      ]),
       bottomNavigationBar: Container(
         decoration: BoxDecoration(color: kWhite,
             boxShadow: [BoxShadow(color: kBrown.withOpacity(0.08),
@@ -574,7 +839,7 @@ class _StuurTabState extends State<StuurTab> {
               ...leden.map((l) => DropdownMenuItem<String?>(
                 value: l['apparaatId'] as String,
                 child: Text(
-                  '${l['persoonsNaam']} (${l['apparaatLabel']})',
+                  l['persoonsNaam'] as String,
                   style: const TextStyle(color: kBrown,
                       fontWeight: FontWeight.w700)),
               )),
@@ -970,10 +1235,34 @@ class _NotitiesTabState extends State<NotitiesTab> {
 // ════════════════════════════════════════════════════════════
 // INSTELLINGEN TAB
 // ════════════════════════════════════════════════════════════
-class InstellingenTab extends StatelessWidget {
+class InstellingenTab extends StatefulWidget {
   const InstellingenTab({super.key});
   @override
+  State<InstellingenTab> createState() => _InstellingenTabState();
+}
+
+class _InstellingenTabState extends State<InstellingenTab> {
+  String? _ontvangerNaam;
+
+  @override
+  void initState() {
+    super.initState();
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid != null) {
+      FirebaseFirestore.instance.collection('gebruikers').doc(uid).get()
+          .then((doc) {
+        if (!mounted) return;
+        setState(() {
+          _ontvangerNaam =
+              (doc.data()?['ontvangerNaam'] as String?) ?? 'je dierbare';
+        });
+      });
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final naam = _ontvangerNaam ?? 'je dierbare';
     return Padding(padding: const EdgeInsets.all(20),
       child: ListView(children: [
         const Text('Instellingen',
@@ -992,6 +1281,11 @@ class InstellingenTab extends StatelessWidget {
             'Naam, foto, lievelingsdingen en herkenningsgeluid', () {
           Navigator.push(context, MaterialPageRoute(
               builder: (c) => const OntvangerInfoScherm()));
+        }),
+        _item('📥', 'Ontvangen berichten van $naam',
+            'Alle berichten die je dierbare heeft gestuurd', () {
+          Navigator.push(context, MaterialPageRoute(
+              builder: (c) => const OntvangenBerichtenScherm()));
         }),
         _item('🔄', 'Wissel naar Ontvanger-modus',
             'Verander dit apparaat naar ontvanger-weergave', () =>
@@ -1570,4 +1864,211 @@ class _BytesAudioSource extends StreamAudioSource {
       contentType: _contentType,
     );
   }
+}
+
+// ════════════════════════════════════════════════════════════
+// ONTVANGEN BERICHTEN SCHERM
+// ════════════════════════════════════════════════════════════
+class OntvangenBerichtenScherm extends StatefulWidget {
+  const OntvangenBerichtenScherm({super.key});
+  @override
+  State<OntvangenBerichtenScherm> createState() =>
+      _OntvangenBerichtenSchermState();
+}
+
+class _OntvangenBerichtenSchermState extends State<OntvangenBerichtenScherm> {
+  String _ontvangerNaam = 'je dierbare';
+  List<String>? _ontvangerApparaatIds;
+
+  @override
+  void initState() {
+    super.initState();
+    _laad();
+  }
+
+  Future<void> _laad() async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return;
+    try {
+      final naamDoc = await FirebaseFirestore.instance
+          .collection('gebruikers').doc(uid).get();
+      final leden = await ApparaatService.kringLeden(uid);
+      if (!mounted) return;
+      setState(() {
+        _ontvangerNaam = (naamDoc.data()?['ontvangerNaam'] as String?)
+                         ?? 'je dierbare';
+        _ontvangerApparaatIds = leden
+            .where((l) => l['modus'] == 'ontvanger')
+            .map((l) => l['apparaatId'] as String)
+            .toList();
+      });
+    } catch (_) {
+      if (mounted) setState(() => _ontvangerApparaatIds = []);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    return Scaffold(
+      backgroundColor: kCream,
+      appBar: AppBar(
+        backgroundColor: Colors.transparent, elevation: 0,
+        iconTheme: const IconThemeData(color: kBrown),
+        title: Text('Ontvangen van $_ontvangerNaam',
+            style: const TextStyle(color: kBrown,
+                fontWeight: FontWeight.w900)),
+      ),
+      body: uid == null
+          ? const SizedBox()
+          : (_ontvangerApparaatIds == null
+              ? const Center(child: CircularProgressIndicator(color: kPeach))
+              : (_ontvangerApparaatIds!.isEmpty
+                  ? _leeg('Er is nog geen ontvanger-apparaat in deze kring')
+                  : StreamBuilder<QuerySnapshot>(
+                      stream: FirebaseFirestore.instance.collection('momenten')
+                          .where('familieUid', isEqualTo: uid)
+                          .where('vanApparaatId',
+                              whereIn: _ontvangerApparaatIds!.take(10).toList())
+                          .snapshots(),
+                      builder: (ctx, snap) {
+                        if (!snap.hasData) {
+                          return const Center(
+                              child: CircularProgressIndicator(color: kPeach));
+                        }
+                        final docs = snap.data!.docs.toList()
+                          ..sort((a, b) {
+                            final ta = (a.data() as Map)['verstuurdOp']
+                                as Timestamp?;
+                            final tb = (b.data() as Map)['verstuurdOp']
+                                as Timestamp?;
+                            if (ta == null || tb == null) return 0;
+                            return tb.compareTo(ta);
+                          });
+                        if (docs.isEmpty) {
+                          return _leeg('Nog geen berichten van $_ontvangerNaam');
+                        }
+                        return ListView(
+                          padding: const EdgeInsets.all(20),
+                          children: docs.map((doc) => _bouwItem(
+                              context, doc.id, doc.data() as Map<String, dynamic>))
+                              .toList(),
+                        );
+                      },
+                    ))),
+    );
+  }
+
+  Widget _leeg(String tekst) => Center(
+    child: Padding(padding: const EdgeInsets.all(40),
+      child: Text(tekst, textAlign: TextAlign.center,
+          style: const TextStyle(fontSize: 14, color: kTextMuted))),
+  );
+
+  Widget _bouwItem(BuildContext context, String id, Map<String, dynamic> d) {
+    final type = d['type'] as String? ?? '';
+    final tekst = (d['bericht'] as String? ?? '').trim();
+    final verstuurd = (d['verstuurdOp'] as Timestamp?)?.toDate();
+    final gezien = d['gezien'] == true;
+    return GestureDetector(
+      onTap: () => _toonDetail(context, d),
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 10),
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(color: kWhite,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: kPeachLight, width: 2)),
+        child: Row(children: [
+          Text(_emoji(type), style: const TextStyle(fontSize: 28)),
+          const SizedBox(width: 12),
+          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(_label(type), style: const TextStyle(
+                  fontSize: 14, fontWeight: FontWeight.w800, color: kBrown)),
+              if (tekst.isNotEmpty) Padding(
+                padding: const EdgeInsets.only(top: 2),
+                child: Text(tekst,
+                    maxLines: 2, overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontSize: 12, color: kTextMuted)),
+              ),
+              if (verstuurd != null) Padding(
+                padding: const EdgeInsets.only(top: 4),
+                child: Text(_formatTijd(verstuurd),
+                    style: const TextStyle(fontSize: 10, color: kTextMuted)),
+              ),
+          ])),
+          if (!gezien) Container(
+            width: 10, height: 10,
+            decoration: const BoxDecoration(
+                color: kPeach, shape: BoxShape.circle)),
+        ]),
+      ),
+    );
+  }
+
+  void _toonDetail(BuildContext context, Map<String, dynamic> d) {
+    showDialog(context: context, builder: (ctx) => Dialog(
+      backgroundColor: kCream,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      child: Padding(padding: const EdgeInsets.all(20),
+        child: _detailInhoud(d)),
+    ));
+  }
+
+  Widget _detailInhoud(Map<String, dynamic> d) {
+    final type = d['type'] as String? ?? '';
+    final bericht = (d['bericht'] as String? ?? '').trim();
+    final url = d['mediaUrl'] as String? ?? '';
+    if (type == 'foto') {
+      return Column(mainAxisSize: MainAxisSize.min, children: [
+        if (url.isNotEmpty) ClipRRect(
+          borderRadius: BorderRadius.circular(12),
+          child: Image.network(url, fit: BoxFit.cover)),
+        if (bericht.isNotEmpty) ...[
+          const SizedBox(height: 12),
+          Text(bericht, style: const TextStyle(fontSize: 14, color: kBrown)),
+        ],
+      ]);
+    }
+    if (type == 'tekst') {
+      return Text(bericht.isEmpty ? 'Een lief bericht' : bericht,
+          style: const TextStyle(fontSize: 18, color: kBrown));
+    }
+    return Column(mainAxisSize: MainAxisSize.min, children: [
+      Text(_emoji(type), style: const TextStyle(fontSize: 48)),
+      const SizedBox(height: 12),
+      Text(_label(type), style: const TextStyle(fontSize: 16,
+          fontWeight: FontWeight.w800, color: kBrown)),
+      if (bericht.isNotEmpty) ...[
+        const SizedBox(height: 12),
+        Text(bericht, style: const TextStyle(fontSize: 14, color: kBrown)),
+      ],
+    ]);
+  }
+
+  String _emoji(String type) {
+    switch (type) {
+      case 'foto': return '📷';
+      case 'stem': return '🎙️';
+      case 'lied': return '🎵';
+      case 'tekst': return '✏️';
+      default: return '💕';
+    }
+  }
+
+  String _label(String type) {
+    switch (type) {
+      case 'foto': return 'Foto';
+      case 'stem': return 'Stem-bericht';
+      case 'lied': return 'Liedje';
+      case 'tekst': return 'Tekst';
+      default: return 'Bericht';
+    }
+  }
+
+  String _formatTijd(DateTime t) =>
+      '${t.day.toString().padLeft(2, '0')}-'
+      '${t.month.toString().padLeft(2, '0')} '
+      '${t.hour.toString().padLeft(2, '0')}:'
+      '${t.minute.toString().padLeft(2, '0')}';
 }
