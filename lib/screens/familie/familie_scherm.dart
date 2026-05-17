@@ -123,6 +123,7 @@ class _StuurTabState extends State<StuurTab> {
   Timer? _opnameTimer;
 
   String? _gekozenApparaatId;  // null = iedereen in kring
+  String? _gekozenPersoonsNaam;
   String? _mijnApparaatId;
   Future<List<Map<String, dynamic>>>? _kringFuture;
 
@@ -250,8 +251,12 @@ class _StuurTabState extends State<StuurTab> {
               child: Center(child: _bezig
                 ? const SizedBox(width: 22, height: 22,
                     child: CircularProgressIndicator(color: kWhite, strokeWidth: 3))
-                : Text(_testModus ? '⚡ Stuur NU naar ontvanger'
-                    : 'Plan en stuur 💕',
+                : Text(
+                    _testModus
+                        ? (_gekozenApparaatId == null
+                            ? '⚡ Stuur NU naar de kring'
+                            : '⚡ Stuur NU naar ${_gekozenPersoonsNaam ?? "deze persoon"}')
+                        : 'Plan en stuur 💕',
                     style: const TextStyle(fontSize: 16,
                         fontWeight: FontWeight.w800, color: kWhite))),
             ),
@@ -502,6 +507,8 @@ class _StuurTabState extends State<StuurTab> {
         'familieUid': user.uid,
         'vanNaam': familieNaam,
         'vanApparaatId': _mijnApparaatId,
+        'vanApparaatModus':
+            DeviceModusService.notifier.value ?? 'familie',
         'aanApparaatId': _gekozenApparaatId,  // null = iedereen in kring
         'type': _type,
         'mediaUrl': mediaUrl,
@@ -572,7 +579,17 @@ class _StuurTabState extends State<StuurTab> {
                       fontWeight: FontWeight.w700)),
               )),
             ],
-            onChanged: (val) => setState(() => _gekozenApparaatId = val),
+            onChanged: (val) => setState(() {
+              _gekozenApparaatId = val;
+              if (val == null) {
+                _gekozenPersoonsNaam = null;
+              } else {
+                final geko = leden.firstWhere(
+                    (l) => l['apparaatId'] == val,
+                    orElse: () => <String, dynamic>{});
+                _gekozenPersoonsNaam = geko['persoonsNaam'] as String?;
+              }
+            }),
           )),
         ]),
       );

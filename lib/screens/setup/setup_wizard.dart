@@ -608,10 +608,21 @@ class _SetupWizardState extends State<SetupWizard> {
     try {
       await FirebaseAuth.instance.signInWithEmailAndPassword(
           email: _emailCtrl.text.trim(), password: _wachtwoordCtrl.text);
-      // Niet meteen modus zetten — gebruiker doorloopt eerst stap 2
-      // (persoonsnaam) zodat we apparaat kunnen registreren met naam.
-      _naamCtrl.clear();
-      if (mounted) setState(() => _stap = 2);
+      final uid = FirebaseAuth.instance.currentUser!.uid;
+      final apparaatId = await DeviceModusService.krijgApparaatId();
+      final doc = await FirebaseFirestore.instance
+          .collection('gebruikers').doc(uid)
+          .collection('apparaten').doc(apparaatId).get();
+      if (doc.exists) {
+        // Bekend apparaat — skip naam-vraag, direct door
+        ApparaatService.updateLaatstActief(
+            familieUid: uid, apparaatId: apparaatId);
+        await DeviceModusService.zet(DeviceModusService.FAMILIE);
+      } else {
+        // Eerste keer op dit apparaat — vraag naam in stap 2
+        _naamCtrl.clear();
+        if (mounted) setState(() => _stap = 2);
+      }
     } catch (e) {
       _toonFout('Inloggen mislukt. Klopt e-mail en wachtwoord?');
     } finally {
@@ -713,9 +724,23 @@ class _SetupWizardState extends State<SetupWizard> {
     try {
       await FirebaseAuth.instance.signInWithEmailAndPassword(
           email: _emailCtrl.text.trim(), password: _wachtwoordCtrl.text);
-      // Niet meteen modus zetten — gebruiker kiest eerst weergaveModus
-      // (vergrendeld of meldingen) in stap 2.
-      if (mounted) setState(() => _stap = 2);
+      final uid = FirebaseAuth.instance.currentUser!.uid;
+      final apparaatId = await DeviceModusService.krijgApparaatId();
+      final doc = await FirebaseFirestore.instance
+          .collection('gebruikers').doc(uid)
+          .collection('apparaten').doc(apparaatId).get();
+      if (doc.exists) {
+        // Bekend apparaat — lees opgeslagen weergaveModus, geen keuze nodig
+        final wm = (doc.data()?['weergaveModus'] as String?)
+                   ?? DeviceModusService.VERGRENDELD;
+        ApparaatService.updateLaatstActief(
+            familieUid: uid, apparaatId: apparaatId);
+        await DeviceModusService.zetWeergaveModus(wm);
+        await DeviceModusService.zet(DeviceModusService.ONTVANGER);
+      } else {
+        // Eerste keer op dit apparaat — keuze in stap 2
+        if (mounted) setState(() => _stap = 2);
+      }
     } catch (e) {
       _toonFout('Inloggen mislukt. Klopt e-mail en wachtwoord?');
     } finally {
@@ -784,18 +809,27 @@ class _SetupWizardState extends State<SetupWizard> {
           _modusKaart(
             emoji: '🔒',
             titel: 'Alleen voor Ons Moment',
-            uitleg: 'Het apparaat wordt vergrendeld. $naam kan geen andere '
-                'apps openen, niet bellen, niet internetten.',
+            uitleg: 'Voor $naam die niet meer zelf op een apparaat kan '
+                'reageren.\n\n'
+                'Het apparaat:\n'
+                '- Toont alleen Ons Moment\n'
+                '- Kan geen andere apps openen, niet bellen\n'
+                '- $naam kan kijken en luisteren, maar niet terugsturen\n\n'
+                'Kies dit voor gevorderde dementie of als $naam het '
+                'apparaat niet zelf gebruikt.',
             onTap: () => _voltooiOntvanger(DeviceModusService.VERGRENDELD),
           ),
           const SizedBox(height: 12),
           _modusKaart(
             emoji: '📱',
             titel: 'Ook voor andere dingen',
-            uitleg: '$naam gebruikt het apparaat als normaal. Berichten '
-                'komen binnen als melding.\n\nLet op: $naam kan zelf sturen '
-                'en de agenda zien, maar de notities-tab is voor $naam '
-                'verborgen. Dit beschermt zorgcommunicatie tussen familie.',
+            uitleg: 'Voor $naam die nog wel zelf wil reageren.\n\n'
+                '$naam kan:\n'
+                '- Foto\'s, stem-berichten en muziek terugsturen\n'
+                '- De agenda zien\n'
+                '- Het apparaat gebruiken voor andere apps\n\n'
+                'Berichten komen binnen als melding.\n\n'
+                'Notities tussen familie zijn voor $naam verborgen.',
             onTap: () => _voltooiOntvanger(DeviceModusService.MELDINGEN),
           ),
         ]);
