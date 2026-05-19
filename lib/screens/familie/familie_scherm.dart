@@ -33,12 +33,16 @@ class _FamilieSchermState extends State<FamilieScherm> {
   String _herkenningsgeluid = 'twinkel';
   String? _mijnApparaatId;
   Timer? _autoSluitTimer;
+  QuerySnapshot? _laatsteSnap;
 
   @override
   void initState() {
     super.initState();
     DeviceModusService.krijgApparaatId().then((id) {
-      if (mounted) _mijnApparaatId = id;
+      if (!mounted) return;
+      _mijnApparaatId = id;
+      // Snap die binnenkwam vóór apparaatId bekend was alsnog verwerken.
+      if (_laatsteSnap != null) _verwerkMomenten(_laatsteSnap!);
     });
     _startMomentenListener();
     _startGebruikerListener();
@@ -86,6 +90,7 @@ class _FamilieSchermState extends State<FamilieScherm> {
   }
 
   void _verwerkMomenten(QuerySnapshot snap) {
+    _laatsteSnap = snap;
     if (_huidigPopupId != null) return;
     if (_mijnApparaatId == null) return;
     final nu = DateTime.now();
@@ -164,6 +169,10 @@ class _FamilieSchermState extends State<FamilieScherm> {
         _huidigPopup = null;
         _huidigPopupId = null;
       });
+      // Berichten die tijdens deze popup binnenkwamen zijn weggegooid door
+      // de early-return in _verwerkMomenten. Herverwerk de laatste snap nu
+      // het slot vrij is — voorkomt off-by-one delay.
+      if (_laatsteSnap != null) _verwerkMomenten(_laatsteSnap!);
     }
   }
 
@@ -845,8 +854,14 @@ class _StuurTabState extends State<StuurTab> {
           ]),
         );
       }
-      final leden = snap.data!
-          .where((l) => l['apparaatId'] != _mijnApparaatId).toList();
+      // In alsOntvanger-modus: sluit álle ontvanger-apparaten uit, niet
+      // alleen het eigen apparaat (meerdere ontvanger-sessies kunnen
+      // dezelfde modus delen met andere apparaatIds).
+      final leden = snap.data!.where((l) {
+        if (l['apparaatId'] == _mijnApparaatId) return false;
+        if (widget.alsOntvanger && l['modus'] == 'ontvanger') return false;
+        return true;
+      }).toList();
       return Container(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
         decoration: BoxDecoration(color: kWhite,

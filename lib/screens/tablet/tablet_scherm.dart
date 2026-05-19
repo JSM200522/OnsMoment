@@ -29,13 +29,17 @@ class _TabletSchermState extends State<TabletScherm> {
   StreamSubscription<QuerySnapshot>? _dagelijkseSub;
   List<QueryDocumentSnapshot>? _dagelijkseDocs;
   String? _mijnApparaatId;
+  QuerySnapshot? _laatsteSnap;
 
   @override
   void initState() {
     super.initState();
     WakelockPlus.enable();
     DeviceModusService.krijgApparaatId().then((id) {
-      if (mounted) _mijnApparaatId = id;
+      if (!mounted) return;
+      _mijnApparaatId = id;
+      // Snap die binnenkwam vóór apparaatId bekend was alsnog verwerken.
+      if (_laatsteSnap != null) _verwerkMomenten(_laatsteSnap!);
     });
     _startMomentenListener();
     _startGebruikerListener();
@@ -103,6 +107,7 @@ class _TabletSchermState extends State<TabletScherm> {
   }
 
   void _verwerkMomenten(QuerySnapshot snap) {
+    _laatsteSnap = snap;
     if (_huidigPopupId != null) return;
     final nu = DateTime.now();
     final voor24uur = nu.subtract(const Duration(hours: 24));
@@ -220,6 +225,10 @@ class _TabletSchermState extends State<TabletScherm> {
         _huidigPopup = null;
         _huidigPopupId = null;
       });
+      // Berichten die tijdens deze popup binnenkwamen zijn weggegooid door
+      // de early-return in _verwerkMomenten. Herverwerk de laatste snap nu
+      // het slot vrij is — voorkomt off-by-one delay.
+      if (_laatsteSnap != null) _verwerkMomenten(_laatsteSnap!);
     }
   }
 
