@@ -217,13 +217,17 @@ class _TabletSchermState extends State<TabletScherm> {
 
   Future<void> _toonEenmaligPopup(
       String id, Map<String, dynamic> d) async {
+    // Hergebruik 'dagelijks' popup-rendering + audio-flow: emoji + label,
+    // standaard bel of eigen audio. Identiek aan dagelijks moment.
+    final aangepasteAudio = d['aangepasteAudioUrl'] as String? ?? '';
     final synthetic = <String, dynamic>{
-      'type': 'eenmalig',
+      'type': 'dagelijks',
       'emoji': d['emoji'],
       'label': d['label'],
-      'bericht': d['inhoud'],
+      'mediaUrl': aangepasteAudio,
       'vanNaam': 'Een naaste',
-      'geplandOp': d['geplandOp'],
+      'geplandOp': Timestamp.now(),
+      'heeftAangepasteAudio': aangepasteAudio.isNotEmpty,
     };
     await _toonPopup('eenmalig_$id', synthetic);
   }
@@ -648,22 +652,6 @@ class _TabletSchermState extends State<TabletScherm> {
               style: const TextStyle(fontSize: 28,
                   fontWeight: FontWeight.w800, color: kBrown)),
         ]);
-      case 'eenmalig':
-        return Column(mainAxisSize: MainAxisSize.min, children: [
-          Text(d['emoji'] as String? ?? '🎯',
-              style: const TextStyle(fontSize: 80)),
-          const SizedBox(height: 12),
-          Text(d['label'] as String? ?? '',
-              textAlign: TextAlign.center,
-              style: const TextStyle(fontSize: 24,
-                  fontWeight: FontWeight.w800, color: kBrown)),
-          if (bericht.isNotEmpty) ...[
-            const SizedBox(height: 12),
-            Text(bericht, textAlign: TextAlign.center,
-                style: const TextStyle(fontSize: 18,
-                    color: kBrown, height: 1.4)),
-          ],
-        ]);
       default:
         return const SizedBox();
     }
@@ -676,7 +664,6 @@ class _TabletSchermState extends State<TabletScherm> {
       case 'lied': return '🎵';
       case 'tekst': return '✏️';
       case 'dagelijks': return '⏰';
-      case 'eenmalig': return '🎯';
       default: return '💕';
     }
   }

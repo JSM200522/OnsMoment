@@ -12,6 +12,7 @@ class DagelijksAudioService {
     required String momentId,
     required Uint8List bytes,
     required String type,
+    String collectie = 'dagelijkse_momenten',
   }) async {
     if (type != 'stem' && type != 'mp3') return false;
     try {
@@ -23,7 +24,7 @@ class DagelijksAudioService {
           .child(familieUid).child('$momentId.$ext');
       await ref.putData(bytes, SettableMetadata(contentType: mime));
       final url = await ref.getDownloadURL();
-      await FirebaseFirestore.instance.collection('dagelijkse_momenten')
+      await FirebaseFirestore.instance.collection(collectie)
           .doc(momentId).update({
         'aangepasteAudioUrl': url,
         'aangepasteAudioType': type,
@@ -39,10 +40,11 @@ class DagelijksAudioService {
   static Future<bool> reset({
     required String familieUid,
     required String momentId,
+    String collectie = 'dagelijkse_momenten',
   }) async {
     try {
       await _verwijderBestaand(familieUid, momentId);
-      await FirebaseFirestore.instance.collection('dagelijkse_momenten')
+      await FirebaseFirestore.instance.collection(collectie)
           .doc(momentId).update({
         'aangepasteAudioUrl': FieldValue.delete(),
         'aangepasteAudioType': FieldValue.delete(),
