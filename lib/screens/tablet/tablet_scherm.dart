@@ -29,6 +29,8 @@ class _TabletSchermState extends State<TabletScherm> {
   Timer? _checkTimer;
   StreamSubscription<QuerySnapshot>? _dagelijkseSub;
   List<QueryDocumentSnapshot>? _dagelijkseDocs;
+  StreamSubscription<QuerySnapshot>? _eenmaligSub;
+  List<QueryDocumentSnapshot>? _eenmaligDocs;
   String? _mijnApparaatId;
 
   @override
@@ -43,6 +45,7 @@ class _TabletSchermState extends State<TabletScherm> {
       _startMomentenListener();
       _startGebruikerListener();
       _startDagelijksListener();
+      _startEenmaligListener();
     });
     _checkTimer = Timer.periodic(
         const Duration(seconds: 30), (_) => _checkGeplandeMomenten());
@@ -64,6 +67,7 @@ class _TabletSchermState extends State<TabletScherm> {
     _momentenListener?.cancel();
     _gebruikerSub?.cancel();
     _dagelijkseSub?.cancel();
+    _eenmaligSub?.cancel();
     _audioPlayer.dispose();
     _geluidPlayer.dispose();
     WakelockPlus.disable();
@@ -117,6 +121,17 @@ class _TabletSchermState extends State<TabletScherm> {
         .listen((snap) => _dagelijkseDocs = snap.docs);
   }
 
+  void _startEenmaligListener() {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return;
+    _eenmaligSub = FirebaseFirestore.instance
+        .collection('gepland_momenten')
+        .where('familieUid', isEqualTo: uid)
+        .where('actief', isEqualTo: true)
+        .snapshots()
+        .listen((snap) => _eenmaligDocs = snap.docs);
+  }
+
   void _verwerkMomenten(QuerySnapshot snap) {
     _debugLog('📨 Snap: ${snap.docs.length} momenten');
     if (_huidigPopupId != null) return;
@@ -141,27 +156,45 @@ class _TabletSchermState extends State<TabletScherm> {
   }
 
   Future<void> _checkGeplandeMomenten() async {
-    _debugLog('📅 Check tick — ${_dagelijkseDocs?.length ?? 0} dagelijkse');
-    if (_huidigPopupId != null || _dagelijkseDocs == null) return;
+    if (_huidigPopupId != null) return;
     final nu = DateTime.now();
     final huidigMin = nu.hour * 60 + nu.minute;
     final vandaagKey = '${nu.year}-'
         '${nu.month.toString().padLeft(2, '0')}-'
         '${nu.day.toString().padLeft(2, '0')}';
-    for (final doc in _dagelijkseDocs!) {
-      final d = doc.data() as Map<String, dynamic>;
-      final momentMin = (d['uur'] as int? ?? 0) * 60
-                      + (d['minuut'] as int? ?? 0);
-      // Window van 60s: trigger als moment net of 1 minuut geleden is.
-      if (momentMin > huidigMin) continue;
-      if (huidigMin - momentMin > 1) continue;
-      if (d['laatstGetoond'] == vandaagKey) continue;
-      _debugLog('📅 Match: ${d['label']}');
-      try {
-        await doc.reference.update({'laatstGetoond': vandaagKey});
-      } catch (_) {}
-      _toonDagelijksPopup(doc.id, d);
-      return;
+    if (_dagelijkseDocs != null) {
+      for (final doc in _dagelijkseDocs!) {
+        final d = doc.data() as Map<String, dynamic>;
+        final momentMin = (d['uur'] as int? ?? 0) * 60
+                        + (d['minuut'] as int? ?? 0);
+        // Window van 60s: trigger als moment net of 1 minuut geleden is.
+        if (momentMin > huidigMin) continue;
+        if (huidigMin - momentMin > 1) continue;
+        if (d['laatstGetoond'] == vandaagKey) continue;
+        try {
+          await doc.reference.update({'laatstGetoond': vandaagKey});
+        } catch (_) {}
+        _toonDagelijksPopup(doc.id, d);
+        return;
+      }
+    }
+    // Eenmalig geplande momenten: trigger als geplandOp <= nu < +24u en
+    // nog niet getoond. Robuust: vangt gemiste momenten op (apparaat sliep).
+    if (_eenmaligDocs != null) {
+      for (final doc in _eenmaligDocs!) {
+        final d = doc.data() as Map<String, dynamic>;
+        if (d['getoond'] == true) continue;
+        final geplandOp = (d['geplandOp'] as Timestamp?)?.toDate();
+        if (geplandOp == null) continue;
+        final verschil = nu.difference(geplandOp);
+        if (verschil.isNegative) continue;       // nog in toekomst
+        if (verschil.inHours >= 24) continue;     // te laat, sla over
+        try {
+          await doc.reference.update({'getoond': true});
+        } catch (_) {}
+        _toonEenmaligPopup(doc.id, d);
+        return;
+      }
     }
   }
 
@@ -180,6 +213,19 @@ class _TabletSchermState extends State<TabletScherm> {
       'heeftAangepasteAudio': aangepasteAudio.isNotEmpty,
     };
     await _toonPopup('dagelijks_$id', synthetic);
+  }
+
+  Future<void> _toonEenmaligPopup(
+      String id, Map<String, dynamic> d) async {
+    final synthetic = <String, dynamic>{
+      'type': 'eenmalig',
+      'emoji': d['emoji'],
+      'label': d['label'],
+      'bericht': d['inhoud'],
+      'vanNaam': 'Een naaste',
+      'geplandOp': d['geplandOp'],
+    };
+    await _toonPopup('eenmalig_$id', synthetic);
   }
 
   Future<void> _toonPopup(String id, Map<String, dynamic> d) async {
@@ -602,6 +648,22 @@ class _TabletSchermState extends State<TabletScherm> {
               style: const TextStyle(fontSize: 28,
                   fontWeight: FontWeight.w800, color: kBrown)),
         ]);
+      case 'eenmalig':
+        return Column(mainAxisSize: MainAxisSize.min, children: [
+          Text(d['emoji'] as String? ?? '🎯',
+              style: const TextStyle(fontSize: 80)),
+          const SizedBox(height: 12),
+          Text(d['label'] as String? ?? '',
+              textAlign: TextAlign.center,
+              style: const TextStyle(fontSize: 24,
+                  fontWeight: FontWeight.w800, color: kBrown)),
+          if (bericht.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            Text(bericht, textAlign: TextAlign.center,
+                style: const TextStyle(fontSize: 18,
+                    color: kBrown, height: 1.4)),
+          ],
+        ]);
       default:
         return const SizedBox();
     }
@@ -614,6 +676,7 @@ class _TabletSchermState extends State<TabletScherm> {
       case 'lied': return '🎵';
       case 'tekst': return '✏️';
       case 'dagelijks': return '⏰';
+      case 'eenmalig': return '🎯';
       default: return '💕';
     }
   }

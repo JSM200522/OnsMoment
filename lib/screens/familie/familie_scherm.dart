@@ -36,10 +36,13 @@ class _FamilieSchermState extends State<FamilieScherm> {
   String? _mijnApparaatId;
   Timer? _autoSluitTimer;
 
-  // Dagelijkse-momenten-flow — alleen actief in ontvanger-meldings-modus.
+  // Dagelijkse + eenmalige momenten-flow — alleen actief in
+  // ontvanger-meldings-modus.
   Timer? _checkTimer;
   StreamSubscription<QuerySnapshot>? _dagelijkseSub;
   List<QueryDocumentSnapshot>? _dagelijkseDocs;
+  StreamSubscription<QuerySnapshot>? _eenmaligSub;
+  List<QueryDocumentSnapshot>? _eenmaligDocs;
 
   @override
   void initState() {
@@ -51,7 +54,10 @@ class _FamilieSchermState extends State<FamilieScherm> {
       setState(() => _mijnApparaatId = id);
       _startMomentenListener();
       _startGebruikerListener();
-      if (widget.alsOntvanger) _startDagelijksListener();
+      if (widget.alsOntvanger) {
+        _startDagelijksListener();
+        _startEenmaligListener();
+      }
     });
     if (widget.alsOntvanger) {
       _checkTimer = Timer.periodic(
@@ -74,6 +80,7 @@ class _FamilieSchermState extends State<FamilieScherm> {
     _momentenListener?.cancel();
     _gebruikerSub?.cancel();
     _dagelijkseSub?.cancel();
+    _eenmaligSub?.cancel();
     _audioPlayer.dispose();
     _geluidPlayer.dispose();
     super.dispose();
@@ -125,36 +132,62 @@ class _FamilieSchermState extends State<FamilieScherm> {
         .listen((snap) => _dagelijkseDocs = snap.docs);
   }
 
+  void _startEenmaligListener() {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return;
+    _eenmaligSub = FirebaseFirestore.instance
+        .collection('gepland_momenten')
+        .where('familieUid', isEqualTo: uid)
+        .where('actief', isEqualTo: true)
+        .snapshots()
+        .listen((snap) => _eenmaligDocs = snap.docs);
+  }
+
   Future<void> _checkGeplandeMomenten() async {
-    _debugLog('📅 Check tick (meldings) — '
-        '${_dagelijkseDocs?.length ?? 0} dagelijkse');
-    if (_huidigPopupId != null || _dagelijkseDocs == null) return;
+    if (_huidigPopupId != null) return;
     final nu = DateTime.now();
     final huidigMin = nu.hour * 60 + nu.minute;
     final vandaagKey = '${nu.year}-'
         '${nu.month.toString().padLeft(2, '0')}-'
         '${nu.day.toString().padLeft(2, '0')}';
-    for (final doc in _dagelijkseDocs!) {
-      final d = doc.data() as Map<String, dynamic>;
-      final momentMin = (d['uur'] as int? ?? 0) * 60
-                      + (d['minuut'] as int? ?? 0);
-      if (momentMin > huidigMin) continue;
-      if (huidigMin - momentMin > 1) continue;
-      if (d['laatstGetoond'] == vandaagKey) continue;
-      _debugLog('📅 Match: ${d['label']}');
-      try {
-        await doc.reference.update({'laatstGetoond': vandaagKey});
-      } catch (_) {}
-      _toonDagelijksPopup(doc.id, d);
-      return;
+    if (_dagelijkseDocs != null) {
+      for (final doc in _dagelijkseDocs!) {
+        final d = doc.data() as Map<String, dynamic>;
+        final momentMin = (d['uur'] as int? ?? 0) * 60
+                        + (d['minuut'] as int? ?? 0);
+        if (momentMin > huidigMin) continue;
+        if (huidigMin - momentMin > 1) continue;
+        if (d['laatstGetoond'] == vandaagKey) continue;
+        try {
+          await doc.reference.update({'laatstGetoond': vandaagKey});
+        } catch (_) {}
+        _toonDagelijksPopup(doc.id, d);
+        return;
+      }
+    }
+    // Eenmalig geplande momenten: trigger als geplandOp <= nu < +24u en
+    // nog niet getoond. Robuust: vangt gemiste momenten op (apparaat sliep).
+    if (_eenmaligDocs != null) {
+      for (final doc in _eenmaligDocs!) {
+        final d = doc.data() as Map<String, dynamic>;
+        if (d['getoond'] == true) continue;
+        final geplandOp = (d['geplandOp'] as Timestamp?)?.toDate();
+        if (geplandOp == null) continue;
+        final verschil = nu.difference(geplandOp);
+        if (verschil.isNegative) continue;       // nog in toekomst
+        if (verschil.inHours >= 24) continue;     // te laat, sla over
+        try {
+          await doc.reference.update({'getoond': true});
+        } catch (_) {}
+        _toonEenmaligPopup(doc.id, d);
+        return;
+      }
     }
   }
 
   Future<void> _toonDagelijksPopup(
       String id, Map<String, dynamic> d) async {
     final aangepasteAudio = d['aangepasteAudioUrl'] as String? ?? '';
-    _debugLog('▶️ Dagelijks (meldings): ${d['label']} '
-        '(eigenAudio=${aangepasteAudio.isNotEmpty})');
     final synthetic = <String, dynamic>{
       'type': 'dagelijks',
       'emoji': d['emoji'],
@@ -165,6 +198,19 @@ class _FamilieSchermState extends State<FamilieScherm> {
       'heeftAangepasteAudio': aangepasteAudio.isNotEmpty,
     };
     await _toonPopup('dagelijks_$id', synthetic);
+  }
+
+  Future<void> _toonEenmaligPopup(
+      String id, Map<String, dynamic> d) async {
+    final synthetic = <String, dynamic>{
+      'type': 'eenmalig',
+      'emoji': d['emoji'],
+      'label': d['label'],
+      'bericht': d['inhoud'],
+      'vanNaam': 'Een naaste',
+      'geplandOp': d['geplandOp'],
+    };
+    await _toonPopup('eenmalig_$id', synthetic);
   }
 
   void _verwerkMomenten(QuerySnapshot snap) {
@@ -362,6 +408,22 @@ class _FamilieSchermState extends State<FamilieScherm> {
               style: const TextStyle(fontSize: 28,
                   fontWeight: FontWeight.w800, color: kBrown)),
         ]);
+      case 'eenmalig':
+        return Column(mainAxisSize: MainAxisSize.min, children: [
+          Text(d['emoji'] as String? ?? '🎯',
+              style: const TextStyle(fontSize: 80)),
+          const SizedBox(height: 12),
+          Text(d['label'] as String? ?? '',
+              textAlign: TextAlign.center,
+              style: const TextStyle(fontSize: 24,
+                  fontWeight: FontWeight.w800, color: kBrown)),
+          if (bericht.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            Text(bericht, textAlign: TextAlign.center,
+                style: const TextStyle(fontSize: 18,
+                    color: kBrown, height: 1.4)),
+          ],
+        ]);
       default:
         return const SizedBox();
     }
@@ -374,6 +436,7 @@ class _FamilieSchermState extends State<FamilieScherm> {
       case 'lied': return '🎵';
       case 'tekst': return '✏️';
       case 'dagelijks': return '⏰';
+      case 'eenmalig': return '🎯';
       default: return '💕';
     }
   }
@@ -1113,6 +1176,30 @@ class AgendaTab extends StatelessWidget {
               '💡 Tijd aanpassen kan via Instellingen > Momenten beheren',
               style: TextStyle(fontSize: 12, color: kTextMuted)),
           ),
+          StreamBuilder<QuerySnapshot>(
+            stream: FirebaseFirestore.instance.collection('gepland_momenten')
+                .where('familieUid', isEqualTo: uid)
+                .where('actief', isEqualTo: true).snapshots(),
+            builder: (ctx, snap) {
+              if (!snap.hasData) return const SizedBox.shrink();
+              final nu = DateTime.now();
+              final docs = snap.data!.docs.where((d) {
+                final g = ((d.data() as Map)['geplandOp'] as Timestamp?)
+                    ?.toDate();
+                return g != null && g.isAfter(nu);
+              }).toList();
+              if (docs.isEmpty) return const SizedBox.shrink();
+              docs.sort((a, b) =>
+                  ((a.data() as Map)['geplandOp'] as Timestamp)
+                      .compareTo((b.data() as Map)['geplandOp'] as Timestamp));
+              return Column(crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                const _SectieTitel('🎯 EENMALIG GEPLAND'),
+                ...docs.map((d) => _EenmaligItem(doc: d)),
+                const SizedBox(height: 20),
+              ]);
+            },
+          ),
           const _SectieTitel('🔁 ELKE DAG'),
           StreamBuilder<QuerySnapshot>(
             stream: FirebaseFirestore.instance.collection('dagelijkse_momenten')
@@ -1231,6 +1318,43 @@ class _DagelijksItem extends StatelessWidget {
                     fontWeight: FontWeight.w800, color: kBrown))),
         ]),
       ),
+    );
+  }
+}
+
+class _EenmaligItem extends StatelessWidget {
+  final QueryDocumentSnapshot doc;
+  const _EenmaligItem({required this.doc});
+
+  String _formatDatumTijd(DateTime d) =>
+      '${d.day.toString().padLeft(2, '0')}-'
+      '${d.month.toString().padLeft(2, '0')} • '
+      '${d.hour.toString().padLeft(2, '0')}:'
+      '${d.minute.toString().padLeft(2, '0')}';
+
+  @override
+  Widget build(BuildContext context) {
+    final d = doc.data() as Map<String, dynamic>;
+    final geplandOp = (d['geplandOp'] as Timestamp?)?.toDate();
+    return Container(margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(color: kWhite,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: kPeachLight, width: 1.5)),
+      child: Row(children: [
+        Text(d['emoji'] ?? '🎯', style: const TextStyle(fontSize: 24)),
+        const SizedBox(width: 10),
+        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+          Text(d['label'] ?? 'Moment', style: const TextStyle(fontSize: 14,
+              fontWeight: FontWeight.w800, color: kBrown)),
+          Text(geplandOp != null ? _formatDatumTijd(geplandOp) : 'Eenmalig',
+              style: const TextStyle(fontSize: 11, color: kTextMuted)),
+        ])),
+        IconButton(icon: const Icon(Icons.delete_outline_rounded,
+            color: Colors.red),
+          onPressed: () => doc.reference.update({'actief': false})),
+      ]),
     );
   }
 }
@@ -1393,7 +1517,9 @@ class _AudioInstelDialogState extends State<_AudioInstelDialog> {
           _BytesAudioSource(_huidigeBytes!, mime));
       await _previewPlayer.play();
     } catch (e) {
-      _toonFout('Afspelen mislukt: $e');
+      // V8.6: native iOS heeft geen CORS-restricties — daar werkt dit wel.
+      _toonFout('Audio kan niet worden afgespeeld op deze iPhone-browser. '
+          'In de Ons Moment app werkt dit straks wel.');
     }
   }
 
@@ -2051,12 +2177,24 @@ class MomentenBeherenScherm extends StatelessWidget {
         iconTheme: const IconThemeData(color: kBrown),
         title: const Text('Momenten beheren',
             style: TextStyle(color: kBrown, fontWeight: FontWeight.w900))),
-      floatingActionButton: FloatingActionButton.extended(
-        backgroundColor: kPeach,
-        onPressed: () => _opnenDialog(context, uid),
-        icon: const Icon(Icons.add_rounded, color: kWhite),
-        label: const Text('Nieuw moment',
-            style: TextStyle(color: kWhite, fontWeight: FontWeight.w800))),
+      floatingActionButton: Column(mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.end, children: [
+        FloatingActionButton.extended(
+          heroTag: 'fab_eenmalig',
+          backgroundColor: kRose,
+          onPressed: () => _opnenEenmaligDialog(context, uid),
+          icon: const Icon(Icons.event_rounded, color: kWhite),
+          label: const Text('Eenmalig gepland',
+              style: TextStyle(color: kWhite, fontWeight: FontWeight.w800))),
+        const SizedBox(height: 12),
+        FloatingActionButton.extended(
+          heroTag: 'fab_dagelijks',
+          backgroundColor: kPeach,
+          onPressed: () => _opnenDialog(context, uid),
+          icon: const Icon(Icons.repeat_rounded, color: kWhite),
+          label: const Text('Dagelijks moment',
+              style: TextStyle(color: kWhite, fontWeight: FontWeight.w800))),
+      ]),
       body: uid == null ? const SizedBox()
         : StreamBuilder<QuerySnapshot>(
         stream: FirebaseFirestore.instance.collection('dagelijkse_momenten')
@@ -2154,6 +2292,23 @@ class MomentenBeherenScherm extends StatelessWidget {
       });
     }
   }
+
+  Future<void> _opnenEenmaligDialog(BuildContext context, String? uid) async {
+    if (uid == null) return;
+    final result = await showDialog<Map<String, dynamic>>(
+      context: context, builder: (ctx) => const _EenmaligMomentDialog());
+    if (result == null) return;
+    await FirebaseFirestore.instance.collection('gepland_momenten').add({
+      'familieUid': uid,
+      'emoji': result['emoji'],
+      'label': result['label'],
+      'inhoud': result['inhoud'],
+      'geplandOp': Timestamp.fromDate(result['geplandOp'] as DateTime),
+      'actief': true,
+      'getoond': false,
+      'aangemaakt': FieldValue.serverTimestamp(),
+    });
+  }
 }
 
 class _NieuwMomentDialog extends StatefulWidget {
@@ -2249,6 +2404,140 @@ class _NieuwMomentDialogState extends State<_NieuwMomentDialog> {
                   style: TextStyle(color: kWhite, fontWeight: FontWeight.w800))),
           ]),
         ])));
+  }
+}
+
+class _EenmaligMomentDialog extends StatefulWidget {
+  const _EenmaligMomentDialog();
+  @override
+  State<_EenmaligMomentDialog> createState() => _EenmaligMomentDialogState();
+}
+
+class _EenmaligMomentDialogState extends State<_EenmaligMomentDialog> {
+  String _emoji = '🎯';
+  final _labelCtrl = TextEditingController();
+  final _inhoudCtrl = TextEditingController();
+  DateTime _datum = DateTime.now().add(const Duration(days: 1));
+  TimeOfDay _tijd = const TimeOfDay(hour: 12, minute: 0);
+  final _emojis = ['🎯', '🎂', '🎉', '💐', '⛪', '🏥', '👨‍⚕️', '📞', '🚗', '💊', '☕', '💕'];
+
+  @override
+  void dispose() {
+    _labelCtrl.dispose();
+    _inhoudCtrl.dispose();
+    super.dispose();
+  }
+
+  String _formatDatum(DateTime d) =>
+      '${d.day.toString().padLeft(2, '0')}-'
+      '${d.month.toString().padLeft(2, '0')}-${d.year}';
+
+  void _toonFout(String m) => ScaffoldMessenger.of(context)
+      .showSnackBar(SnackBar(content: Text(m), backgroundColor: Colors.red));
+
+  @override
+  Widget build(BuildContext context) {
+    return Dialog(backgroundColor: kCream,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      child: Padding(padding: const EdgeInsets.all(20),
+        child: SingleChildScrollView(
+          child: Column(mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start, children: [
+            const Text('Eenmalig gepland moment',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900,
+                    color: kBrown)),
+            const SizedBox(height: 16),
+            const Text('Emoji', style: TextStyle(fontSize: 12,
+                color: kTextMuted, fontWeight: FontWeight.w700)),
+            const SizedBox(height: 8),
+            Wrap(spacing: 8, runSpacing: 8, children: _emojis.map((e) =>
+              GestureDetector(onTap: () => setState(() => _emoji = e),
+                child: Container(padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: _emoji == e ? kPeach : kPeachPale,
+                    borderRadius: BorderRadius.circular(8)),
+                  child: Text(e, style: const TextStyle(fontSize: 20))))).toList()),
+            const SizedBox(height: 16),
+            TextField(controller: _labelCtrl,
+              decoration: const InputDecoration(labelText: 'Naam (bijv. Verjaardag)',
+                border: OutlineInputBorder())),
+            const SizedBox(height: 16),
+            TextField(controller: _inhoudCtrl, maxLines: 3,
+              decoration: const InputDecoration(
+                labelText: 'Bericht voor de popup',
+                hintText: 'Bijv. Gefeliciteerd lieve oma! 💕',
+                border: OutlineInputBorder())),
+            const SizedBox(height: 16),
+            Row(children: [
+              const Text('Datum:', style: TextStyle(fontSize: 14,
+                  fontWeight: FontWeight.w700, color: kBrown)),
+              const SizedBox(width: 12),
+              GestureDetector(onTap: () async {
+                final d = await showDatePicker(context: context,
+                  initialDate: _datum,
+                  firstDate: DateTime.now(),
+                  lastDate: DateTime.now().add(const Duration(days: 365)));
+                if (d != null) setState(() => _datum = d);
+              }, child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                decoration: BoxDecoration(color: kPeachPale,
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: kPeach, width: 1.5)),
+                child: Text(_formatDatum(_datum),
+                  style: const TextStyle(fontSize: 14,
+                      fontWeight: FontWeight.w800, color: kBrown)))),
+            ]),
+            const SizedBox(height: 12),
+            Row(children: [
+              const Text('Tijd:', style: TextStyle(fontSize: 14,
+                  fontWeight: FontWeight.w700, color: kBrown)),
+              const SizedBox(width: 12),
+              GestureDetector(onTap: () async {
+                final t = await showTimePicker(context: context,
+                  initialTime: _tijd, builder: (c, child) => MediaQuery(
+                    data: MediaQuery.of(c).copyWith(alwaysUse24HourFormat: true),
+                    child: child!));
+                if (t != null) setState(() => _tijd = t);
+              }, child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                decoration: BoxDecoration(color: kPeachPale,
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: kPeach, width: 1.5)),
+                child: Text('${_tijd.hour.toString().padLeft(2, '0')}:'
+                    '${_tijd.minute.toString().padLeft(2, '0')}',
+                  style: const TextStyle(fontSize: 14,
+                      fontWeight: FontWeight.w800, color: kBrown)))),
+            ]),
+            const SizedBox(height: 20),
+            Row(mainAxisAlignment: MainAxisAlignment.end, children: [
+              TextButton(onPressed: () => Navigator.pop(context),
+                child: const Text('Annuleren',
+                    style: TextStyle(color: kTextMuted))),
+              ElevatedButton(
+                style: ElevatedButton.styleFrom(backgroundColor: kPeach),
+                onPressed: () {
+                  if (_labelCtrl.text.trim().isEmpty) {
+                    _toonFout('Vul een naam in'); return;
+                  }
+                  if (_inhoudCtrl.text.trim().isEmpty) {
+                    _toonFout('Vul een bericht in'); return;
+                  }
+                  final gepland = DateTime(_datum.year, _datum.month,
+                      _datum.day, _tijd.hour, _tijd.minute);
+                  if (!gepland.isAfter(DateTime.now())) {
+                    _toonFout('Kies een tijdstip in de toekomst'); return;
+                  }
+                  Navigator.pop(context, {
+                    'emoji': _emoji,
+                    'label': _labelCtrl.text.trim(),
+                    'inhoud': _inhoudCtrl.text.trim(),
+                    'geplandOp': gepland,
+                  });
+                },
+                child: const Text('Plannen',
+                    style: TextStyle(color: kWhite, fontWeight: FontWeight.w800))),
+            ]),
+          ]))));
   }
 }
 
