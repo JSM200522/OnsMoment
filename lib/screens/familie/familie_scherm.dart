@@ -11,6 +11,7 @@ import 'package:just_audio/just_audio.dart';
 import 'package:http/http.dart' as http;
 import '../../services/apparaat_service.dart';
 import '../../services/device_modus_service.dart';
+import '../../services/dagelijks_audio_service.dart';
 import '../../theme/kleuren.dart';
 import '../../data/geluiden.dart';
 
@@ -1093,28 +1094,400 @@ class _DagelijksItem extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final d = doc.data() as Map<String, dynamic>;
-    return Container(margin: const EdgeInsets.only(bottom: 8),
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(color: kWhite,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: kPeachLight, width: 1.5)),
-      child: Row(children: [
-        Text(d['emoji'] ?? '⭐', style: const TextStyle(fontSize: 24)),
-        const SizedBox(width: 10),
-        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-          Text(d['label'] ?? 'Moment', style: const TextStyle(fontSize: 14,
-              fontWeight: FontWeight.w800, color: kBrown)),
-          const Text('Elke dag', style: TextStyle(fontSize: 11,
-              color: kTextMuted)),
-        ])),
-        Container(padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-          decoration: BoxDecoration(color: kPeachPale,
-              borderRadius: BorderRadius.circular(8)),
-          child: Text('${(d['uur'] ?? 0).toString().padLeft(2, '0')}:${(d['minuut'] ?? 0).toString().padLeft(2, '0')}',
-              style: const TextStyle(fontSize: 13,
-                  fontWeight: FontWeight.w800, color: kBrown))),
-      ]),
+    final audioType = d['aangepasteAudioType'] as String? ?? '';
+    final audioLabel = audioType == 'stem' ? '🎤 Eigen stem'
+        : audioType == 'mp3' ? '🎵 Eigen MP3'
+        : '🔔 Standaard bel';
+    return GestureDetector(
+      onTap: () => showDialog(context: context,
+          builder: (ctx) => _AudioInstelDialog(doc: doc)),
+      child: Container(margin: const EdgeInsets.only(bottom: 8),
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(color: kWhite,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: kPeachLight, width: 1.5)),
+        child: Row(children: [
+          Text(d['emoji'] ?? '⭐', style: const TextStyle(fontSize: 24)),
+          const SizedBox(width: 10),
+          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+            Text(d['label'] ?? 'Moment', style: const TextStyle(fontSize: 14,
+                fontWeight: FontWeight.w800, color: kBrown)),
+            Text('Elke dag • $audioLabel',
+                style: const TextStyle(fontSize: 11, color: kTextMuted)),
+          ])),
+          Container(padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+            decoration: BoxDecoration(color: kPeachPale,
+                borderRadius: BorderRadius.circular(8)),
+            child: Text('${(d['uur'] ?? 0).toString().padLeft(2, '0')}:${(d['minuut'] ?? 0).toString().padLeft(2, '0')}',
+                style: const TextStyle(fontSize: 13,
+                    fontWeight: FontWeight.w800, color: kBrown))),
+        ]),
+      ),
+    );
+  }
+}
+
+class _AudioInstelDialog extends StatefulWidget {
+  final QueryDocumentSnapshot doc;
+  const _AudioInstelDialog({required this.doc});
+  @override
+  State<_AudioInstelDialog> createState() => _AudioInstelDialogState();
+}
+
+class _AudioInstelDialogState extends State<_AudioInstelDialog> {
+  final _recorder = AudioRecorder();
+  final _previewPlayer = AudioPlayer();
+  Timer? _opnameTimer;
+
+  bool _isOpnemen = false;
+  int _opnameSeconden = 0;
+  String? _opnamePad;
+  Uint8List? _opnameBytes;
+
+  Uint8List? _mp3Bytes;
+  String _mp3Naam = '';
+
+  bool _bezig = false;
+  String? _huidigeUrl;
+  String? _huidigType;
+
+  @override
+  void initState() {
+    super.initState();
+    final d = widget.doc.data() as Map<String, dynamic>;
+    _huidigeUrl = d['aangepasteAudioUrl'] as String?;
+    _huidigType = d['aangepasteAudioType'] as String?;
+  }
+
+  @override
+  void dispose() {
+    _opnameTimer?.cancel();
+    _recorder.dispose();
+    _previewPlayer.dispose();
+    super.dispose();
+  }
+
+  Future<void> _startOpname() async {
+    try {
+      if (!await _recorder.hasPermission()) {
+        _toonFout('Geen toegang tot microfoon. '
+            'Sta toe in browser-instellingen.');
+        return;
+      }
+      await _recorder.start(
+          const RecordConfig(encoder: AudioEncoder.opus), path: '');
+      setState(() {
+        _isOpnemen = true;
+        _opnameSeconden = 0;
+        _opnamePad = null;
+        _opnameBytes = null;
+      });
+      _opnameTimer?.cancel();
+      _opnameTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+        if (!mounted) return;
+        setState(() => _opnameSeconden++);
+        if (_opnameSeconden >= 30) _stopOpname();
+      });
+    } catch (e) {
+      _toonFout('Opname starten mislukt: $e');
+    }
+  }
+
+  Future<void> _stopOpname() async {
+    try {
+      final pad = await _recorder.stop();
+      _opnameTimer?.cancel();
+      if (pad == null) {
+        setState(() => _isOpnemen = false);
+        return;
+      }
+      final response = await http.get(Uri.parse(pad));
+      if (response.statusCode != 200 || response.bodyBytes.isEmpty) {
+        _toonFout('Opname kon niet worden gelezen');
+        setState(() => _isOpnemen = false);
+        return;
+      }
+      try {
+        await _previewPlayer.setUrl(pad);
+      } catch (_) {}
+      setState(() {
+        _isOpnemen = false;
+        _opnamePad = pad;
+        _opnameBytes = response.bodyBytes;
+      });
+    } catch (e) {
+      _toonFout('Opname stoppen mislukt: $e');
+    }
+  }
+
+  Future<void> _kiesMp3() async {
+    try {
+      final result = await FilePicker.platform.pickFiles(
+          type: FileType.audio, withData: true);
+      if (result == null) return;
+      final file = result.files.first;
+      final bytes = file.bytes;
+      if (bytes == null) {
+        _toonFout('Bestand kon niet worden gelezen');
+        return;
+      }
+      if (bytes.length > 5 * 1024 * 1024) {
+        _toonFout('MP3 te groot (max 5MB)');
+        return;
+      }
+      setState(() {
+        _mp3Bytes = bytes;
+        _mp3Naam = file.name;
+      });
+    } catch (e) {
+      _toonFout('MP3 kiezen mislukt: $e');
+    }
+  }
+
+  Future<void> _speelOpnamePreview() async {
+    if (_opnamePad == null) return;
+    try {
+      await _previewPlayer.seek(Duration.zero);
+      await _previewPlayer.play();
+    } catch (e) {
+      _toonFout('Afspelen mislukt: $e');
+    }
+  }
+
+  Future<void> _speelHuidigePreview() async {
+    if (_huidigeUrl == null || _huidigeUrl!.isEmpty) return;
+    try {
+      await _previewPlayer.setUrl(_huidigeUrl!);
+      await _previewPlayer.play();
+    } catch (e) {
+      _toonFout('Afspelen mislukt: $e');
+    }
+  }
+
+  Future<void> _opslaanOpname() async {
+    if (_opnameBytes == null) return;
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return;
+    setState(() => _bezig = true);
+    final ok = await DagelijksAudioService.upload(
+      familieUid: uid,
+      momentId: widget.doc.id,
+      bytes: _opnameBytes!,
+      type: 'stem',
+    );
+    if (!mounted) return;
+    setState(() => _bezig = false);
+    if (ok) {
+      Navigator.pop(context);
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('✓ Stem-opname opgeslagen'),
+        backgroundColor: kGreen));
+    } else {
+      _toonFout('Opslaan mislukt — probeer opnieuw');
+    }
+  }
+
+  Future<void> _opslaanMp3() async {
+    if (_mp3Bytes == null) return;
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return;
+    setState(() => _bezig = true);
+    final ok = await DagelijksAudioService.upload(
+      familieUid: uid,
+      momentId: widget.doc.id,
+      bytes: _mp3Bytes!,
+      type: 'mp3',
+    );
+    if (!mounted) return;
+    setState(() => _bezig = false);
+    if (ok) {
+      Navigator.pop(context);
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('✓ MP3 opgeslagen'), backgroundColor: kGreen));
+    } else {
+      _toonFout('Opslaan mislukt — probeer opnieuw');
+    }
+  }
+
+  Future<void> _zetTerugNaarBel() async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return;
+    setState(() => _bezig = true);
+    final ok = await DagelijksAudioService.reset(
+        familieUid: uid, momentId: widget.doc.id);
+    if (!mounted) return;
+    setState(() => _bezig = false);
+    if (ok) {
+      Navigator.pop(context);
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('✓ Terug naar standaard bel'),
+        backgroundColor: kGreen));
+    } else {
+      _toonFout('Verwijderen mislukt — probeer opnieuw');
+    }
+  }
+
+  void _toonFout(String m) => ScaffoldMessenger.of(context)
+      .showSnackBar(SnackBar(content: Text(m), backgroundColor: Colors.red));
+
+  @override
+  Widget build(BuildContext context) {
+    final d = widget.doc.data() as Map<String, dynamic>;
+    final label = d['label'] ?? 'Moment';
+    final heeftHuidig = (_huidigeUrl ?? '').isNotEmpty;
+    final huidigLabel = _huidigType == 'stem' ? '🎤 Eigen stem'
+        : _huidigType == 'mp3' ? '🎵 Eigen MP3'
+        : '🔔 Standaard bel';
+
+    return Dialog(backgroundColor: kCream,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      child: Padding(padding: const EdgeInsets.all(20),
+        child: SingleChildScrollView(
+          child: Column(mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text('Geluid voor "$label"',
+                style: const TextStyle(fontSize: 18,
+                    fontWeight: FontWeight.w900, color: kBrown)),
+            const SizedBox(height: 4),
+            Text('Op dit moment: $huidigLabel',
+                style: const TextStyle(fontSize: 12, color: kTextMuted)),
+            if (heeftHuidig) ...[
+              const SizedBox(height: 8),
+              GestureDetector(
+                onTap: _speelHuidigePreview,
+                child: Container(padding: const EdgeInsets.symmetric(
+                    horizontal: 14, vertical: 8),
+                  decoration: BoxDecoration(color: kPeachPale,
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: kPeach, width: 1.5)),
+                  child: const Row(mainAxisSize: MainAxisSize.min, children: [
+                    Icon(Icons.play_arrow_rounded, color: kPeach, size: 18),
+                    SizedBox(width: 4),
+                    Text('Beluister huidige',
+                        style: TextStyle(fontSize: 12,
+                            fontWeight: FontWeight.w800, color: kPeach)),
+                  ]))),
+            ],
+            const SizedBox(height: 20),
+
+            // STEM OPNAME
+            const Text('🎤 Neem zelf op',
+                style: TextStyle(fontSize: 14,
+                    fontWeight: FontWeight.w800, color: kBrown)),
+            const SizedBox(height: 8),
+            GestureDetector(
+              onTap: _bezig ? null
+                  : (_isOpnemen ? _stopOpname : _startOpname),
+              child: Container(width: double.infinity,
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                decoration: BoxDecoration(
+                  color: _isOpnemen ? kRood : kPeach,
+                  borderRadius: BorderRadius.circular(12)),
+                child: Center(child: Text(
+                  _isOpnemen
+                      ? '🔴 Stoppen (${_opnameSeconden}s / 30s)'
+                      : (_opnameBytes != null
+                          ? '✓ Opname klaar (${_opnameSeconden}s) — tik om opnieuw'
+                          : 'Start opname (max 30 sec)'),
+                  style: const TextStyle(fontSize: 14,
+                      fontWeight: FontWeight.w800, color: kWhite))),
+              ),
+            ),
+            if (_opnameBytes != null && !_isOpnemen) ...[
+              const SizedBox(height: 8),
+              Row(children: [
+                Expanded(child: GestureDetector(
+                  onTap: _speelOpnamePreview,
+                  child: Container(padding: const EdgeInsets.symmetric(vertical: 10),
+                    decoration: BoxDecoration(color: kWhite,
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: kPeach, width: 1.5)),
+                    child: const Center(child: Row(mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.play_arrow_rounded, color: kPeach, size: 18),
+                        SizedBox(width: 4),
+                        Text('Voorbeeld', style: TextStyle(fontSize: 12,
+                            fontWeight: FontWeight.w800, color: kPeach)),
+                      ]))),
+                )),
+                const SizedBox(width: 8),
+                Expanded(child: GestureDetector(
+                  onTap: _bezig ? null : _opslaanOpname,
+                  child: Container(padding: const EdgeInsets.symmetric(vertical: 10),
+                    decoration: BoxDecoration(
+                        color: _bezig ? kPeachLight : kGreen,
+                        borderRadius: BorderRadius.circular(10)),
+                    child: const Center(child: Text('Opslaan',
+                        style: TextStyle(fontSize: 12,
+                            fontWeight: FontWeight.w800, color: kWhite)))),
+                )),
+              ]),
+            ],
+            const SizedBox(height: 20),
+
+            // MP3 UPLOAD
+            const Text('🎵 Upload MP3',
+                style: TextStyle(fontSize: 14,
+                    fontWeight: FontWeight.w800, color: kBrown)),
+            const SizedBox(height: 4),
+            const Text('Houd MP3 onder ~30 seconden — max 5MB',
+                style: TextStyle(fontSize: 11, color: kTextMuted)),
+            const SizedBox(height: 8),
+            GestureDetector(
+              onTap: _bezig ? null : _kiesMp3,
+              child: Container(width: double.infinity,
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                decoration: BoxDecoration(color: kPeachPale,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: kPeach, width: 1.5)),
+                child: Center(child: Text(
+                  _mp3Naam.isNotEmpty
+                      ? '✓ $_mp3Naam — tik om ander te kiezen'
+                      : 'Kies MP3-bestand',
+                  style: const TextStyle(fontSize: 13,
+                      fontWeight: FontWeight.w800, color: kBrown))),
+              ),
+            ),
+            if (_mp3Bytes != null) ...[
+              const SizedBox(height: 8),
+              GestureDetector(
+                onTap: _bezig ? null : _opslaanMp3,
+                child: Container(width: double.infinity,
+                  padding: const EdgeInsets.symmetric(vertical: 10),
+                  decoration: BoxDecoration(
+                      color: _bezig ? kPeachLight : kGreen,
+                      borderRadius: BorderRadius.circular(10)),
+                  child: const Center(child: Text('Opslaan MP3',
+                      style: TextStyle(fontSize: 12,
+                          fontWeight: FontWeight.w800, color: kWhite)))),
+              ),
+            ],
+            const SizedBox(height: 20),
+
+            // TERUG NAAR STANDAARD
+            if (heeftHuidig)
+              GestureDetector(
+                onTap: _bezig ? null : _zetTerugNaarBel,
+                child: Container(width: double.infinity,
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  decoration: BoxDecoration(color: kWhite,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: kPeachLight, width: 1.5)),
+                  child: const Center(child: Text(
+                      '🔔 Terug naar standaard bel',
+                      style: TextStyle(fontSize: 13,
+                          fontWeight: FontWeight.w800, color: kBrown)))),
+              ),
+            const SizedBox(height: 12),
+            Center(child: TextButton(
+              onPressed: _bezig ? null : () => Navigator.pop(context),
+              child: const Text('Sluiten',
+                  style: TextStyle(color: kTextMuted,
+                      fontWeight: FontWeight.w700)))),
+          ]),
+        ),
+      ),
     );
   }
 }
@@ -1604,7 +1977,14 @@ class MomentenBeherenScherm extends StatelessWidget {
                     ])),
                     IconButton(icon: const Icon(Icons.delete_outline_rounded,
                         color: Colors.red),
-                      onPressed: () => doc.reference.update({'actief': false})),
+                      onPressed: () async {
+                        final fUid = FirebaseAuth.instance.currentUser?.uid;
+                        if (fUid != null) {
+                          await DagelijksAudioService.reset(
+                              familieUid: fUid, momentId: doc.id);
+                        }
+                        await doc.reference.update({'actief': false});
+                      }),
                   ]),
                 ),
               );

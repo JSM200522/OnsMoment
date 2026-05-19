@@ -152,13 +152,15 @@ class _TabletSchermState extends State<TabletScherm> {
 
   Future<void> _toonDagelijksPopup(
       String id, Map<String, dynamic> d) async {
+    final aangepasteAudio = d['aangepasteAudioUrl'] as String? ?? '';
     final synthetic = <String, dynamic>{
       'type': 'dagelijks',
       'emoji': d['emoji'],
       'label': d['label'],
-      'mediaUrl': d['audioUrl'] ?? '',  // plan 4 zet dit veld
+      'mediaUrl': aangepasteAudio,
       'vanNaam': 'Een naaste',
       'geplandOp': Timestamp.now(),
+      'heeftAangepasteAudio': aangepasteAudio.isNotEmpty,
     };
     await _toonPopup('dagelijks_$id', synthetic);
   }
@@ -176,9 +178,12 @@ class _TabletSchermState extends State<TabletScherm> {
           .doc(id).update({'gezien': true});
     } catch (_) {}
 
-    // Speel herkenningsgeluid - wacht alleen 1200ms als afspelen daadwerkelijk lukte
+    // Speel herkenningsgeluid - wacht alleen 1200ms als afspelen daadwerkelijk lukte.
+    // Skip de bel bij dagelijks-popups met aangepaste audio — eigen audio
+    // wordt anders door de bel overstemd.
+    final skipBel = d['heeftAangepasteAudio'] == true;
     final geluidAsset = kGeluidAssets[_herkenningsgeluid];
-    if (geluidAsset != null) {
+    if (!skipBel && geluidAsset != null) {
       bool geluidGespeeld = false;
       try {
         await _geluidPlayer.setAsset(geluidAsset);
