@@ -14,6 +14,7 @@ import '../../services/device_modus_service.dart';
 import '../../services/dagelijks_audio_service.dart';
 import '../../theme/kleuren.dart';
 import '../../data/geluiden.dart';
+import '../../data/debug_flags.dart';
 
 class FamilieScherm extends StatefulWidget {
   final bool alsOntvanger;
@@ -35,6 +36,11 @@ class _FamilieSchermState extends State<FamilieScherm> {
   String? _mijnApparaatId;
   Timer? _autoSluitTimer;
 
+  // Dagelijkse-momenten-flow — alleen actief in ontvanger-meldings-modus.
+  Timer? _checkTimer;
+  StreamSubscription<QuerySnapshot>? _dagelijkseSub;
+  List<QueryDocumentSnapshot>? _dagelijkseDocs;
+
   @override
   void initState() {
     super.initState();
@@ -45,11 +51,17 @@ class _FamilieSchermState extends State<FamilieScherm> {
       setState(() => _mijnApparaatId = id);
       _startMomentenListener();
       _startGebruikerListener();
+      if (widget.alsOntvanger) _startDagelijksListener();
     });
+    if (widget.alsOntvanger) {
+      _checkTimer = Timer.periodic(
+          const Duration(seconds: 30), (_) => _checkGeplandeMomenten());
+    }
     _audioPlayer.playerStateStream.listen((state) {
       if (state.processingState == ProcessingState.completed
           && (_huidigPopup?['type'] == 'stem'
-              || _huidigPopup?['type'] == 'lied')) {
+              || _huidigPopup?['type'] == 'lied'
+              || _huidigPopup?['type'] == 'dagelijks')) {
         _sluitPopup();
       }
     });
@@ -58,11 +70,24 @@ class _FamilieSchermState extends State<FamilieScherm> {
   @override
   void dispose() {
     _autoSluitTimer?.cancel();
+    _checkTimer?.cancel();
     _momentenListener?.cancel();
     _gebruikerSub?.cancel();
+    _dagelijkseSub?.cancel();
     _audioPlayer.dispose();
     _geluidPlayer.dispose();
     super.dispose();
+  }
+
+  void _debugLog(String msg) {
+    if (!DEBUG_AUDIO || !mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text(msg, style: const TextStyle(fontSize: 11)),
+      backgroundColor: Colors.black.withOpacity(0.75),
+      duration: const Duration(seconds: 2),
+      behavior: SnackBarBehavior.floating,
+      margin: const EdgeInsets.only(top: 60, left: 16, right: 16, bottom: 0),
+    ));
   }
 
   void _startMomentenListener() {
@@ -89,7 +114,61 @@ class _FamilieSchermState extends State<FamilieScherm> {
     });
   }
 
+  void _startDagelijksListener() {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return;
+    _dagelijkseSub = FirebaseFirestore.instance
+        .collection('dagelijkse_momenten')
+        .where('familieUid', isEqualTo: uid)
+        .where('actief', isEqualTo: true)
+        .snapshots()
+        .listen((snap) => _dagelijkseDocs = snap.docs);
+  }
+
+  Future<void> _checkGeplandeMomenten() async {
+    _debugLog('📅 Check tick (meldings) — '
+        '${_dagelijkseDocs?.length ?? 0} dagelijkse');
+    if (_huidigPopupId != null || _dagelijkseDocs == null) return;
+    final nu = DateTime.now();
+    final huidigMin = nu.hour * 60 + nu.minute;
+    final vandaagKey = '${nu.year}-'
+        '${nu.month.toString().padLeft(2, '0')}-'
+        '${nu.day.toString().padLeft(2, '0')}';
+    for (final doc in _dagelijkseDocs!) {
+      final d = doc.data() as Map<String, dynamic>;
+      final momentMin = (d['uur'] as int? ?? 0) * 60
+                      + (d['minuut'] as int? ?? 0);
+      if (momentMin > huidigMin) continue;
+      if (huidigMin - momentMin > 1) continue;
+      if (d['laatstGetoond'] == vandaagKey) continue;
+      _debugLog('📅 Match: ${d['label']}');
+      try {
+        await doc.reference.update({'laatstGetoond': vandaagKey});
+      } catch (_) {}
+      _toonDagelijksPopup(doc.id, d);
+      return;
+    }
+  }
+
+  Future<void> _toonDagelijksPopup(
+      String id, Map<String, dynamic> d) async {
+    final aangepasteAudio = d['aangepasteAudioUrl'] as String? ?? '';
+    _debugLog('▶️ Dagelijks (meldings): ${d['label']} '
+        '(eigenAudio=${aangepasteAudio.isNotEmpty})');
+    final synthetic = <String, dynamic>{
+      'type': 'dagelijks',
+      'emoji': d['emoji'],
+      'label': d['label'],
+      'mediaUrl': aangepasteAudio,
+      'vanNaam': 'Een naaste',
+      'geplandOp': Timestamp.now(),
+      'heeftAangepasteAudio': aangepasteAudio.isNotEmpty,
+    };
+    await _toonPopup('dagelijks_$id', synthetic);
+  }
+
   void _verwerkMomenten(QuerySnapshot snap) {
+    _debugLog('📨 Snap (meldings): ${snap.docs.length}');
     if (_huidigPopupId != null) return;
     if (_mijnApparaatId == null) return;
     final nu = DateTime.now();
@@ -126,14 +205,18 @@ class _FamilieSchermState extends State<FamilieScherm> {
           .doc(id).update({'gezien': true});
     } catch (_) {}
 
+    final skipBel = d['heeftAangepasteAudio'] == true;
     final geluidAsset = kGeluidAssets[_herkenningsgeluid];
-    if (geluidAsset != null) {
+    if (!skipBel && geluidAsset != null) {
       bool geluidGespeeld = false;
       try {
+        _debugLog('🔔 Bel laden: $_herkenningsgeluid');
         await _geluidPlayer.setAsset(geluidAsset);
         await _geluidPlayer.play();
         geluidGespeeld = true;
-      } catch (_) {}
+      } catch (e) {
+        _debugLog('❌ Bel-fout: $e');
+      }
       if (geluidGespeeld) {
         await Future.delayed(const Duration(milliseconds: 1200));
       }
@@ -147,13 +230,16 @@ class _FamilieSchermState extends State<FamilieScherm> {
       _huidigPopup = d;
     });
 
-    if (d['type'] == 'stem' || d['type'] == 'lied') {
+    if (d['type'] == 'stem' || d['type'] == 'lied' || d['type'] == 'dagelijks') {
       final url = d['mediaUrl'] ?? '';
       if (url.isNotEmpty) {
         try {
+          _debugLog('🔊 Audio laden');
           await _audioPlayer.setUrl(url);
           await _audioPlayer.play();
-        } catch (_) {}
+        } catch (e) {
+          _debugLog('❌ Audio-fout: $e');
+        }
       }
     }
     _autoSluitTimer?.cancel();
@@ -203,7 +289,7 @@ class _FamilieSchermState extends State<FamilieScherm> {
                           color: kTextMuted, fontStyle: FontStyle.italic)),
                 ],
                 const SizedBox(height: 16),
-                Text(type == 'stem' || type == 'lied'
+                Text(type == 'stem' || type == 'lied' || type == 'dagelijks'
                     ? 'Sluit automatisch wanneer klaar'
                     : 'Tik om te sluiten',
                     style: const TextStyle(fontSize: 11, color: kTextMuted)),
@@ -266,6 +352,16 @@ class _FamilieSchermState extends State<FamilieScherm> {
             textAlign: TextAlign.center,
             style: const TextStyle(fontSize: 22, color: kBrown,
                 height: 1.5, fontWeight: FontWeight.w600));
+      case 'dagelijks':
+        return Column(mainAxisSize: MainAxisSize.min, children: [
+          Text(d['emoji'] as String? ?? '⭐',
+              style: const TextStyle(fontSize: 96)),
+          const SizedBox(height: 16),
+          Text(d['label'] as String? ?? '',
+              textAlign: TextAlign.center,
+              style: const TextStyle(fontSize: 28,
+                  fontWeight: FontWeight.w800, color: kBrown)),
+        ]);
       default:
         return const SizedBox();
     }
@@ -277,6 +373,7 @@ class _FamilieSchermState extends State<FamilieScherm> {
       case 'stem': return '🎙️';
       case 'lied': return '🎵';
       case 'tekst': return '✏️';
+      case 'dagelijks': return '⏰';
       default: return '💕';
     }
   }

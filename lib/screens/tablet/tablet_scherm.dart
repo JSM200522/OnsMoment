@@ -7,6 +7,7 @@ import 'package:wakelock_plus/wakelock_plus.dart';
 import '../../services/device_modus_service.dart';
 import '../../theme/kleuren.dart';
 import '../../data/geluiden.dart';
+import '../../data/debug_flags.dart';
 
 class TabletScherm extends StatefulWidget {
   const TabletScherm({super.key});
@@ -69,6 +70,17 @@ class _TabletSchermState extends State<TabletScherm> {
     super.dispose();
   }
 
+  void _debugLog(String msg) {
+    if (!DEBUG_AUDIO || !mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text(msg, style: const TextStyle(fontSize: 11)),
+      backgroundColor: Colors.black.withOpacity(0.75),
+      duration: const Duration(seconds: 2),
+      behavior: SnackBarBehavior.floating,
+      margin: const EdgeInsets.only(top: 60, left: 16, right: 16, bottom: 0),
+    ));
+  }
+
   void _startMomentenListener() {
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null) return;
@@ -106,6 +118,7 @@ class _TabletSchermState extends State<TabletScherm> {
   }
 
   void _verwerkMomenten(QuerySnapshot snap) {
+    _debugLog('📨 Snap: ${snap.docs.length} momenten');
     if (_huidigPopupId != null) return;
     final nu = DateTime.now();
     final voor24uur = nu.subtract(const Duration(hours: 24));
@@ -128,6 +141,7 @@ class _TabletSchermState extends State<TabletScherm> {
   }
 
   Future<void> _checkGeplandeMomenten() async {
+    _debugLog('📅 Check tick — ${_dagelijkseDocs?.length ?? 0} dagelijkse');
     if (_huidigPopupId != null || _dagelijkseDocs == null) return;
     final nu = DateTime.now();
     final huidigMin = nu.hour * 60 + nu.minute;
@@ -142,6 +156,7 @@ class _TabletSchermState extends State<TabletScherm> {
       if (momentMin > huidigMin) continue;
       if (huidigMin - momentMin > 1) continue;
       if (d['laatstGetoond'] == vandaagKey) continue;
+      _debugLog('📅 Match: ${d['label']}');
       try {
         await doc.reference.update({'laatstGetoond': vandaagKey});
       } catch (_) {}
@@ -153,6 +168,8 @@ class _TabletSchermState extends State<TabletScherm> {
   Future<void> _toonDagelijksPopup(
       String id, Map<String, dynamic> d) async {
     final aangepasteAudio = d['aangepasteAudioUrl'] as String? ?? '';
+    _debugLog('▶️ Dagelijks: ${d['label']} '
+        '(eigenAudio=${aangepasteAudio.isNotEmpty})');
     final synthetic = <String, dynamic>{
       'type': 'dagelijks',
       'emoji': d['emoji'],
@@ -186,10 +203,13 @@ class _TabletSchermState extends State<TabletScherm> {
     if (!skipBel && geluidAsset != null) {
       bool geluidGespeeld = false;
       try {
+        _debugLog('🔔 Bel laden: $_herkenningsgeluid');
         await _geluidPlayer.setAsset(geluidAsset);
         await _geluidPlayer.play();
         geluidGespeeld = true;
-      } catch (_) {}
+      } catch (e) {
+        _debugLog('❌ Bel-fout: $e');
+      }
       if (geluidGespeeld) {
         await Future.delayed(const Duration(milliseconds: 1200));
       }
@@ -208,9 +228,12 @@ class _TabletSchermState extends State<TabletScherm> {
       final url = d['mediaUrl'] ?? '';
       if (url.isNotEmpty) {
         try {
+          _debugLog('🔊 Audio laden');
           await _audioPlayer.setUrl(url);
           await _audioPlayer.play();
-        } catch (_) {}
+        } catch (e) {
+          _debugLog('❌ Audio-fout: $e');
+        }
       }
     }
     // 60s zodat dementie-doelgroep tijd heeft om te verwerken;
