@@ -37,11 +37,14 @@ class _FamilieSchermState extends State<FamilieScherm> {
   @override
   void initState() {
     super.initState();
+    // Listeners pas starten ná apparaatId-load zodat _verwerkMomenten nooit
+    // triggert met _mijnApparaatId == null (voorkomt off-by-one delay).
     DeviceModusService.krijgApparaatId().then((id) {
-      if (mounted) _mijnApparaatId = id;
+      if (!mounted) return;
+      setState(() => _mijnApparaatId = id);
+      _startMomentenListener();
+      _startGebruikerListener();
     });
-    _startMomentenListener();
-    _startGebruikerListener();
     _audioPlayer.playerStateStream.listen((state) {
       if (state.processingState == ProcessingState.completed
           && (_huidigPopup?['type'] == 'stem'
@@ -845,8 +848,14 @@ class _StuurTabState extends State<StuurTab> {
           ]),
         );
       }
-      final leden = snap.data!
-          .where((l) => l['apparaatId'] != _mijnApparaatId).toList();
+      // In alsOntvanger-modus: sluit álle ontvanger-apparaten uit, niet
+      // alleen het eigen apparaat (meerdere ontvanger-sessies kunnen
+      // dezelfde modus delen met andere apparaatIds).
+      final leden = snap.data!.where((l) {
+        if (l['apparaatId'] == _mijnApparaatId) return false;
+        if (widget.alsOntvanger && l['modus'] == 'ontvanger') return false;
+        return true;
+      }).toList();
       return Container(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
         decoration: BoxDecoration(color: kWhite,

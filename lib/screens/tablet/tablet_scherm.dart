@@ -34,12 +34,15 @@ class _TabletSchermState extends State<TabletScherm> {
   void initState() {
     super.initState();
     WakelockPlus.enable();
+    // Listeners pas starten ná apparaatId-load zodat _verwerkMomenten nooit
+    // triggert met _mijnApparaatId == null (voorkomt off-by-one delay).
     DeviceModusService.krijgApparaatId().then((id) {
-      if (mounted) _mijnApparaatId = id;
+      if (!mounted) return;
+      setState(() => _mijnApparaatId = id);
+      _startMomentenListener();
+      _startGebruikerListener();
+      _startDagelijksListener();
     });
-    _startMomentenListener();
-    _startGebruikerListener();
-    _startDagelijksListener();
     _checkTimer = Timer.periodic(
         const Duration(seconds: 30), (_) => _checkGeplandeMomenten());
 
