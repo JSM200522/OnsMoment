@@ -85,4 +85,63 @@ class ApparaatService {
       return [];
     }
   }
+
+  /// True als dit apparaatId het oudste apparaat is in de subcollectie —
+  /// dat is het apparaat dat de account heeft aangemaakt. Faalt naar false.
+  static Future<bool> isAccountMaker({
+    required String familieUid,
+    required String apparaatId,
+  }) async {
+    try {
+      final snap = await FirebaseFirestore.instance
+          .collection('gebruikers').doc(familieUid)
+          .collection('apparaten')
+          .orderBy('aangemaakt').limit(1).get();
+      if (snap.docs.isEmpty) return false;
+      return snap.docs.first.id == apparaatId;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Geeft de huidige weergaveModus van het eerste ontvanger-apparaat in
+  /// deze kring. Gebruikt voor visuele indicatie in de modus-dialog.
+  static Future<String?> krijgWeergaveModusVoorOntvangers(
+      String familieUid) async {
+    try {
+      final snap = await FirebaseFirestore.instance
+          .collection('gebruikers').doc(familieUid)
+          .collection('apparaten')
+          .where('modus', isEqualTo: 'ontvanger').limit(1).get();
+      if (snap.docs.isEmpty) return null;
+      return snap.docs.first.data()['weergaveModus'] as String?;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Batch-update weergaveModus voor alle ontvanger-apparaten in een kring.
+  /// Triggert remote modus-wissel via Firestore listener op ontvanger-kant.
+  static Future<bool> zetWeergaveModusVoorOntvangers({
+    required String familieUid,
+    required String nieuweModus,
+  }) async {
+    if (nieuweModus != 'vergrendeld' && nieuweModus != 'meldingen') {
+      return false;
+    }
+    try {
+      final snap = await FirebaseFirestore.instance
+          .collection('gebruikers').doc(familieUid)
+          .collection('apparaten')
+          .where('modus', isEqualTo: 'ontvanger').get();
+      final batch = FirebaseFirestore.instance.batch();
+      for (final doc in snap.docs) {
+        batch.update(doc.reference, {'weergaveModus': nieuweModus});
+      }
+      await batch.commit();
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
 }

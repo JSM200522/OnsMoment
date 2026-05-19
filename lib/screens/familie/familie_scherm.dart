@@ -333,7 +333,7 @@ class _FamilieSchermState extends State<FamilieScherm> {
       switch (_tab) {
         case 0: return StuurTab(alsOntvanger: widget.alsOntvanger);
         case 1: return const AgendaTab();
-        case 2: return const InstellingenTab();
+        case 2: return InstellingenTab(alsOntvanger: widget.alsOntvanger);
         default: return const SizedBox();
       }
     }
@@ -1281,26 +1281,41 @@ class _NotitiesTabState extends State<NotitiesTab> {
 // INSTELLINGEN TAB
 // ════════════════════════════════════════════════════════════
 class InstellingenTab extends StatefulWidget {
-  const InstellingenTab({super.key});
+  final bool alsOntvanger;
+  const InstellingenTab({super.key, this.alsOntvanger = false});
   @override
   State<InstellingenTab> createState() => _InstellingenTabState();
 }
 
 class _InstellingenTabState extends State<InstellingenTab> {
   String? _ontvangerNaam;
+  bool _isAccountMaker = false;
+  String? _huidigeOntvangerModus;
 
   @override
   void initState() {
     super.initState();
     final uid = FirebaseAuth.instance.currentUser?.uid;
-    if (uid != null) {
-      FirebaseFirestore.instance.collection('gebruikers').doc(uid).get()
-          .then((doc) {
+    if (uid == null) return;
+    FirebaseFirestore.instance.collection('gebruikers').doc(uid).get()
+        .then((doc) {
+      if (!mounted) return;
+      setState(() {
+        _ontvangerNaam =
+            (doc.data()?['ontvangerNaam'] as String?) ?? 'je dierbare';
+      });
+    });
+    if (!widget.alsOntvanger) {
+      DeviceModusService.krijgApparaatId().then((apparaatId) async {
+        final ok = await ApparaatService.isAccountMaker(
+            familieUid: uid, apparaatId: apparaatId);
         if (!mounted) return;
-        setState(() {
-          _ontvangerNaam =
-              (doc.data()?['ontvangerNaam'] as String?) ?? 'je dierbare';
-        });
+        setState(() => _isAccountMaker = ok);
+        if (ok) {
+          final huidig = await ApparaatService
+              .krijgWeergaveModusVoorOntvangers(uid);
+          if (mounted) setState(() => _huidigeOntvangerModus = huidig);
+        }
       });
     }
   }
@@ -1332,9 +1347,14 @@ class _InstellingenTabState extends State<InstellingenTab> {
           Navigator.push(context, MaterialPageRoute(
               builder: (c) => const OntvangenBerichtenScherm()));
         }),
-        _item('🔄', 'Wissel naar Ontvanger-modus',
-            'Verander dit apparaat naar ontvanger-weergave', () =>
-            _bevestigModusWissel(context)),
+        if (_isAccountMaker && !widget.alsOntvanger)
+          _item('🔄', 'Wijzig modus van $naam',
+              'Vergrendeld of meldings — op afstand',
+              () => _toonModusDialog(context, naam)),
+        if (!widget.alsOntvanger)
+          _item('🔄', 'Wissel naar Ontvanger-modus',
+              'Verander dit apparaat naar ontvanger-weergave', () =>
+              _bevestigModusWissel(context)),
         const SizedBox(height: 20),
         _sectie('OVERIG'),
         _item('❓', 'Hulp en uitleg', 'Veelgestelde vragen', () {
@@ -1371,6 +1391,107 @@ class _InstellingenTabState extends State<InstellingenTab> {
           child: const Text('Wisselen',
               style: TextStyle(color: kWhite))),
       ],
+    ));
+  }
+
+  void _toonModusDialog(BuildContext context, String naam) {
+    String? gekozen = _huidigeOntvangerModus;
+    showDialog(context: context, builder: (ctx) => StatefulBuilder(
+      builder: (ctx, setLocal) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        backgroundColor: kCream,
+        title: Text('Hoe gebruikt $naam dit apparaat?',
+            style: const TextStyle(fontSize: 17,
+                fontWeight: FontWeight.w900, color: kBrown)),
+        content: Column(mainAxisSize: MainAxisSize.min, children: [
+          _modusOptie(
+              emoji: '🔒', titel: 'Alleen voor Ons Moment',
+              uitleg: 'Kiosk — alleen popups, geen andere apps',
+              modusId: DeviceModusService.VERGRENDELD,
+              gekozen: gekozen, huidig: _huidigeOntvangerModus,
+              onTap: () => setLocal(() =>
+                  gekozen = DeviceModusService.VERGRENDELD)),
+          const SizedBox(height: 10),
+          _modusOptie(
+              emoji: '📱', titel: 'Ook voor andere dingen',
+              uitleg: 'Berichten komen als melding binnen',
+              modusId: DeviceModusService.MELDINGEN,
+              gekozen: gekozen, huidig: _huidigeOntvangerModus,
+              onTap: () => setLocal(() =>
+                  gekozen = DeviceModusService.MELDINGEN)),
+        ]),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx),
+              child: const Text('Annuleren',
+                  style: TextStyle(color: kTextMuted,
+                      fontWeight: FontWeight.w700))),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: kPeach,
+              disabledBackgroundColor: kPeachLight,
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12))),
+            onPressed: (gekozen == null
+                    || gekozen == _huidigeOntvangerModus)
+                ? null
+                : () => _commitModusWijziging(ctx, gekozen!, naam),
+            child: const Text('Wijzig', style: TextStyle(
+                color: kWhite, fontWeight: FontWeight.w800))),
+        ],
+      ),
+    ));
+  }
+
+  Widget _modusOptie({required String emoji, required String titel,
+      required String uitleg, required String modusId,
+      required String? gekozen, required String? huidig,
+      required VoidCallback onTap}) {
+    final isGekozen = gekozen == modusId;
+    final isHuidig = huidig == modusId;
+    return GestureDetector(onTap: onTap, child: Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+          color: isGekozen ? kPeachPale : kWhite,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(
+              color: isGekozen ? kPeach : kPeachLight, width: 2)),
+      child: Row(children: [
+        Text(emoji, style: const TextStyle(fontSize: 22)),
+        const SizedBox(width: 10),
+        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+          Row(children: [
+            Flexible(child: Text(titel, style: const TextStyle(fontSize: 13,
+                fontWeight: FontWeight.w800, color: kBrown))),
+            if (isHuidig) ...[
+              const SizedBox(width: 6),
+              const Text('(huidig)', style: TextStyle(fontSize: 10,
+                  fontWeight: FontWeight.w800, color: kPeach)),
+            ],
+          ]),
+          Text(uitleg, style: const TextStyle(fontSize: 11,
+              color: kTextMuted, height: 1.3)),
+        ])),
+      ]),
+    ));
+  }
+
+  Future<void> _commitModusWijziging(BuildContext ctx, String nieuweModus,
+      String naam) async {
+    Navigator.pop(ctx);
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return;
+    final ok = await ApparaatService.zetWeergaveModusVoorOntvangers(
+        familieUid: uid, nieuweModus: nieuweModus);
+    if (!mounted) return;
+    if (ok) setState(() => _huidigeOntvangerModus = nieuweModus);
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text(ok
+          ? '✓ Modus van $naam gewijzigd. '
+              'Het apparaat van $naam herlaadt automatisch.'
+          : 'Wijzigen mislukt — probeer opnieuw'),
+      backgroundColor: ok ? Colors.green : Colors.red,
+      duration: const Duration(seconds: 4),
     ));
   }
 
