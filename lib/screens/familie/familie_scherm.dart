@@ -286,8 +286,25 @@ class _FamilieSchermState extends State<FamilieScherm> {
 
   @override
   Widget build(BuildContext context) {
+    if (!widget.alsOntvanger) return _buildScaffold(achtergrondFotoUrl: '');
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return _buildScaffold(achtergrondFotoUrl: '');
+    return StreamBuilder<DocumentSnapshot>(
+      stream: FirebaseFirestore.instance
+          .collection('gebruikers').doc(uid).snapshots(),
+      builder: (ctx, snap) {
+        final url = (snap.data?.data() as Map<String, dynamic>?)
+            ?['ontvangerFoto'] as String? ?? '';
+        return _buildScaffold(achtergrondFotoUrl: url);
+      },
+    );
+  }
+
+  Widget _buildScaffold({required String achtergrondFotoUrl}) {
+    final toonAchtergrond = widget.alsOntvanger
+        && achtergrondFotoUrl.isNotEmpty;
     return Scaffold(
-      backgroundColor: kCream,
+      backgroundColor: toonAchtergrond ? Colors.transparent : kCream,
       appBar: AppBar(
         backgroundColor: Colors.transparent, elevation: 0,
         title: const Text('Ons Moment 💕',
@@ -304,6 +321,24 @@ class _FamilieSchermState extends State<FamilieScherm> {
         ],
       ),
       body: Stack(children: [
+        if (toonAchtergrond) ...[
+          Positioned.fill(child: Image.network(achtergrondFotoUrl,
+            fit: BoxFit.cover,
+            loadingBuilder: (c, child, prog) {
+              if (prog == null) return child;
+              return Container(decoration: const BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter, end: Alignment.bottomCenter,
+                  colors: [kPeachPale, kCream])));
+            },
+            errorBuilder: (c, e, s) => Container(
+              decoration: const BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter, end: Alignment.bottomCenter,
+                  colors: [kPeachPale, kCream]))))),
+          Positioned.fill(child: Container(
+              color: kCream.withOpacity(0.88))),
+        ],
         _huidigeTab(),
         if (_huidigPopup != null) Positioned.fill(
           child: GestureDetector(
@@ -1351,10 +1386,6 @@ class _InstellingenTabState extends State<InstellingenTab> {
           _item('🔄', 'Wijzig modus van $naam',
               'Vergrendeld of meldings — op afstand',
               () => _toonModusDialog(context, naam)),
-        if (!widget.alsOntvanger)
-          _item('🔄', 'Wissel naar Ontvanger-modus',
-              'Verander dit apparaat naar ontvanger-weergave', () =>
-              _bevestigModusWissel(context)),
         const SizedBox(height: 20),
         _sectie('OVERIG'),
         _item('❓', 'Hulp en uitleg', 'Veelgestelde vragen', () {
@@ -1371,27 +1402,6 @@ class _InstellingenTabState extends State<InstellingenTab> {
             style: TextStyle(fontSize: 11, color: kTextMuted))),
       ]),
     );
-  }
-
-  void _bevestigModusWissel(BuildContext context) {
-    showDialog(context: context, builder: (ctx) => AlertDialog(
-      title: const Text('Naar Ontvanger-modus?'),
-      content: const Text(
-          'Dit apparaat wordt dan een kiosk-weergave voor de ontvanger. '
-          'Je blijft ingelogd op hetzelfde account.'),
-      actions: [
-        TextButton(onPressed: () => Navigator.pop(ctx),
-            child: const Text('Annuleren')),
-        ElevatedButton(
-          style: ElevatedButton.styleFrom(backgroundColor: kPeach),
-          onPressed: () async {
-            Navigator.pop(ctx);
-            await DeviceModusService.zet(DeviceModusService.ONTVANGER);
-          },
-          child: const Text('Wisselen',
-              style: TextStyle(color: kWhite))),
-      ],
-    ));
   }
 
   void _toonModusDialog(BuildContext context, String naam) {
