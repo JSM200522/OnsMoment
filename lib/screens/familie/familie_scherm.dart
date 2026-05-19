@@ -1103,6 +1103,16 @@ class AgendaTab extends StatelessWidget {
             style: TextStyle(fontSize: 13, color: kTextMuted)),
         const SizedBox(height: 16),
         Expanded(child: ListView(children: [
+          Container(
+            margin: const EdgeInsets.only(bottom: 8),
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: kPeachPale,
+              borderRadius: BorderRadius.circular(10)),
+            child: const Text(
+              '💡 Tijd aanpassen kan via Instellingen > Momenten beheren',
+              style: TextStyle(fontSize: 12, color: kTextMuted)),
+          ),
           const _SectieTitel('🔁 ELKE DAG'),
           StreamBuilder<QuerySnapshot>(
             stream: FirebaseFirestore.instance.collection('dagelijkse_momenten')
@@ -1248,6 +1258,7 @@ class _AudioInstelDialogState extends State<_AudioInstelDialog> {
   bool _bezig = false;
   String? _huidigeUrl;
   String? _huidigType;
+  Uint8List? _huidigeBytes;
 
   @override
   void initState() {
@@ -1255,6 +1266,17 @@ class _AudioInstelDialogState extends State<_AudioInstelDialog> {
     final d = widget.doc.data() as Map<String, dynamic>;
     _huidigeUrl = d['aangepasteAudioUrl'] as String?;
     _huidigType = d['aangepasteAudioType'] as String?;
+    _preloadHuidige();
+  }
+
+  Future<void> _preloadHuidige() async {
+    if ((_huidigeUrl ?? '').isEmpty) return;
+    try {
+      final resp = await http.get(Uri.parse(_huidigeUrl!));
+      if (resp.statusCode == 200 && resp.bodyBytes.isNotEmpty && mounted) {
+        _huidigeBytes = resp.bodyBytes;
+      }
+    } catch (_) {}
   }
 
   @override
@@ -1353,9 +1375,22 @@ class _AudioInstelDialogState extends State<_AudioInstelDialog> {
   }
 
   Future<void> _speelHuidigePreview() async {
-    if (_huidigeUrl == null || _huidigeUrl!.isEmpty) return;
+    if ((_huidigeUrl ?? '').isEmpty) return;
     try {
-      await _previewPlayer.setUrl(_huidigeUrl!);
+      // Speel uit lokale bytes (bij dialog-open gepreload) — vermijdt
+      // iOS Safari CORS/range-issues én gesture-verlies door netwerk-fetch
+      // vóór play(). Dat liet de knop op iPhone stil falen.
+      if (_huidigeBytes == null) {
+        final resp = await http.get(Uri.parse(_huidigeUrl!));
+        if (resp.statusCode != 200 || resp.bodyBytes.isEmpty) {
+          _toonFout('Audio kon niet worden geladen (${resp.statusCode})');
+          return;
+        }
+        _huidigeBytes = resp.bodyBytes;
+      }
+      final mime = _huidigType == 'mp3' ? 'audio/mpeg' : 'audio/webm';
+      await _previewPlayer.setAudioSource(
+          _BytesAudioSource(_huidigeBytes!, mime));
       await _previewPlayer.play();
     } catch (e) {
       _toonFout('Afspelen mislukt: $e');

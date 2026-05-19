@@ -418,6 +418,18 @@ class _SetupWizardState extends State<SetupWizard> {
         ),
       ),
     )),
+    const SizedBox(height: 12),
+    Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: kCream,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: kPeachLight, width: 1.5)),
+      child: const Text(
+        '💡 Tip: in de app kun je later ook eigen stem of muziek '
+        'toevoegen per moment via Agenda.',
+        style: TextStyle(fontSize: 12, color: kTextMuted, height: 1.4)),
+    ),
     const SizedBox(height: 24),
 
     _sectieKop('📅 Dagelijkse momenten',
