@@ -21,6 +21,7 @@ class _SetupWizardState extends State<SetupWizard> {
   String _rol = '';
   bool _isInloggen = false;
   bool _bezig = false;
+  String? _bezigModus;
 
   final _naamCtrl = TextEditingController();
   final _emailCtrl = TextEditingController();
@@ -556,8 +557,15 @@ class _SetupWizardState extends State<SetupWizard> {
         boxShadow: [BoxShadow(color: kPeach.withOpacity(0.35),
             blurRadius: 20, offset: const Offset(0, 8))]),
       child: Center(child: _bezig
-          ? const SizedBox(width: 22, height: 22,
-              child: CircularProgressIndicator(color: kWhite, strokeWidth: 3))
+          ? Row(mainAxisSize: MainAxisSize.min, children: const [
+              SizedBox(width: 18, height: 18,
+                  child: CircularProgressIndicator(
+                      color: kWhite, strokeWidth: 3)),
+              SizedBox(width: 12),
+              Text('Even laden...',
+                  style: TextStyle(fontSize: 16,
+                      fontWeight: FontWeight.w800, color: kWhite)),
+            ])
           : Text(_knopTekst(), style: const TextStyle(fontSize: 16,
                 fontWeight: FontWeight.w800, color: kWhite))),
     ),
@@ -809,6 +817,7 @@ class _SetupWizardState extends State<SetupWizard> {
           _modusKaart(
             emoji: '🔒',
             titel: 'Alleen voor Ons Moment',
+            modusId: DeviceModusService.VERGRENDELD,
             uitleg: 'Voor $naam die niet meer zelf op een apparaat kan '
                 'reageren.\n\n'
                 'Het apparaat:\n'
@@ -823,6 +832,7 @@ class _SetupWizardState extends State<SetupWizard> {
           _modusKaart(
             emoji: '📱',
             titel: 'Ook voor andere dingen',
+            modusId: DeviceModusService.MELDINGEN,
             uitleg: 'Voor $naam die nog wel zelf wil reageren.\n\n'
                 '$naam kan:\n'
                 '- Foto\'s, stem-berichten en muziek terugsturen\n'
@@ -838,29 +848,49 @@ class _SetupWizardState extends State<SetupWizard> {
   }
 
   Widget _modusKaart({required String emoji, required String titel,
-      required String uitleg, required VoidCallback onTap}) =>
-    GestureDetector(onTap: _bezig ? null : onTap, child: Container(
-      padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(color: kWhite,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: kPeachLight, width: 2),
-        boxShadow: [BoxShadow(color: kPeach.withOpacity(0.08),
-            blurRadius: 12, offset: const Offset(0, 4))]),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Row(children: [
-          Text(emoji, style: const TextStyle(fontSize: 22)),
-          const SizedBox(width: 10),
-          Expanded(child: Text(titel, style: const TextStyle(
-              fontSize: 15, fontWeight: FontWeight.w800, color: kBrown))),
+      required String uitleg, required String modusId,
+      required VoidCallback onTap}) {
+    final bezigDeze = _bezigModus == modusId;
+    final bezigAnder = _bezigModus != null && !bezigDeze;
+    return Opacity(
+      opacity: bezigAnder ? 0.4 : 1.0,
+      child: GestureDetector(onTap: _bezig ? null : onTap, child: Container(
+        padding: const EdgeInsets.all(18),
+        decoration: BoxDecoration(color: kWhite,
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: kPeachLight, width: 2),
+          boxShadow: [BoxShadow(color: kPeach.withOpacity(0.08),
+              blurRadius: 12, offset: const Offset(0, 4))]),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(children: [
+            Text(emoji, style: const TextStyle(fontSize: 22)),
+            const SizedBox(width: 10),
+            Expanded(child: Text(titel, style: const TextStyle(
+                fontSize: 15, fontWeight: FontWeight.w800, color: kBrown))),
+            if (bezigDeze) ...[
+              const SizedBox(width: 8),
+              const SizedBox(width: 16, height: 16,
+                  child: CircularProgressIndicator(
+                      color: kPeach, strokeWidth: 2.5)),
+              const SizedBox(width: 8),
+              const Text('Even laden...',
+                  style: TextStyle(fontSize: 12,
+                      fontWeight: FontWeight.w800, color: kPeach)),
+            ],
+          ]),
+          const SizedBox(height: 8),
+          Text(uitleg, style: const TextStyle(
+              fontSize: 12, color: kBrownLight, height: 1.5)),
         ]),
-        const SizedBox(height: 8),
-        Text(uitleg, style: const TextStyle(
-            fontSize: 12, color: kBrownLight, height: 1.5)),
-      ]),
-    ));
+      )),
+    );
+  }
 
   Future<void> _voltooiOntvanger(String weergaveModus) async {
-    setState(() => _bezig = true);
+    setState(() {
+      _bezig = true;
+      _bezigModus = weergaveModus;
+    });
     try {
       final uid = FirebaseAuth.instance.currentUser!.uid;
       final apparaatId = await DeviceModusService.krijgApparaatId();
@@ -881,7 +911,10 @@ class _SetupWizardState extends State<SetupWizard> {
       await DeviceModusService.zetWeergaveModus(weergaveModus);
       await DeviceModusService.zet(DeviceModusService.ONTVANGER);
     } finally {
-      if (mounted) setState(() => _bezig = false);
+      if (mounted) setState(() {
+        _bezig = false;
+        _bezigModus = null;
+      });
     }
   }
 

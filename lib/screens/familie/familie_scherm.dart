@@ -826,7 +826,26 @@ class _StuurTabState extends State<StuurTab> {
   Widget _adresKeuze() => FutureBuilder<List<Map<String, dynamic>>>(
     future: _kringFuture,
     builder: (ctx, snap) {
-      final leden = (snap.data ?? [])
+      if (_mijnApparaatId == null || !snap.hasData) {
+        return Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+          decoration: BoxDecoration(color: kWhite,
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: kPeachLight, width: 2)),
+          child: Row(children: const [
+            Text('👥', style: TextStyle(fontSize: 20)),
+            SizedBox(width: 10),
+            SizedBox(width: 16, height: 16,
+                child: CircularProgressIndicator(
+                    color: kPeach, strokeWidth: 2.5)),
+            SizedBox(width: 10),
+            Text('Even laden...',
+                style: TextStyle(fontSize: 13,
+                    fontWeight: FontWeight.w700, color: kTextMuted)),
+          ]),
+        );
+      }
+      final leden = snap.data!
           .where((l) => l['apparaatId'] != _mijnApparaatId).toList();
       return Container(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
