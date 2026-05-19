@@ -337,7 +337,7 @@ class _FamilieSchermState extends State<FamilieScherm> {
                   begin: Alignment.topCenter, end: Alignment.bottomCenter,
                   colors: [kPeachPale, kCream]))))),
           Positioned.fill(child: Container(
-              color: kCream.withOpacity(0.88))),
+              color: kCream.withOpacity(0.68))),
         ],
         _huidigeTab(),
         if (_huidigPopup != null) Positioned.fill(
