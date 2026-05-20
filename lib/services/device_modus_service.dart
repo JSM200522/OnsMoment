@@ -14,6 +14,7 @@ class DeviceModusService {
   static const String _key = 'ons_moment_device_modus';
   static const String _weergaveKey = 'ons_moment_weergave_modus';
   static const String _apparaatIdKey = 'ons_moment_apparaat_id';
+  static const String _geregistreerdKey = 'ons_moment_geregistreerd';
   static const String FAMILIE = 'familie';
   static const String ONTVANGER = 'ontvanger';
   static const String VERGRENDELD = 'vergrendeld';
@@ -102,5 +103,23 @@ class DeviceModusService {
       final ok = await prefs.setString(_weergaveKey, modus);
       if (ok) weergaveModusNotifier.value = modus;
     } catch (_) {}
+  }
+
+  /// Persistente markering dat dit apparaat ooit in de kring geregistreerd
+  /// was. Overleeft cold-starts zodat force-logout ook na herstart werkt.
+  static Future<void> markeerGeregistreerd() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool(_geregistreerdKey, true);
+    } catch (_) {}
+  }
+
+  static Future<bool> isGeregistreerd() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      return prefs.getBool(_geregistreerdKey) ?? false;
+    } catch (_) {
+      return false;
+    }
   }
 }

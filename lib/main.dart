@@ -8,6 +8,7 @@ import 'screens/familie/familie_scherm.dart';
 import 'screens/tablet/tablet_scherm.dart';
 import 'services/apparaat_service.dart';
 import 'services/device_modus_service.dart';
+import 'data/debug_flags.dart';
 import 'theme/kleuren.dart';
 
 /// App-niveau messenger zodat een toast (bv. force-logout) zichtbaar blijft
@@ -194,7 +195,7 @@ class _KringWachter extends StatefulWidget {
 
 class _KringWachterState extends State<_KringWachter> {
   StreamSubscription<DocumentSnapshot>? _sub;
-  bool _zagOoitBestaan = false;
+  bool _geregistreerd = false;
   bool _uitgelogd = false;
 
   @override
@@ -205,24 +206,33 @@ class _KringWachterState extends State<_KringWachter> {
 
   Future<void> _start() async {
     final apparaatId = await DeviceModusService.krijgApparaatId();
+    _geregistreerd = await DeviceModusService.isGeregistreerd();
     if (!mounted) return;
+    _debugToast('Wachter start — geregistreerd=$_geregistreerd');
     _sub = FirebaseFirestore.instance
         .collection('gebruikers').doc(widget.familieUid)
         .collection('apparaten').doc(apparaatId)
         .snapshots()
         .listen((doc) {
       if (_uitgelogd) return;
+      _debugToast('Snapshot: exists=${doc.exists} reg=$_geregistreerd');
       if (doc.exists) {
-        _zagOoitBestaan = true;
-      } else if (_zagOoitBestaan) {
+        // Persistente markering: dit apparaat hoort bij de kring. Overleeft
+        // cold-starts zodat een latere verwijdering altijd uitlogt.
+        if (!_geregistreerd) {
+          _geregistreerd = true;
+          DeviceModusService.markeerGeregistreerd();
+        }
+      } else if (_geregistreerd) {
         _forceLogout();
       }
-      // exists==false zonder _zagOoitBestaan = nooit geregistreerd → niets.
+      // exists==false zonder _geregistreerd = nooit geregistreerd → niets.
     });
   }
 
   Future<void> _forceLogout() async {
     _uitgelogd = true;
+    _debugToast('Force-logout: apparaat verwijderd');
     await _sub?.cancel();
     await DeviceModusService.wis();
     await FirebaseAuth.instance.signOut();
@@ -230,6 +240,16 @@ class _KringWachterState extends State<_KringWachter> {
       content: Text('Je apparaat is verwijderd uit de kring'),
       backgroundColor: Colors.orange,
       duration: Duration(seconds: 5),
+    ));
+  }
+
+  void _debugToast(String msg) {
+    if (!DEBUG_FORCE_LOGOUT) return;
+    scaffoldMessengerKey.currentState?.showSnackBar(SnackBar(
+      content: Text('🔐 $msg', style: const TextStyle(fontSize: 11)),
+      backgroundColor: Colors.black.withOpacity(0.75),
+      duration: const Duration(seconds: 2),
+      behavior: SnackBarBehavior.floating,
     ));
   }
 

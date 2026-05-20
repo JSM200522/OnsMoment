@@ -2010,11 +2010,12 @@ class _InstellingenTabState extends State<InstellingenTab> {
           Navigator.push(context, MaterialPageRoute(
               builder: (c) => const OntvangenBerichtenScherm()));
         }),
-        _item('👥', 'Kringleden beheren',
-            'Bekijk en verwijder apparaten in de kring', () {
-          Navigator.push(context, MaterialPageRoute(
-              builder: (c) => const KringledenScherm()));
-        }),
+        if (!widget.alsOntvanger)
+          _item('👥', 'Kringleden beheren',
+              'Bekijk en verwijder apparaten in de kring', () {
+            Navigator.push(context, MaterialPageRoute(
+                builder: (c) => const KringledenScherm()));
+          }),
         if (_isAccountMaker && !widget.alsOntvanger)
           _item('🔄', 'Wijzig modus van $naam',
               'Vergrendeld of meldings — op afstand',
