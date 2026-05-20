@@ -2020,6 +2020,11 @@ class _InstellingenTabState extends State<InstellingenTab> {
           _item('🔄', 'Wijzig modus van $naam',
               'Vergrendeld of meldings — op afstand',
               () => _toonModusDialog(context, naam)),
+        if (_isAccountMaker && !widget.alsOntvanger)
+          _item('✉️', 'Email of wachtwoord wijzigen',
+              'Voor jou en je kringleden',
+              () => showDialog(context: context,
+                  builder: (ctx) => const _AccountWijzigDialog())),
         const SizedBox(height: 20),
         _sectie('OVERIG'),
         _item('❓', 'Hulp en uitleg', 'Veelgestelde vragen', () {
@@ -2531,6 +2536,210 @@ class _EenmaligMomentDialogState extends State<_EenmaligMomentDialog> {
                 child: const Text('Plannen',
                     style: TextStyle(color: kWhite, fontWeight: FontWeight.w800))),
             ]),
+          ]))));
+  }
+}
+
+class _AccountWijzigDialog extends StatefulWidget {
+  const _AccountWijzigDialog();
+  @override
+  State<_AccountWijzigDialog> createState() => _AccountWijzigDialogState();
+}
+
+class _AccountWijzigDialogState extends State<_AccountWijzigDialog> {
+  final _emailNieuwCtrl = TextEditingController();
+  final _emailWwCtrl = TextEditingController();
+  final _wwHuidigCtrl = TextEditingController();
+  final _wwNieuwCtrl = TextEditingController();
+  final _wwBevestigCtrl = TextEditingController();
+  bool _bezigEmail = false;
+  bool _bezigWw = false;
+
+  @override
+  void dispose() {
+    _emailNieuwCtrl.dispose();
+    _emailWwCtrl.dispose();
+    _wwHuidigCtrl.dispose();
+    _wwNieuwCtrl.dispose();
+    _wwBevestigCtrl.dispose();
+    super.dispose();
+  }
+
+  void _toonFout(String m) => ScaffoldMessenger.of(context)
+      .showSnackBar(SnackBar(content: Text(m), backgroundColor: Colors.red));
+
+  void _toonSucces(String m) => ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(m), backgroundColor: kGreen,
+          duration: const Duration(seconds: 6)));
+
+  String _friendlyError(FirebaseAuthException e) {
+    switch (e.code) {
+      case 'wrong-password':
+      case 'invalid-credential':
+        return 'Huidig wachtwoord klopt niet';
+      case 'weak-password':
+        return 'Nieuw wachtwoord moet minimaal 6 tekens zijn';
+      case 'email-already-in-use':
+        return 'Dit email-adres is al in gebruik';
+      case 'invalid-email':
+        return 'Email-adres is niet geldig';
+      case 'requires-recent-login':
+        return 'Even opnieuw inloggen, dan kun je het wijzigen';
+      default:
+        return 'Wijzigen mislukt — probeer opnieuw';
+    }
+  }
+
+  Future<void> _wijzigEmail() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+    final nieuw = _emailNieuwCtrl.text.trim();
+    final ww = _emailWwCtrl.text;
+    if (nieuw.isEmpty || ww.isEmpty) {
+      _toonFout('Vul alle velden in'); return;
+    }
+    if (!RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$').hasMatch(nieuw)) {
+      _toonFout('Email-adres is niet geldig'); return;
+    }
+    setState(() => _bezigEmail = true);
+    try {
+      final cred = EmailAuthProvider.credential(
+          email: user.email!, password: ww);
+      await user.reauthenticateWithCredential(cred);
+      // verifyBeforeUpdateEmail stuurt een verificatielink naar het nieuwe
+      // adres; de e-mail wijzigt pas ná het klikken. Werkt ook met Email
+      // Enumeration Protection (anders dan het deprecated updateEmail).
+      await user.verifyBeforeUpdateEmail(nieuw);
+      if (!mounted) return;
+      _toonSucces('✓ Verificatie-link is gestuurd naar $nieuw. Klik op de '
+          'link om te bevestigen. Daarna moeten alle kringleden inloggen '
+          'met het nieuwe email.');
+      _emailNieuwCtrl.clear();
+      _emailWwCtrl.clear();
+    } on FirebaseAuthException catch (e) {
+      _toonFout(_friendlyError(e));
+    } catch (_) {
+      _toonFout('Wijzigen mislukt — probeer opnieuw');
+    } finally {
+      if (mounted) setState(() => _bezigEmail = false);
+    }
+  }
+
+  Future<void> _wijzigWachtwoord() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+    final huidig = _wwHuidigCtrl.text;
+    final nieuw = _wwNieuwCtrl.text;
+    final bevestig = _wwBevestigCtrl.text;
+    if (huidig.isEmpty || nieuw.isEmpty) {
+      _toonFout('Vul alle velden in'); return;
+    }
+    if (nieuw.length < 6) {
+      _toonFout('Nieuw wachtwoord moet minimaal 6 tekens zijn'); return;
+    }
+    if (nieuw != bevestig) {
+      _toonFout('Nieuwe wachtwoorden komen niet overeen'); return;
+    }
+    setState(() => _bezigWw = true);
+    try {
+      final cred = EmailAuthProvider.credential(
+          email: user.email!, password: huidig);
+      await user.reauthenticateWithCredential(cred);
+      await user.updatePassword(nieuw);
+      if (!mounted) return;
+      _toonSucces('✓ Wachtwoord gewijzigd. Vertel je kringleden!');
+      _wwHuidigCtrl.clear();
+      _wwNieuwCtrl.clear();
+      _wwBevestigCtrl.clear();
+    } on FirebaseAuthException catch (e) {
+      _toonFout(_friendlyError(e));
+    } catch (_) {
+      _toonFout('Wijzigen mislukt — probeer opnieuw');
+    } finally {
+      if (mounted) setState(() => _bezigWw = false);
+    }
+  }
+
+  Widget _veld(String label, TextEditingController ctrl, {bool obscure = false}) =>
+      Padding(padding: const EdgeInsets.only(bottom: 10),
+        child: TextField(controller: ctrl, obscureText: obscure,
+          style: const TextStyle(color: kBrown, fontWeight: FontWeight.w700),
+          decoration: InputDecoration(labelText: label,
+            labelStyle: const TextStyle(color: kTextMuted, fontSize: 13),
+            border: const OutlineInputBorder())));
+
+  Widget _actieKnop(String label, bool bezig, VoidCallback onTap) =>
+      SizedBox(width: double.infinity,
+        child: ElevatedButton(
+          style: ElevatedButton.styleFrom(backgroundColor: kPeach,
+            disabledBackgroundColor: kPeachLight,
+            padding: const EdgeInsets.symmetric(vertical: 12),
+            shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12))),
+          onPressed: bezig ? null : onTap,
+          child: bezig
+              ? const SizedBox(width: 18, height: 18,
+                  child: CircularProgressIndicator(color: kWhite, strokeWidth: 2.5))
+              : Text(label, style: const TextStyle(
+                  color: kWhite, fontWeight: FontWeight.w800))));
+
+  Widget _sectieKop(String t) => Padding(
+    padding: const EdgeInsets.only(bottom: 8),
+    child: Text(t, style: const TextStyle(fontSize: 15,
+        fontWeight: FontWeight.w900, color: kBrown)));
+
+  @override
+  Widget build(BuildContext context) {
+    final email = FirebaseAuth.instance.currentUser?.email ?? '';
+    return Dialog(backgroundColor: kCream,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      child: Padding(padding: const EdgeInsets.all(20),
+        child: SingleChildScrollView(
+          child: Column(mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start, children: [
+            const Text('Account gegevens wijzigen',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900,
+                    color: kBrown)),
+            const SizedBox(height: 16),
+            Container(padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(color: Colors.orange.shade100,
+                  borderRadius: BorderRadius.circular(12)),
+              child: Text('⚠️ Let op: na wijziging moeten alle kringleden '
+                  'opnieuw inloggen met de nieuwe gegevens. Vertel ze de '
+                  'nieuwe gegevens!',
+                  style: TextStyle(fontSize: 12,
+                      color: Colors.orange.shade900, height: 1.4))),
+            const SizedBox(height: 20),
+
+            _sectieKop('E-mail wijzigen'),
+            Container(width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              margin: const EdgeInsets.only(bottom: 10),
+              decoration: BoxDecoration(color: kPeachPale,
+                  borderRadius: BorderRadius.circular(10)),
+              child: Text('Huidig: $email',
+                  style: const TextStyle(fontSize: 12, color: kTextMuted))),
+            _veld('Nieuw e-mailadres', _emailNieuwCtrl),
+            _veld('Huidig wachtwoord', _emailWwCtrl, obscure: true),
+            _actieKnop('Wijzig e-mail', _bezigEmail, _wijzigEmail),
+            const SizedBox(height: 8),
+            const Text('Je krijgt een email op het NIEUWE adres. Open die '
+                'en klik op de link om de wijziging te bevestigen.',
+                style: TextStyle(fontSize: 11, color: kTextMuted, height: 1.4)),
+            const SizedBox(height: 24),
+
+            _sectieKop('Wachtwoord wijzigen'),
+            _veld('Huidig wachtwoord', _wwHuidigCtrl, obscure: true),
+            _veld('Nieuw wachtwoord', _wwNieuwCtrl, obscure: true),
+            _veld('Bevestig nieuw wachtwoord', _wwBevestigCtrl, obscure: true),
+            _actieKnop('Wijzig wachtwoord', _bezigWw, _wijzigWachtwoord),
+            const SizedBox(height: 16),
+
+            Center(child: TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Sluiten',
+                  style: TextStyle(color: kTextMuted,
+                      fontWeight: FontWeight.w700)))),
           ]))));
   }
 }
