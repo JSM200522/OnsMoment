@@ -144,4 +144,20 @@ class ApparaatService {
       return false;
     }
   }
+
+  /// Verwijdert een apparaat-doc uit de kring. Het betreffende apparaat
+  /// wordt via de force-logout listener (main.dart) direct uitgelogd.
+  static Future<bool> verwijderApparaat({
+    required String familieUid,
+    required String apparaatId,
+  }) async {
+    try {
+      await FirebaseFirestore.instance
+          .collection('gebruikers').doc(familieUid)
+          .collection('apparaten').doc(apparaatId).delete();
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
 }

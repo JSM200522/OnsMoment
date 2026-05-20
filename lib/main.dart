@@ -10,6 +10,11 @@ import 'services/apparaat_service.dart';
 import 'services/device_modus_service.dart';
 import 'theme/kleuren.dart';
 
+/// App-niveau messenger zodat een toast (bv. force-logout) zichtbaar blijft
+/// terwijl de widget-tree naar het login-scherm rebuildt.
+final GlobalKey<ScaffoldMessengerState> scaffoldMessengerKey =
+    GlobalKey<ScaffoldMessengerState>();
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp();
@@ -24,6 +29,7 @@ class OnsMomentApp extends StatelessWidget {
     return MaterialApp(
       title: 'Ons Moment',
       debugShowCheckedModeBanner: false,
+      scaffoldMessengerKey: scaffoldMessengerKey,
       theme: ThemeData(
         useMaterial3: true,
         colorScheme: ColorScheme.fromSeed(seedColor: kPeach),
@@ -83,10 +89,12 @@ class _RouterSchermState extends State<RouterScherm> {
           valueListenable: DeviceModusService.notifier,
           builder: (context, modus, _) {
             if (!authSnap.hasData || modus == null) return const SetupWizard();
-            if (modus == DeviceModusService.ONTVANGER) {
-              return _OntvangerRouter(familieUid: authSnap.data!.uid);
-            }
-            return const FamilieScherm();
+            return _KringWachter(
+              familieUid: authSnap.data!.uid,
+              child: modus == DeviceModusService.ONTVANGER
+                  ? _OntvangerRouter(familieUid: authSnap.data!.uid)
+                  : const FamilieScherm(),
+            );
           },
         );
       },
@@ -170,4 +178,67 @@ class _OntvangerRouterState extends State<_OntvangerRouter> {
       },
     );
   }
+}
+
+/// Bewaakt het eigen apparaat-doc. Verdwijnt het doc nadat het eerder
+/// bestond (verwijderd uit de kring), dan volgt een force-logout. De
+/// _zagOoitBestaan-gate voorkomt dat bestaande gebruikers zonder apparaat-
+/// registratie onterecht worden uitgelogd.
+class _KringWachter extends StatefulWidget {
+  final String familieUid;
+  final Widget child;
+  const _KringWachter({required this.familieUid, required this.child});
+  @override
+  State<_KringWachter> createState() => _KringWachterState();
+}
+
+class _KringWachterState extends State<_KringWachter> {
+  StreamSubscription<DocumentSnapshot>? _sub;
+  bool _zagOoitBestaan = false;
+  bool _uitgelogd = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _start();
+  }
+
+  Future<void> _start() async {
+    final apparaatId = await DeviceModusService.krijgApparaatId();
+    if (!mounted) return;
+    _sub = FirebaseFirestore.instance
+        .collection('gebruikers').doc(widget.familieUid)
+        .collection('apparaten').doc(apparaatId)
+        .snapshots()
+        .listen((doc) {
+      if (_uitgelogd) return;
+      if (doc.exists) {
+        _zagOoitBestaan = true;
+      } else if (_zagOoitBestaan) {
+        _forceLogout();
+      }
+      // exists==false zonder _zagOoitBestaan = nooit geregistreerd → niets.
+    });
+  }
+
+  Future<void> _forceLogout() async {
+    _uitgelogd = true;
+    await _sub?.cancel();
+    await DeviceModusService.wis();
+    await FirebaseAuth.instance.signOut();
+    scaffoldMessengerKey.currentState?.showSnackBar(const SnackBar(
+      content: Text('Je apparaat is verwijderd uit de kring'),
+      backgroundColor: Colors.orange,
+      duration: Duration(seconds: 5),
+    ));
+  }
+
+  @override
+  void dispose() {
+    _sub?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => widget.child;
 }

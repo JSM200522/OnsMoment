@@ -15,6 +15,7 @@ import '../../services/dagelijks_audio_service.dart';
 import '../../theme/kleuren.dart';
 import '../../data/geluiden.dart';
 import '../../data/debug_flags.dart';
+import 'kringleden_scherm.dart';
 
 class FamilieScherm extends StatefulWidget {
   final bool alsOntvanger;
@@ -2008,6 +2009,11 @@ class _InstellingenTabState extends State<InstellingenTab> {
             'Alle berichten die je dierbare heeft gestuurd', () {
           Navigator.push(context, MaterialPageRoute(
               builder: (c) => const OntvangenBerichtenScherm()));
+        }),
+        _item('👥', 'Kringleden beheren',
+            'Bekijk en verwijder apparaten in de kring', () {
+          Navigator.push(context, MaterialPageRoute(
+              builder: (c) => const KringledenScherm()));
         }),
         if (_isAccountMaker && !widget.alsOntvanger)
           _item('🔄', 'Wijzig modus van $naam',
