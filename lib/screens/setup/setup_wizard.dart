@@ -688,6 +688,7 @@ class _SetupWizardState extends State<SetupWizard> {
         'noodcontactNaam': _noodNaamCtrl.text.trim(),
         'noodcontactTel': _noodTelCtrl.text.trim(),
         'herkenningsgeluid': _gekozenGeluid,
+        'tier': 'klein',
         'aangemaaktOp': FieldValue.serverTimestamp(),
       });
       for (final m in _momenten) {
@@ -796,11 +797,22 @@ class _SetupWizardState extends State<SetupWizard> {
     setState(() => _bezig = true);
     try {
       final uid = FirebaseAuth.instance.currentUser!.uid;
+      final naam = _naamCtrl.text.trim();
+      final mag = await ApparaatService.kanNieuwePersoonToevoegen(
+          familieUid: uid, nieuweNaam: naam);
+      if (!mag) {
+        final limiet = ApparaatService.limietPerTier(
+            await ApparaatService.krijgTier(uid));
+        _toonFout('Deze kring zit vol ($limiet kringleden). Vraag de '
+            'beheerder om een ander kringlid te verwijderen.');
+        if (mounted) setState(() => _bezig = false);
+        return;
+      }
       final apparaatId = await DeviceModusService.krijgApparaatId();
       await ApparaatService.registreer(
         familieUid: uid,
         apparaatId: apparaatId,
-        persoonsNaam: _naamCtrl.text.trim(),
+        persoonsNaam: naam,
         modus: 'familie',
       );
       await DeviceModusService.zet(DeviceModusService.FAMILIE);
@@ -913,6 +925,15 @@ class _SetupWizardState extends State<SetupWizard> {
             .collection('gebruikers').doc(uid).get();
         naam = (doc.data()?['ontvangerNaam'] as String?) ?? 'Ontvanger';
       } catch (_) {}
+      final mag = await ApparaatService.kanNieuwePersoonToevoegen(
+          familieUid: uid, nieuweNaam: naam);
+      if (!mag) {
+        final limiet = ApparaatService.limietPerTier(
+            await ApparaatService.krijgTier(uid));
+        _toonFout('Deze kring zit vol ($limiet kringleden). Vraag de '
+            'beheerder om een ander kringlid te verwijderen.');
+        return;
+      }
       await ApparaatService.registreer(
         familieUid: uid,
         apparaatId: apparaatId,

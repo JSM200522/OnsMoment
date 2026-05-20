@@ -139,9 +139,15 @@ class _TabletSchermState extends State<TabletScherm> {
     final voor24uur = nu.subtract(const Duration(hours: 24));
     for (final doc in snap.docs) {
       final d = doc.data() as Map<String, dynamic>;
-      // Skip: niet voor mij bedoeld (broadcast=null = wel voor mij)
+      // Skip: niet voor mij bedoeld. Nieuwe sends gebruiken aanApparaatIds
+      // (lijst); oude docs het enkele aanApparaatId. Beide ondersteund.
+      final aanLijst = (d['aanApparaatIds'] as List?)?.cast<String>();
       final aan = d['aanApparaatId'] as String?;
-      if (aan != null && aan != _mijnApparaatId) continue;
+      if (aanLijst != null && aanLijst.isNotEmpty) {
+        if (!aanLijst.contains(_mijnApparaatId)) continue;
+      } else if (aan != null && aan != _mijnApparaatId) {
+        continue;
+      }
       // Skip: eigen bericht (relevant als tablet in meldingen-modus stuurt)
       final van = d['vanApparaatId'] as String?;
       if (van != null && van == _mijnApparaatId) continue;

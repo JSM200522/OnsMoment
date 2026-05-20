@@ -226,9 +226,15 @@ class _FamilieSchermState extends State<FamilieScherm> {
     final voor24uur = nu.subtract(const Duration(hours: 24));
     for (final doc in snap.docs) {
       final d = doc.data() as Map<String, dynamic>;
-      // Niet voor mij bedoeld (specifiek aan ander apparaat)
+      // Niet voor mij bedoeld. Nieuwe sends gebruiken aanApparaatIds (lijst);
+      // oude docs het enkele aanApparaatId. Beide ondersteund.
+      final aanLijst = (d['aanApparaatIds'] as List?)?.cast<String>();
       final aan = d['aanApparaatId'] as String?;
-      if (aan != null && aan != _mijnApparaatId) continue;
+      if (aanLijst != null && aanLijst.isNotEmpty) {
+        if (!aanLijst.contains(_mijnApparaatId)) continue;
+      } else if (aan != null && aan != _mijnApparaatId) {
+        continue;
+      }
       // Eigen bericht skip
       final van = d['vanApparaatId'] as String?;
       if (van != null && van == _mijnApparaatId) continue;
@@ -575,8 +581,7 @@ class _StuurTabState extends State<StuurTab> {
   int _opnameSeconden = 0;
   Timer? _opnameTimer;
 
-  String? _gekozenApparaatId;  // null = iedereen in kring
-  String? _gekozenPersoonsNaam;
+  String? _gekozenPersoonsNaam;  // null = iedereen in kring
   String? _mijnApparaatId;
   String? _ontvangerNaam;
   Future<List<Map<String, dynamic>>>? _kringFuture;
@@ -717,9 +722,9 @@ class _StuurTabState extends State<StuurTab> {
                 : Text(
                     _testModus
                         ? (widget.alsOntvanger
-                            ? (_gekozenApparaatId == null
+                            ? (_gekozenPersoonsNaam == null
                                 ? '⚡ Stuur NU naar de kring'
-                                : '⚡ Stuur NU naar ${_gekozenPersoonsNaam ?? "deze persoon"}')
+                                : '⚡ Stuur NU naar $_gekozenPersoonsNaam')
                             : '⚡ Stuur NU naar ${_ontvangerNaam ?? "ontvanger"}')
                         : 'Plan en stuur 💕',
                     style: const TextStyle(fontSize: 16,
@@ -968,13 +973,28 @@ class _StuurTabState extends State<StuurTab> {
       final geplandTijd = _testModus ? DateTime.now() : DateTime(
           _datum.year, _datum.month, _datum.day, _tijd.hour, _tijd.minute);
 
+      // Persoon → alle apparaatIds van die persoon (case-insensitief).
+      // null = iedereen in de kring.
+      List<String>? aanApparaatIds;
+      if (_gekozenPersoonsNaam != null) {
+        final leden = await (_kringFuture
+            ?? Future.value(<Map<String, dynamic>>[]));
+        aanApparaatIds = leden
+            .where((l) => (l['persoonsNaam'] as String? ?? '').toLowerCase()
+                == _gekozenPersoonsNaam!.toLowerCase())
+            .map((l) => l['apparaatId'] as String)
+            .toList();
+      }
+
       await FirebaseFirestore.instance.collection('momenten').add({
         'familieUid': user.uid,
         'vanNaam': familieNaam,
         'vanApparaatId': _mijnApparaatId,
         'vanApparaatModus':
             DeviceModusService.notifier.value ?? 'familie',
-        'aanApparaatId': _gekozenApparaatId,  // null = iedereen in kring
+        'aanApparaatId': null,                  // legacy-veld; nieuwe sends via lijst
+        'aanApparaatIds': aanApparaatIds,        // null = iedereen in kring
+        'aanPersoonsNaam': _gekozenPersoonsNaam, // voor historie/weergave
         'type': _type,
         'mediaUrl': mediaUrl,
         'bericht': _berichtCtrl.text.trim(),
@@ -1040,6 +1060,18 @@ class _StuurTabState extends State<StuurTab> {
         if (widget.alsOntvanger && l['modus'] == 'ontvanger') return false;
         return true;
       }).toList();
+      // Groepeer op persoonsNaam (case-insensitief) — meerdere apparaten van
+      // dezelfde persoon geven één entry.
+      final gezien = <String>{};
+      final personen = <Map<String, dynamic>>[];
+      for (final l in leden) {
+        final naam = (l['persoonsNaam'] as String? ?? '').trim();
+        if (naam.isEmpty) continue;
+        final key = naam.toLowerCase();
+        if (gezien.contains(key)) continue;
+        gezien.add(key);
+        personen.add(l);
+      }
       return Container(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
         decoration: BoxDecoration(color: kWhite,
@@ -1049,7 +1081,7 @@ class _StuurTabState extends State<StuurTab> {
           const Text('👥', style: TextStyle(fontSize: 20)),
           const SizedBox(width: 10),
           Expanded(child: DropdownButton<String?>(
-            value: _gekozenApparaatId,
+            value: _gekozenPersoonsNaam,
             isExpanded: true,
             underline: const SizedBox(),
             hint: const Text('Naar wie?',
@@ -1061,28 +1093,19 @@ class _StuurTabState extends State<StuurTab> {
                     style: TextStyle(color: kBrown,
                         fontWeight: FontWeight.w700)),
               ),
-              ...leden.map((l) {
+              ...personen.map((l) {
+                final naam = l['persoonsNaam'] as String;
                 final isOntv = l['modus'] == 'ontvanger';
-                final label = isOntv
-                    ? '${l['persoonsNaam']} (ontvanger)'
-                    : l['persoonsNaam'] as String;
+                final label = isOntv ? '$naam (ontvanger)' : naam;
                 return DropdownMenuItem<String?>(
-                  value: l['apparaatId'] as String,
+                  value: naam,
                   child: Text(label, style: const TextStyle(
                       color: kBrown, fontWeight: FontWeight.w700)),
                 );
               }),
             ],
             onChanged: (val) => setState(() {
-              _gekozenApparaatId = val;
-              if (val == null) {
-                _gekozenPersoonsNaam = null;
-              } else {
-                final geko = leden.firstWhere(
-                    (l) => l['apparaatId'] == val,
-                    orElse: () => <String, dynamic>{});
-                _gekozenPersoonsNaam = geko['persoonsNaam'] as String?;
-              }
+              _gekozenPersoonsNaam = val;
             }),
           )),
         ]),

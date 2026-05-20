@@ -160,4 +160,66 @@ class ApparaatService {
       return false;
     }
   }
+
+  // ── Tier / kringleden-limiet (architectuur voor V9 tier-model) ──
+  static const Map<String, int> _limietPerTier = {
+    'klein': 8, 'groot': 20, 'zorg': 9999,
+  };
+
+  /// Maximaal aantal unieke personen voor een tier. Onbekend → 'klein'.
+  static int limietPerTier(String tier) => _limietPerTier[tier] ?? 8;
+
+  /// Leest het tier uit gebruikers/{uid}. Ontbrekend/ongeldig → 'klein'.
+  static Future<String> krijgTier(String familieUid) async {
+    try {
+      final doc = await FirebaseFirestore.instance
+          .collection('gebruikers').doc(familieUid).get();
+      final t = doc.data()?['tier'] as String?;
+      return (t == 'klein' || t == 'groot' || t == 'zorg') ? t! : 'klein';
+    } catch (_) {
+      return 'klein';
+    }
+  }
+
+  /// Aantal unieke personen (case-insensitief op persoonsNaam) in de kring.
+  static Future<int> aantalUniekePersonenInKring(String familieUid) async {
+    try {
+      final snap = await FirebaseFirestore.instance
+          .collection('gebruikers').doc(familieUid)
+          .collection('apparaten').get();
+      final namen = <String>{};
+      for (final doc in snap.docs) {
+        final naam = (doc.data()['persoonsNaam'] as String? ?? '').trim();
+        if (naam.isNotEmpty) namen.add(naam.toLowerCase());
+      }
+      return namen.length;
+    } catch (_) {
+      return 0;
+    }
+  }
+
+  /// True als een persoon met deze naam mag worden toegevoegd. Een bestaande
+  /// naam (extra apparaat) mag altijd; een nieuwe naam alleen onder de
+  /// tier-limiet. Fail-open: bij fouten toestaan om legitieme registratie
+  /// niet te blokkeren.
+  static Future<bool> kanNieuwePersoonToevoegen({
+    required String familieUid,
+    required String nieuweNaam,
+  }) async {
+    try {
+      final snap = await FirebaseFirestore.instance
+          .collection('gebruikers').doc(familieUid)
+          .collection('apparaten').get();
+      final namen = <String>{};
+      for (final doc in snap.docs) {
+        final naam = (doc.data()['persoonsNaam'] as String? ?? '').trim();
+        if (naam.isNotEmpty) namen.add(naam.toLowerCase());
+      }
+      if (namen.contains(nieuweNaam.trim().toLowerCase())) return true;
+      final tier = await krijgTier(familieUid);
+      return namen.length < limietPerTier(tier);
+    } catch (_) {
+      return true;
+    }
+  }
 }
