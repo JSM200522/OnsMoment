@@ -22,7 +22,6 @@ class _SetupWizardState extends State<SetupWizard> {
   bool _isInloggen = false;
   bool _bezig = false;
   String? _bezigModus;
-  String? _dierbareNaam;  // naam ontvanger, voor "Hoe noemt X jou?"
 
   final _naamCtrl = TextEditingController();
   final _emailCtrl = TextEditingController();
@@ -212,9 +211,7 @@ class _SetupWizardState extends State<SetupWizard> {
   // ───────────────────────────────────────────────────
   Widget _rolKeuze() => Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
     const SizedBox(height: 8),
-    Center(child: Image.asset('assets/images/logo.png', height: 90)),
-    const SizedBox(height: 16),
-    const Text('💕', style: TextStyle(fontSize: 48)),
+    Center(child: Image.asset('assets/images/logo.png', height: 76)),
     const SizedBox(height: 16),
     const Text('Welkom bij\nOns Moment',
         style: TextStyle(fontSize: 32, fontWeight: FontWeight.w900,
@@ -409,7 +406,7 @@ class _SetupWizardState extends State<SetupWizard> {
 
     _sectieKop('🔔 Herkenningsgeluid',
         'Klinkt elke keer als er iets nieuws aankomt. Tik op een geluid om '
-        'het voor te beluisteren. Helpt ontvangers met dementie het te '
+        'het voor te beluisteren. Helpt je dierbare het te '
         'herkennen als iets liefs.'),
     const SizedBox(height: 12),
     ...kGeluiden.map((g) => Padding(
@@ -671,12 +668,6 @@ class _SetupWizardState extends State<SetupWizard> {
       } else {
         // Eerste keer op dit apparaat — vraag naam in stap 2.
         _naamCtrl.clear();
-        // Naam van de dierbare ophalen voor de vraag "Hoe noemt X jou?".
-        try {
-          final g = await FirebaseFirestore.instance
-              .collection('gebruikers').doc(uid).get();
-          _dierbareNaam = (g.data()?['ontvangerNaam'] as String?)?.trim();
-        } catch (_) {}
         if (mounted) setState(() => _stap = 2);
       }
     } catch (e) {
@@ -808,25 +799,17 @@ class _SetupWizardState extends State<SetupWizard> {
   // ───────────────────────────────────────────────────
   // STAP 2: PERSOONSNAAM (route B — familie inloggen)
   // ───────────────────────────────────────────────────
-  Widget _persoonsnaamStap() {
-    final naam = (_dierbareNaam?.isNotEmpty ?? false)
-        ? _dierbareNaam! : 'je dierbare';
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start, children: [
-      const Text('Welkom in de kring 💕',
-          style: TextStyle(fontSize: 28, fontWeight: FontWeight.w900,
-              color: kBrown, height: 1.2)),
-      const SizedBox(height: 8),
-      Text('Hoe noemt $naam jou?',
-          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800,
-              color: kBrown, height: 1.4)),
-      const SizedBox(height: 24),
-      _input('👤', 'Jouw naam', 'Bijv. Sara', _naamCtrl, false),
-      const SizedBox(height: 12),
-      const Text("Bijv. 'Sara' of 'Pap', niet je volledige naam.",
-          style: TextStyle(fontSize: 12, color: kTextMuted, height: 1.4)),
-    ]);
-  }
+  Widget _persoonsnaamStap() => Column(
+    crossAxisAlignment: CrossAxisAlignment.start, children: [
+    const Text('Welkom in de kring 💕',
+        style: TextStyle(fontSize: 28, fontWeight: FontWeight.w900,
+            color: kBrown, height: 1.2)),
+    const SizedBox(height: 8),
+    const Text('Hoe heet jij?',
+        style: TextStyle(fontSize: 14, color: kTextMuted, height: 1.4)),
+    const SizedBox(height: 24),
+    _input('👤', 'Jouw naam', 'Bijv. Sara', _naamCtrl, false),
+  ]);
 
   Future<void> _voltooiFamilieInloggen() async {
     if (_naamCtrl.text.trim().isEmpty) {
@@ -887,7 +870,7 @@ class _SetupWizardState extends State<SetupWizard> {
                 '- Toont alleen Ons Moment\n'
                 '- Kan geen andere apps openen, niet bellen\n'
                 '- $naam kan kijken en luisteren, maar niet terugsturen\n\n'
-                'Kies dit voor gevorderde dementie of als $naam het '
+                'Kies dit als $naam veel zorg nodig heeft of het '
                 'apparaat niet zelf gebruikt.',
             onTap: () => _voltooiOntvanger(DeviceModusService.VERGRENDELD),
           ),

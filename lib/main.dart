@@ -107,17 +107,17 @@ class _LaadScherm extends StatelessWidget {
   const _LaadScherm();
   @override
   Widget build(BuildContext context) {
-    return const Scaffold(
+    return Scaffold(
       backgroundColor: kCream,
       body: Center(
         child: Column(mainAxisSize: MainAxisSize.min, children: [
-          Text('💕', style: TextStyle(fontSize: 48)),
-          SizedBox(height: 16),
-          Text('Ons Moment',
+          Image.asset('assets/images/logo.png', height: 100),
+          const SizedBox(height: 16),
+          const Text('Ons Moment',
               style: TextStyle(fontSize: 24,
                   fontWeight: FontWeight.w900, color: kBrown)),
-          SizedBox(height: 16),
-          CircularProgressIndicator(color: kPeach),
+          const SizedBox(height: 16),
+          const CircularProgressIndicator(color: kPeach),
         ]),
       ),
     );

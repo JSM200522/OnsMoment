@@ -2068,6 +2068,9 @@ class _InstellingenTabState extends State<InstellingenTab> {
           await FirebaseAuth.instance.signOut();
         }),
         const SizedBox(height: 30),
+        Center(child: Opacity(opacity: 0.85,
+            child: Image.asset('assets/images/logo.png', height: 48))),
+        const SizedBox(height: 8),
         const Center(child: Text('Ons Moment v7',
             style: TextStyle(fontSize: 11, color: kTextMuted))),
       ]),
