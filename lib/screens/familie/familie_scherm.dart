@@ -672,33 +672,6 @@ class _StuurTabState extends State<StuurTab> {
           _adresKeuze(),
           const SizedBox(height: 16),
         ],
-        // Snel een hartje sturen — zonder media-keuze.
-        AnimatedScale(
-          scale: _hartScale,
-          duration: const Duration(milliseconds: 250),
-          curve: Curves.easeOutBack,
-          child: GestureDetector(
-            onTap: _stuurHartje,
-            child: Container(
-              width: double.infinity,
-              padding: const EdgeInsets.symmetric(vertical: 18),
-              decoration: BoxDecoration(
-                gradient: const LinearGradient(colors: [kRose, kPeach]),
-                borderRadius: BorderRadius.circular(18),
-                boxShadow: [BoxShadow(color: kRose.withOpacity(0.35),
-                    blurRadius: 16, offset: const Offset(0, 6))]),
-              child: const Row(mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  PulserendHart(grootte: 28),
-                  SizedBox(width: 12),
-                  Text('Stuur een hartje',
-                      style: TextStyle(fontSize: 18,
-                          fontWeight: FontWeight.w900, color: kWhite)),
-                ]),
-            ),
-          ),
-        ),
-        const SizedBox(height: 20),
         Row(children: [
           _typeKnop('📷', 'Foto', 'foto'),
           const SizedBox(width: 10),
@@ -710,6 +683,34 @@ class _StuurTabState extends State<StuurTab> {
           const SizedBox(width: 10),
           _typeKnop('✏️', 'Tekst', 'tekst'),
         ]),
+
+        const SizedBox(height: 16),
+        // Snel een hartje sturen — extra optie onder de type-knoppen.
+        AnimatedScale(
+          scale: _hartScale,
+          duration: const Duration(milliseconds: 250),
+          curve: Curves.easeOutBack,
+          child: GestureDetector(
+            onTap: _stuurHartje,
+            child: Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(vertical: 11),
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(colors: [kRose, kPeach]),
+                borderRadius: BorderRadius.circular(14),
+                boxShadow: [BoxShadow(color: kRose.withOpacity(0.3),
+                    blurRadius: 10, offset: const Offset(0, 4))]),
+              child: const Row(mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  PulserendHart(grootte: 22),
+                  SizedBox(width: 10),
+                  Text('Stuur een hartje',
+                      style: TextStyle(fontSize: 15,
+                          fontWeight: FontWeight.w800, color: kWhite)),
+                ]),
+            ),
+          ),
+        ),
 
         if (_type.isNotEmpty) ...[
           const SizedBox(height: 20),
