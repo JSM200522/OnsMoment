@@ -2986,30 +2986,114 @@ class _HulpDialog extends StatelessWidget {
   const _HulpDialog();
 
   static const List<_FAQ> _faqs = [
-    _FAQ('Hoe stuur ik direct iets naar de ontvanger?',
-        'Ga naar Sturen, zorg dat Test-modus AAN staat (blauwe banner). Kies '
-        'type, voeg media toe, klik "Stuur NU". Het verschijnt binnen enkele '
-        'seconden op het ontvanger-apparaat.'),
-    _FAQ('Wat is het verschil tussen Kring- en Ontvanger-modus?',
-        'Beide gebruiken hetzelfde account. Kring-modus = je kunt sturen, '
-        'plannen en beheren. Ontvanger-modus = kiosk-weergave met klok, '
-        'achtergrondfoto en automatische popups.'),
-    _FAQ('Hoe stel ik een ander apparaat in als ontvanger?',
-        'Open de app op het andere apparaat. Kies "Ontvanger". Log in met '
-        'jullie gezamenlijke gegevens. Dat apparaat blijft dan altijd in '
-        'kiosk-modus.'),
-    _FAQ('Kunnen meerdere kringleden hetzelfde account gebruiken?',
-        'Ja! Tot 8 personen kunnen tegelijk inloggen op hun eigen telefoon, '
-        'allemaal met dezelfde inloggegevens. Iedereen ziet en stuurt vanuit '
-        'het gezamenlijke profiel.'),
-    _FAQ('Hoe neem ik een stem-bericht op?',
-        'Kies "🎙️ Stem". Tik op de microfoon-knop. Spreek je bericht in. '
-        'Tik nogmaals om te stoppen. Beluister voorbeeld. Klik Stuur.'),
-    _FAQ('Wat zijn dagelijkse momenten?',
-        'Vaste tijden waarop er automatisch iets verschijnt. Beheer ze in '
-        'Instellingen → Momenten beheren.'),
-    _FAQ('Wat kost Ons Moment?',
-        'Eerste 5 dagen gratis. Daarna €7,99 per maand voor de hele kring.'),
+    // ── Algemeen ──
+    _FAQ('Algemeen', "Wat is Ons Moment precies?",
+        "Ons Moment is een app waarmee je foto's, stem-berichten en "
+        "herinneringen kunt sturen naar het apparaat van je dierbare. Je kunt "
+        "kiezen hoe de app bij je dierbare verschijnt: als een rustig scherm "
+        "dat alleen jouw berichten toont, of als een gewone app met meldingen."),
+    _FAQ('Algemeen', "Hoe werkt het voor mijn dierbare?",
+        "Je dierbare ontvangt jouw berichten op het apparaat dat bij hem of "
+        "haar staat. Bij elk nieuw bericht klinkt een herkenningsgeluid en "
+        "verschijnt het bericht in beeld. Je dierbare hoeft zelf niets in te "
+        "stellen of in te loggen — het apparaat blijft altijd klaar om "
+        "berichten te ontvangen."),
+    _FAQ('Algemeen',
+        "Wat is het verschil tussen vergrendelde modus en meldingen-modus?",
+        "In de vergrendelde modus toont het apparaat alleen Ons Moment. Andere "
+        "apps zijn niet bereikbaar en je dierbare kan niet per ongeluk iets "
+        "veranderen. Deze modus past goed bij iemand die meer zorg nodig heeft. "
+        "In de meldingen-modus werkt het apparaat als gewoon: je dierbare kan "
+        "andere apps gebruiken, en Ons Moment laat berichten zien als pop-up. "
+        "Deze modus past bij iemand die nog zelf met het apparaat omgaat."),
+    // ── Voor families ──
+    _FAQ('Voor families', "Hoe voeg ik iemand toe aan de kring?",
+        "Open Instellingen en kies 'Kringleden beheren'. Je ziet daar wie er al "
+        "in de kring zit. Om een familielid of vriend toe te voegen, deel je "
+        "het e-mailadres en wachtwoord van de kring met diegene. Wil je een "
+        "zorgverlener uitnodigen? Stuur dan een uitnodigingslink via "
+        "'Zorgverlener uitnodigen'. Een kring telt maximaal acht of twintig "
+        "personen, afhankelijk van je abonnement."),
+    _FAQ('Voor families', "Hoe stuur ik een bericht?",
+        "Open het tabblad 'Sturen'. Kies wat je wilt versturen: een foto, een "
+        "stem-bericht, een liedje of een tekst. Vul in voor wie het bedoeld is "
+        "en wanneer het moet aankomen. Druk op versturen en het bericht "
+        "verschijnt op het ingestelde moment bij je dierbare."),
+    _FAQ('Voor families', "Hoe maak ik een dagelijkse herinnering?",
+        "Ga naar het tabblad 'Agenda' en kies 'Nieuwe herinnering'. Stel een "
+        "tijd in en kies wat er moet verschijnen — bijvoorbeeld 'Tijd voor "
+        "koffie' met een foto of geluid. De herinnering komt voortaan elke dag "
+        "op die tijd in beeld bij je dierbare."),
+    _FAQ('Voor families', "Hoe voeg ik mijn eigen stem toe aan een moment?",
+        "Bij het maken of bewerken van een herinnering kun je je eigen stem "
+        "opnemen via de microfoon-knop. Spreek de boodschap in en sla op. Je "
+        "dierbare hoort dan jouw stem in plaats van een standaard geluid."),
+    _FAQ('Voor families', "Kan ik een bericht in de toekomst plannen?",
+        "Ja. Bij het versturen van een bericht kies je 'Wanneer sturen?' en "
+        "stel je een datum en tijd in. Het bericht wordt opgeslagen en "
+        "verschijnt vanzelf op het gekozen moment bij je dierbare. Dit werkt "
+        "voor losse momenten en voor terugkerende herinneringen."),
+    _FAQ('Voor families', "Hoe wijzig ik mijn wachtwoord?",
+        "Open Instellingen en kies 'Wachtwoord wijzigen'. Vul je huidige "
+        "wachtwoord in en kies een nieuw wachtwoord. Vergeet niet om het nieuwe "
+        "wachtwoord ook door te geven aan de andere kringleden — zij gebruiken "
+        "hetzelfde wachtwoord om in te loggen."),
+    _FAQ('Voor families', "Kan ik iemand uit de kring verwijderen?",
+        "Ja. Ga naar Instellingen → Kringleden beheren en tik op de persoon die "
+        "je wilt verwijderen. De accountmaker kan iedereen verwijderen; andere "
+        "kringleden kunnen alleen zichzelf verwijderen. Het apparaat van de "
+        "verwijderde persoon logt automatisch uit."),
+    _FAQ('Voor families', "Wat gebeurt er als ik het apparaat weghaal?",
+        "Als het apparaat van je dierbare uit staat of geen internet heeft, "
+        "blijven verstuurde berichten klaarstaan. Zodra het apparaat weer "
+        "aangaat en verbinding heeft, verschijnen de berichten alsnog. Er gaat "
+        "niets verloren."),
+    // ── Voor zorgverleners ──
+    _FAQ('Voor zorgverleners', "Kan ik Ons Moment gebruiken als zorgverlener?",
+        "Ja. Met een zorg-abonnement beheer je meerdere cliënten vanuit één "
+        "account. Je switcht eenvoudig tussen cliënten via het menu. Je betaalt "
+        "op basis van het aantal cliënten dat je beheert."),
+    _FAQ('Voor zorgverleners',
+        "Hoe begin ik als zorgverlener bij een nieuwe cliënt?",
+        "Er zijn twee manieren. De makkelijkste: vraag de familie van je cliënt "
+        "om je uit te nodigen via een link. Familie heeft dan al een apparaat "
+        "ingericht bij de cliënt en jij wordt automatisch toegevoegd aan hun "
+        "overzicht. Heeft je cliënt geen familie die meedoet? Dan installeer je "
+        "zelf de Ons Moment-app op een apparaat bij je cliënt, configureer je "
+        "dat in de gewenste modus, en stuur je een toestemmingslink naar een "
+        "wettelijk vertegenwoordiger."),
+    _FAQ('Voor zorgverleners', "Hoe werkt het als familie mij uitnodigt?",
+        "Een familielid kan je een uitnodigingslink sturen. Als je daarop "
+        "klikt, wordt hun dierbare als cliënt aan je overzicht toegevoegd. "
+        "Omdat familie je zelf uitnodigt, geldt dat als toestemming — een "
+        "aparte toestemmingslink is dan niet nodig."),
+    _FAQ('Voor zorgverleners', "Wat als mijn cliënt geen familie heeft?",
+        "Dan maak je de cliënt zelf aan via 'Nieuwe cliënt'. De app vraagt om "
+        "toestemming van een wettelijk vertegenwoordiger: je kunt zelf "
+        "bevestigen dat je die hebt, of een toestemmingslink versturen. Diegene "
+        "klikt op de link, bevestigt dat ze akkoord zijn en de cliënt wordt "
+        "actief in je overzicht."),
+    _FAQ('Voor zorgverleners',
+        "Wat als familie mij wel uitnodigt, maar later weer verwijdert?",
+        "Familie kan op elk moment iemand uit hun kring verwijderen, inclusief "
+        "de uitgenodigde zorgverlener. Als dat gebeurt verlies je toegang tot "
+        "die cliënt. De cliënt verdwijnt uit jouw overzicht en je betaalt vanaf "
+        "de volgende periode niet meer voor die plek in je abonnement."),
+    // ── Abonnement ──
+    _FAQ('Abonnement', "Wat kost Ons Moment?",
+        "Voor families is er een Klein-abonnement (tot 8 personen) en een "
+        "Groot-abonnement (tot 20 personen). Voor zorgverleners zijn er "
+        "abonnementen vanaf 1 cliënt tot onbeperkt. Je kunt kiezen voor "
+        "maandelijks betalen of voor een jaarabonnement met korting. Alle "
+        "abonnementen starten met een gratis proefperiode van 5 dagen zonder "
+        "dat je betaalgegevens hoeft op te geven."),
+    _FAQ('Abonnement', "Wie telt mee in mijn abonnement?",
+        "Bij een familie-abonnement tellen alle mensen mee die berichten kunnen "
+        "sturen — familieleden, vrienden en een eventueel uitgenodigde "
+        "zorgverlener. Je dierbare zelf telt niet mee. Bij een zorg-abonnement "
+        "telt het aantal cliënten dat je beheert; familieleden van die cliënten "
+        "hebben hun eigen familie-abonnement en tellen niet mee in jouw "
+        "zorg-abonnement."),
   ];
 
   @override
@@ -3035,21 +3119,39 @@ class _HulpDialog extends StatelessWidget {
           Expanded(child: ListView.builder(controller: scrollCtrl,
             padding: const EdgeInsets.symmetric(horizontal: 20),
             itemCount: _faqs.length,
-            itemBuilder: (c, i) => Container(
-              margin: const EdgeInsets.only(bottom: 10),
-              decoration: BoxDecoration(color: kWhite,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: kPeachLight, width: 1.5)),
-              child: Theme(data: ThemeData(dividerColor: Colors.transparent),
-                child: ExpansionTile(
-                  title: Text(_faqs[i].vraag, style: const TextStyle(
-                      fontSize: 14, fontWeight: FontWeight.w800, color: kBrown)),
-                  iconColor: kPeach, collapsedIconColor: kTextMuted,
-                  children: [
-                    Padding(padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-                      child: Text(_faqs[i].antwoord, style: const TextStyle(
-                          fontSize: 13, color: kBrownLight, height: 1.5))),
-                  ]))))),
+            itemBuilder: (c, i) {
+              final faq = _faqs[i];
+              final toonKop = i == 0 || _faqs[i - 1].categorie != faq.categorie;
+              return Column(crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (toonKop) Padding(
+                    padding: EdgeInsets.only(
+                        top: i == 0 ? 0 : 18, bottom: 8, left: 4),
+                    child: Text(faq.categorie,
+                        style: const TextStyle(fontSize: 13,
+                            fontWeight: FontWeight.w900, color: kPeach,
+                            letterSpacing: 0.8))),
+                  Container(
+                    margin: const EdgeInsets.only(bottom: 10),
+                    decoration: BoxDecoration(color: kWhite,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: kPeachLight, width: 1.5)),
+                    child: Theme(
+                      data: ThemeData(dividerColor: Colors.transparent),
+                      child: ExpansionTile(
+                        title: Text(faq.vraag, style: const TextStyle(
+                            fontSize: 14, fontWeight: FontWeight.w800,
+                            color: kBrown)),
+                        iconColor: kPeach, collapsedIconColor: kTextMuted,
+                        children: [
+                          Padding(
+                            padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                            child: Text(faq.antwoord, style: const TextStyle(
+                                fontSize: 13, color: kBrownLight,
+                                height: 1.5))),
+                        ]))),
+                ]);
+            })),
         ]),
       ),
     );
@@ -3057,8 +3159,8 @@ class _HulpDialog extends StatelessWidget {
 }
 
 class _FAQ {
-  final String vraag, antwoord;
-  const _FAQ(this.vraag, this.antwoord);
+  final String categorie, vraag, antwoord;
+  const _FAQ(this.categorie, this.vraag, this.antwoord);
 }
 
 class _BytesAudioSource extends StreamAudioSource {
