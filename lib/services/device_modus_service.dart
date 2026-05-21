@@ -66,19 +66,38 @@ class DeviceModusService {
     } catch (_) {}
   }
 
+  /// Gememoïseerd resultaat van [krijgApparaatId]. Zorgt dat ALLE aanroepers
+  /// binnen één app-sessie exact hetzelfde id krijgen. Voorkomt de race waarbij
+  /// gelijktijdige aanroepers elk een ander id genereren en het apparaat zich
+  /// onder een ander id registreert dan het opgeslagen id — de oorzaak van
+  /// onterechte force-logout én dubbele kringleden.
+  static Future<String>? _apparaatIdFuture;
+
   /// Geeft een stabiele apparaat-id terug. Genereert er één bij eerste oproep
   /// en bewaart in SharedPreferences zodat dit apparaat persistent herkenbaar is.
-  static Future<String> krijgApparaatId() async {
+  static Future<String> krijgApparaatId() =>
+      _apparaatIdFuture ??= _laadOfMaakApparaatId();
+
+  static Future<String> _laadOfMaakApparaatId() async {
     try {
       final prefs = await SharedPreferences.getInstance();
+      // Lees eerst het opgeslagen id; alleen genereren als er echt geen is.
       final bestaand = prefs.getString(_apparaatIdKey);
-      if (bestaand != null && bestaand.isNotEmpty) return bestaand;
+      if (bestaand != null && bestaand.isNotEmpty) {
+        debugPrint('📱 apparaatId geladen uit prefs: $bestaand');
+        return bestaand;
+      }
       final nieuw = '${DateTime.now().millisecondsSinceEpoch}_'
           '${Random().nextInt(0xFFFFFFFF).toRadixString(16)}';
       await prefs.setString(_apparaatIdKey, nieuw);
+      debugPrint('📱 apparaatId nieuw aangemaakt + opgeslagen: $nieuw');
       return nieuw;
-    } catch (_) {
-      return DateTime.now().millisecondsSinceEpoch.toString();
+    } catch (e) {
+      // Prefs niet beschikbaar: niet-persistent id, maar wél gememoïseerd
+      // zodat het binnen deze sessie stabiel blijft (één keer gegenereerd).
+      final fallback = 'tmp_${DateTime.now().millisecondsSinceEpoch}';
+      debugPrint('⚠️ apparaatId fallback (prefs faalde: $e) → $fallback');
+      return fallback;
     }
   }
 

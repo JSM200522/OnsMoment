@@ -15,6 +15,7 @@ import '../../services/dagelijks_audio_service.dart';
 import '../../theme/kleuren.dart';
 import '../../data/geluiden.dart';
 import '../../data/debug_flags.dart';
+import '../../data/debug_flags.dart';
 import 'kringleden_scherm.dart';
 
 class FamilieScherm extends StatefulWidget {
@@ -572,7 +573,7 @@ class _StuurTabState extends State<StuurTab> {
   Uint8List? _mediaBytes;
   String _mediaNaam = '';
   bool _bezig = false;
-  bool _testModus = true;  // Default AAN voor makkelijk testen
+  bool _testModus = false;  // Default UIT in productie (zie DEBUG_TESTMODUS)
 
   final _recorder = AudioRecorder();
   final _previewPlayer = AudioPlayer();
@@ -626,8 +627,9 @@ class _StuurTabState extends State<StuurTab> {
         const SizedBox(height: 8),
         const Text('Kies één type media. Eén ding tegelijk werkt het beste.',
             style: TextStyle(fontSize: 13, color: kTextMuted, height: 1.4)),
+        // TEST MODUS — alleen zichtbaar in debug (zie DEBUG_TESTMODUS)
+        if (DEBUG_TESTMODUS) ...[
         const SizedBox(height: 16),
-        // TEST MODUS
         Container(padding: const EdgeInsets.all(14),
           decoration: BoxDecoration(
             color: _testModus ? kBlue : kPeachPale,
@@ -653,6 +655,7 @@ class _StuurTabState extends State<StuurTab> {
                 onChanged: (v) => setState(() => _testModus = v),
                 activeColor: kWhite, activeTrackColor: kBlue.withOpacity(0.5)),
           ])),
+        ],
 
         const SizedBox(height: 16),
         if (widget.alsOntvanger) ...[

@@ -215,7 +215,8 @@ class _KringWachterState extends State<_KringWachter> {
         .snapshots()
         .listen((doc) {
       if (_uitgelogd) return;
-      _debugToast('Snapshot: exists=${doc.exists} reg=$_geregistreerd');
+      _debugToast('Snapshot: exists=${doc.exists} '
+          'cache=${doc.metadata.isFromCache} reg=$_geregistreerd');
       if (doc.exists) {
         // Persistente markering: dit apparaat hoort bij de kring. Overleeft
         // cold-starts zodat een latere verwijdering altijd uitlogt.
@@ -223,7 +224,10 @@ class _KringWachterState extends State<_KringWachter> {
           _geregistreerd = true;
           DeviceModusService.markeerGeregistreerd();
         }
-      } else if (_geregistreerd) {
+      } else if (_geregistreerd && !doc.metadata.isFromCache) {
+        // Alleen uitloggen bij een server-bevestigde verdwijning. Firestore
+        // stuurt op web vaak eerst een leeg cache-snapshot vóór het server-
+        // antwoord — dat is geen echte verwijdering uit de kring.
         _forceLogout();
       }
       // exists==false zonder _geregistreerd = nooit geregistreerd → niets.
