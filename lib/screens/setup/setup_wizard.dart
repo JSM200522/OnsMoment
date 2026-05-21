@@ -22,6 +22,7 @@ class _SetupWizardState extends State<SetupWizard> {
   bool _isInloggen = false;
   bool _bezig = false;
   String? _bezigModus;
+  String? _dierbareNaam;  // naam ontvanger, voor "Hoe noemt X jou?"
 
   final _naamCtrl = TextEditingController();
   final _emailCtrl = TextEditingController();
@@ -44,7 +45,19 @@ class _SetupWizardState extends State<SetupWizard> {
   ];
 
   @override
+  void initState() {
+    super.initState();
+    // Knop in stap 2 (ontvanger-profiel) blijft disabled tot de naam is ingevuld.
+    _ontvangerNaamCtrl.addListener(_herbouw);
+  }
+
+  void _herbouw() {
+    if (mounted) setState(() {});
+  }
+
+  @override
   void dispose() {
+    _ontvangerNaamCtrl.removeListener(_herbouw);
     _geluidPreviewPlayer.dispose();
     super.dispose();
   }
@@ -198,7 +211,9 @@ class _SetupWizardState extends State<SetupWizard> {
   // STAP 0: WELKOM + ROL KEUZE
   // ───────────────────────────────────────────────────
   Widget _rolKeuze() => Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-    const SizedBox(height: 32),
+    const SizedBox(height: 8),
+    Center(child: Image.asset('assets/images/logo.png', height: 90)),
+    const SizedBox(height: 16),
     const Text('💕', style: TextStyle(fontSize: 48)),
     const SizedBox(height: 16),
     const Text('Welkom bij\nOns Moment',
@@ -373,7 +388,11 @@ class _SetupWizardState extends State<SetupWizard> {
         'De naam staat op het home-scherm. Extra info helpt de kring '
         'gerichte berichten te sturen.'),
     const SizedBox(height: 12),
-    _input('👵', 'Naam ontvanger', 'Bijv. Jan, Opa, Moeder', _ontvangerNaamCtrl, false),
+    _input('👵', 'Naam van je dierbare', 'Bijv. Oma, Opa, Mam, Pap...',
+        _ontvangerNaamCtrl, false),
+    const SizedBox(height: 6),
+    const Text('Zo verschijnt zijn/haar naam in de app en bij berichten.',
+        style: TextStyle(fontSize: 12, color: kTextMuted, height: 1.4)),
     const SizedBox(height: 10),
     _input('💕', 'Lievelingsdingen (optioneel)',
         'Bijv. tulpen, koffie, oude foto\'s', _lievelingsdingenCtrl, false),
@@ -560,28 +579,39 @@ class _SetupWizardState extends State<SetupWizard> {
   // ───────────────────────────────────────────────────
   // KNOP & ACTIES
   // ───────────────────────────────────────────────────
-  Widget _knop() => GestureDetector(
-    onTap: _bezig ? null : _volgende,
-    child: Container(width: double.infinity, padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        gradient: const LinearGradient(colors: [kPeach, kRose]),
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [BoxShadow(color: kPeach.withOpacity(0.35),
-            blurRadius: 20, offset: const Offset(0, 8))]),
-      child: Center(child: _bezig
-          ? Row(mainAxisSize: MainAxisSize.min, children: const [
-              SizedBox(width: 18, height: 18,
-                  child: CircularProgressIndicator(
-                      color: kWhite, strokeWidth: 3)),
-              SizedBox(width: 12),
-              Text('Even laden...',
-                  style: TextStyle(fontSize: 16,
-                      fontWeight: FontWeight.w800, color: kWhite)),
-            ])
-          : Text(_knopTekst(), style: const TextStyle(fontSize: 16,
-                fontWeight: FontWeight.w800, color: kWhite))),
-    ),
-  );
+  /// Ontvanger-naam is verplicht bij het aanmaken van een nieuwe kring.
+  bool get _ontvangerNaamVerplichtMaarLeeg =>
+      _rol == 'familie' && !_isInloggen && _stap == 2
+      && _ontvangerNaamCtrl.text.trim().isEmpty;
+
+  Widget _knop() {
+    final geblokkeerd = _ontvangerNaamVerplichtMaarLeeg;
+    return Opacity(
+      opacity: geblokkeerd ? 0.5 : 1.0,
+      child: GestureDetector(
+        onTap: (_bezig || geblokkeerd) ? null : _volgende,
+        child: Container(width: double.infinity, padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            gradient: const LinearGradient(colors: [kPeach, kRose]),
+            borderRadius: BorderRadius.circular(16),
+            boxShadow: [BoxShadow(color: kPeach.withOpacity(0.35),
+                blurRadius: 20, offset: const Offset(0, 8))]),
+          child: Center(child: _bezig
+              ? Row(mainAxisSize: MainAxisSize.min, children: const [
+                  SizedBox(width: 18, height: 18,
+                      child: CircularProgressIndicator(
+                          color: kWhite, strokeWidth: 3)),
+                  SizedBox(width: 12),
+                  Text('Even laden...',
+                      style: TextStyle(fontSize: 16,
+                          fontWeight: FontWeight.w800, color: kWhite)),
+                ])
+              : Text(_knopTekst(), style: const TextStyle(fontSize: 16,
+                    fontWeight: FontWeight.w800, color: kWhite))),
+        ),
+      ),
+    );
+  }
 
   String _knopTekst() {
     if (_rol == 'familie' && _isInloggen && _stap == 1) return 'Inloggen';
@@ -639,8 +669,14 @@ class _SetupWizardState extends State<SetupWizard> {
             familieUid: uid, apparaatId: apparaatId);
         await DeviceModusService.zet(DeviceModusService.FAMILIE);
       } else {
-        // Eerste keer op dit apparaat — vraag naam in stap 2
+        // Eerste keer op dit apparaat — vraag naam in stap 2.
         _naamCtrl.clear();
+        // Naam van de dierbare ophalen voor de vraag "Hoe noemt X jou?".
+        try {
+          final g = await FirebaseFirestore.instance
+              .collection('gebruikers').doc(uid).get();
+          _dierbareNaam = (g.data()?['ontvangerNaam'] as String?)?.trim();
+        } catch (_) {}
         if (mounted) setState(() => _stap = 2);
       }
     } catch (e) {
@@ -772,22 +808,25 @@ class _SetupWizardState extends State<SetupWizard> {
   // ───────────────────────────────────────────────────
   // STAP 2: PERSOONSNAAM (route B — familie inloggen)
   // ───────────────────────────────────────────────────
-  Widget _persoonsnaamStap() => Column(
-    crossAxisAlignment: CrossAxisAlignment.start, children: [
-    const Text('Welkom in de kring 💕',
-        style: TextStyle(fontSize: 28, fontWeight: FontWeight.w900,
-            color: kBrown, height: 1.2)),
-    const SizedBox(height: 8),
-    const Text('Hoe heet jij?',
-        style: TextStyle(fontSize: 14, color: kTextMuted, height: 1.4)),
-    const SizedBox(height: 24),
-    _input('👤', 'Jouw naam', 'Bijv. Sara', _naamCtrl, false),
-    const SizedBox(height: 12),
-    const Text(
-      'We tonen je naam bij berichten die je stuurt, '
-      'zodat anderen weten van wie het komt.',
-      style: TextStyle(fontSize: 12, color: kTextMuted, height: 1.4)),
-  ]);
+  Widget _persoonsnaamStap() {
+    final naam = (_dierbareNaam?.isNotEmpty ?? false)
+        ? _dierbareNaam! : 'je dierbare';
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start, children: [
+      const Text('Welkom in de kring 💕',
+          style: TextStyle(fontSize: 28, fontWeight: FontWeight.w900,
+              color: kBrown, height: 1.2)),
+      const SizedBox(height: 8),
+      Text('Hoe noemt $naam jou?',
+          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800,
+              color: kBrown, height: 1.4)),
+      const SizedBox(height: 24),
+      _input('👤', 'Jouw naam', 'Bijv. Sara', _naamCtrl, false),
+      const SizedBox(height: 12),
+      const Text("Bijv. 'Sara' of 'Pap', niet je volledige naam.",
+          style: TextStyle(fontSize: 12, color: kTextMuted, height: 1.4)),
+    ]);
+  }
 
   Future<void> _voltooiFamilieInloggen() async {
     if (_naamCtrl.text.trim().isEmpty) {
