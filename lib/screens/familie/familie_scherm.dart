@@ -194,7 +194,6 @@ class _FamilieSchermState extends State<FamilieScherm> {
       'emoji': d['emoji'],
       'label': d['label'],
       'mediaUrl': aangepasteAudio,
-      'vanNaam': 'Een naaste',
       'geplandOp': Timestamp.now(),
       'heeftAangepasteAudio': aangepasteAudio.isNotEmpty,
     };
@@ -211,7 +210,6 @@ class _FamilieSchermState extends State<FamilieScherm> {
       'emoji': d['emoji'],
       'label': d['label'],
       'mediaUrl': aangepasteAudio,
-      'vanNaam': 'Een naaste',
       'geplandOp': Timestamp.now(),
       'heeftAangepasteAudio': aangepasteAudio.isNotEmpty,
     };
@@ -317,7 +315,8 @@ class _FamilieSchermState extends State<FamilieScherm> {
   Widget _popupOverlay() {
     final d = _huidigPopup!;
     final type = d['type'] ?? '';
-    final vanNaam = d['vanNaam'] ?? 'Een naaste';
+    final vanRaw = (d['vanNaam'] as String?)?.trim() ?? '';
+    final vanNaam = vanRaw.isNotEmpty ? vanRaw : 'Iemand uit je kring';
     final geplandOp = (d['geplandOp'] as Timestamp?)?.toDate();
     return Container(color: kBrown.withOpacity(0.94),
       child: SafeArea(child: Padding(
@@ -333,7 +332,9 @@ class _FamilieSchermState extends State<FamilieScherm> {
               child: Column(mainAxisSize: MainAxisSize.min, children: [
                 Text(_emojiVoorType(type), style: const TextStyle(fontSize: 48)),
                 const SizedBox(height: 8),
-                Text('$vanNaam stuurt je iets liefs 💕',
+                Text(type == 'dagelijks'
+                    ? 'Het is tijd voor:'
+                    : '$vanNaam stuurt je een bericht',
                     textAlign: TextAlign.center,
                     style: const TextStyle(fontSize: 18,
                         fontWeight: FontWeight.w800, color: kBrown)),
@@ -943,10 +944,16 @@ class _StuurTabState extends State<StuurTab> {
     setState(() => _bezig = true);
     try {
       final user = FirebaseAuth.instance.currentUser!;
-      final familieDoc = await FirebaseFirestore.instance
-          .collection('gebruikers').doc(user.uid).get();
-      final familieData = familieDoc.data() ?? {};
-      final familieNaam = familieData['familieNaam'] ?? 'Een naaste';
+
+      // Afzender = de echte persoon op DIT apparaat (persoonsNaam uit de
+      // kringlijst), niet de account-brede familieNaam.
+      final leden = await (_kringFuture
+          ?? Future.value(<Map<String, dynamic>>[]));
+      final mijnNaam = (leden.firstWhere(
+              (l) => l['apparaatId'] == _mijnApparaatId,
+              orElse: () => <String, dynamic>{})['persoonsNaam'] as String? ?? '')
+          .trim();
+      final vanNaam = mijnNaam.isNotEmpty ? mijnNaam : 'Iemand uit je kring';
 
       String mediaUrl = '';
       if (_type == 'stem' && _opnamePad != null) {
@@ -977,8 +984,6 @@ class _StuurTabState extends State<StuurTab> {
       // null = iedereen in de kring.
       List<String>? aanApparaatIds;
       if (_gekozenPersoonsNaam != null) {
-        final leden = await (_kringFuture
-            ?? Future.value(<Map<String, dynamic>>[]));
         aanApparaatIds = leden
             .where((l) => (l['persoonsNaam'] as String? ?? '').toLowerCase()
                 == _gekozenPersoonsNaam!.toLowerCase())
@@ -988,7 +993,7 @@ class _StuurTabState extends State<StuurTab> {
 
       await FirebaseFirestore.instance.collection('momenten').add({
         'familieUid': user.uid,
-        'vanNaam': familieNaam,
+        'vanNaam': vanNaam,
         'vanApparaatId': _mijnApparaatId,
         'vanApparaatModus':
             DeviceModusService.notifier.value ?? 'familie',

@@ -214,7 +214,6 @@ class _TabletSchermState extends State<TabletScherm> {
       'emoji': d['emoji'],
       'label': d['label'],
       'mediaUrl': aangepasteAudio,
-      'vanNaam': 'Een naaste',
       'geplandOp': Timestamp.now(),
       'heeftAangepasteAudio': aangepasteAudio.isNotEmpty,
     };
@@ -231,7 +230,6 @@ class _TabletSchermState extends State<TabletScherm> {
       'emoji': d['emoji'],
       'label': d['label'],
       'mediaUrl': aangepasteAudio,
-      'vanNaam': 'Een naaste',
       'geplandOp': Timestamp.now(),
       'heeftAangepasteAudio': aangepasteAudio.isNotEmpty,
     };
@@ -555,7 +553,8 @@ class _TabletSchermState extends State<TabletScherm> {
   Widget _popupOverlay() {
     final d = _huidigPopup!;
     final type = d['type'] ?? '';
-    final vanNaam = d['vanNaam'] ?? 'Een naaste';
+    final vanRaw = (d['vanNaam'] as String?)?.trim() ?? '';
+    final vanNaam = vanRaw.isNotEmpty ? vanRaw : 'Iemand uit je kring';
     final geplandOp = (d['geplandOp'] as Timestamp?)?.toDate();
     return Container(color: kBrown.withOpacity(0.94),
       child: SafeArea(child: Padding(
@@ -573,7 +572,7 @@ class _TabletSchermState extends State<TabletScherm> {
                 const SizedBox(height: 8),
                 Text(type == 'dagelijks'
                     ? 'Het is tijd voor:'
-                    : '$vanNaam stuurt je iets liefs 💕',
+                    : '$vanNaam stuurt je een bericht',
                     textAlign: TextAlign.center,
                     style: const TextStyle(fontSize: 18,
                         fontWeight: FontWeight.w800, color: kBrown)),
