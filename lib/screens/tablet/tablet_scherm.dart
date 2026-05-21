@@ -8,6 +8,7 @@ import '../../services/device_modus_service.dart';
 import '../../theme/kleuren.dart';
 import '../../data/geluiden.dart';
 import '../../data/debug_flags.dart';
+import '../../widgets/pulserend_hart.dart';
 
 class TabletScherm extends StatefulWidget {
   const TabletScherm({super.key});
@@ -293,7 +294,8 @@ class _TabletSchermState extends State<TabletScherm> {
     // 60s zodat dementie-doelgroep tijd heeft om te verwerken;
     // ook fallback als audio niet eindigt of niet aanwezig is.
     _autoSluitTimer?.cancel();
-    _autoSluitTimer = Timer(const Duration(seconds: 60), _sluitPopup);
+    final sluitNa = (d['type'] == 'hartje') ? 10 : 60;
+    _autoSluitTimer = Timer(Duration(seconds: sluitNa), _sluitPopup);
   }
 
   Future<void> _sluitPopup() async {
@@ -568,11 +570,16 @@ class _TabletSchermState extends State<TabletScherm> {
                     blurRadius: 40)]),
             child: Padding(padding: const EdgeInsets.all(28),
               child: Column(mainAxisSize: MainAxisSize.min, children: [
-                Text(_emojiVoorType(type), style: const TextStyle(fontSize: 48)),
-                const SizedBox(height: 8),
+                if (type != 'hartje') ...[
+                  Text(_emojiVoorType(type),
+                      style: const TextStyle(fontSize: 48)),
+                  const SizedBox(height: 8),
+                ],
                 Text(type == 'dagelijks'
                     ? 'Het is tijd voor:'
-                    : '$vanNaam stuurt je een bericht',
+                    : type == 'hartje'
+                        ? '$vanNaam denkt aan je 💕'
+                        : '$vanNaam stuurt je een bericht',
                     textAlign: TextAlign.center,
                     style: const TextStyle(fontSize: 18,
                         fontWeight: FontWeight.w800, color: kBrown)),
@@ -657,6 +664,8 @@ class _TabletSchermState extends State<TabletScherm> {
               style: const TextStyle(fontSize: 28,
                   fontWeight: FontWeight.w800, color: kBrown)),
         ]);
+      case 'hartje':
+        return const Center(child: PulserendHart(grootte: 130));
       default:
         return const SizedBox();
     }

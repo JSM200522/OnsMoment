@@ -15,6 +15,7 @@ import '../../services/dagelijks_audio_service.dart';
 import '../../theme/kleuren.dart';
 import '../../data/geluiden.dart';
 import '../../data/debug_flags.dart';
+import '../../widgets/pulserend_hart.dart';
 import '../../data/debug_flags.dart';
 import 'kringleden_scherm.dart';
 
@@ -299,7 +300,8 @@ class _FamilieSchermState extends State<FamilieScherm> {
       }
     }
     _autoSluitTimer?.cancel();
-    _autoSluitTimer = Timer(const Duration(seconds: 60), _sluitPopup);
+    final sluitNa = (d['type'] == 'hartje') ? 10 : 60;
+    _autoSluitTimer = Timer(Duration(seconds: sluitNa), _sluitPopup);
   }
 
   Future<void> _sluitPopup() async {
@@ -331,11 +333,16 @@ class _FamilieSchermState extends State<FamilieScherm> {
                     blurRadius: 40)]),
             child: Padding(padding: const EdgeInsets.all(28),
               child: Column(mainAxisSize: MainAxisSize.min, children: [
-                Text(_emojiVoorType(type), style: const TextStyle(fontSize: 48)),
-                const SizedBox(height: 8),
+                if (type != 'hartje') ...[
+                  Text(_emojiVoorType(type),
+                      style: const TextStyle(fontSize: 48)),
+                  const SizedBox(height: 8),
+                ],
                 Text(type == 'dagelijks'
                     ? 'Het is tijd voor:'
-                    : '$vanNaam stuurt je een bericht',
+                    : type == 'hartje'
+                        ? '$vanNaam denkt aan je 💕'
+                        : '$vanNaam stuurt je een bericht',
                     textAlign: TextAlign.center,
                     style: const TextStyle(fontSize: 18,
                         fontWeight: FontWeight.w800, color: kBrown)),
@@ -421,6 +428,8 @@ class _FamilieSchermState extends State<FamilieScherm> {
               style: const TextStyle(fontSize: 28,
                   fontWeight: FontWeight.w800, color: kBrown)),
         ]);
+      case 'hartje':
+        return const Center(child: PulserendHart(grootte: 130));
       default:
         return const SizedBox();
     }
@@ -587,6 +596,7 @@ class _StuurTabState extends State<StuurTab> {
   String? _mijnApparaatId;
   String? _ontvangerNaam;
   Future<List<Map<String, dynamic>>>? _kringFuture;
+  double _hartScale = 1.0;  // tik-bounce voor de hartje-knop
 
   @override
   void initState() {
@@ -662,6 +672,33 @@ class _StuurTabState extends State<StuurTab> {
           _adresKeuze(),
           const SizedBox(height: 16),
         ],
+        // Snel een hartje sturen — zonder media-keuze.
+        AnimatedScale(
+          scale: _hartScale,
+          duration: const Duration(milliseconds: 250),
+          curve: Curves.easeOutBack,
+          child: GestureDetector(
+            onTap: _stuurHartje,
+            child: Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(vertical: 18),
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(colors: [kRose, kPeach]),
+                borderRadius: BorderRadius.circular(18),
+                boxShadow: [BoxShadow(color: kRose.withOpacity(0.35),
+                    blurRadius: 16, offset: const Offset(0, 6))]),
+              child: const Row(mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  PulserendHart(grootte: 28),
+                  SizedBox(width: 12),
+                  Text('Stuur een hartje',
+                      style: TextStyle(fontSize: 18,
+                          fontWeight: FontWeight.w900, color: kWhite)),
+                ]),
+            ),
+          ),
+        ),
+        const SizedBox(height: 20),
         Row(children: [
           _typeKnop('📷', 'Foto', 'foto'),
           const SizedBox(width: 10),
@@ -931,6 +968,64 @@ class _StuurTabState extends State<StuurTab> {
       }
     } catch (e) {
       _toonFout('Bestand kiezen niet mogelijk: $e');
+    }
+  }
+
+  Future<void> _stuurHartje() async {
+    // Tik-bounce op de knop (1.0 -> 1.3 -> 1.0).
+    setState(() => _hartScale = 1.3);
+    Future.delayed(const Duration(milliseconds: 220), () {
+      if (mounted) setState(() => _hartScale = 1.0);
+    });
+    toonZwevendeHartjes(context);
+    try {
+      final user = FirebaseAuth.instance.currentUser!;
+      final leden = await (_kringFuture
+          ?? Future.value(<Map<String, dynamic>>[]));
+      final mijnNaam = (leden.firstWhere(
+              (l) => l['apparaatId'] == _mijnApparaatId,
+              orElse: () => <String, dynamic>{})['persoonsNaam'] as String? ?? '')
+          .trim();
+      final vanNaam = mijnNaam.isNotEmpty ? mijnNaam : 'Iemand uit je kring';
+
+      List<String>? aanApparaatIds;
+      if (_gekozenPersoonsNaam != null) {
+        aanApparaatIds = leden
+            .where((l) => (l['persoonsNaam'] as String? ?? '').toLowerCase()
+                == _gekozenPersoonsNaam!.toLowerCase())
+            .map((l) => l['apparaatId'] as String)
+            .toList();
+      }
+
+      await FirebaseFirestore.instance.collection('momenten').add({
+        'familieUid': user.uid,
+        'vanNaam': vanNaam,
+        'vanApparaatId': _mijnApparaatId,
+        'vanApparaatModus': DeviceModusService.notifier.value ?? 'familie',
+        'aanApparaatId': null,
+        'aanApparaatIds': aanApparaatIds,
+        'aanPersoonsNaam': _gekozenPersoonsNaam,
+        'type': 'hartje',
+        'emoji': '💕',
+        'mediaUrl': '',
+        'bericht': '',
+        'geplandOp': Timestamp.now(),
+        'verstuurdOp': FieldValue.serverTimestamp(),
+        'gezien': false,
+        'testModus': _testModus,
+      });
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('Je hartje is verstuurd 💕'),
+          backgroundColor: kGreen));
+      }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('Versturen mislukt — probeer opnieuw'),
+          backgroundColor: kRood));
+      }
     }
   }
 
@@ -1820,6 +1915,7 @@ class _GeplandItem extends StatelessWidget {
       case 'stem': return '🎙️';
       case 'lied': return '🎵';
       case 'tekst': return '✏️';
+      case 'hartje': return '💕';
       default: return '⭐';
     }
   }
@@ -1829,6 +1925,7 @@ class _GeplandItem extends StatelessWidget {
       case 'stem': return 'Stem bericht';
       case 'lied': return 'Liedje';
       case 'tekst': return 'Tekst bericht';
+      case 'hartje': return 'Hartje';
       default: return 'Bericht';
     }
   }
@@ -3378,6 +3475,7 @@ class _OntvangenBerichtenSchermState extends State<OntvangenBerichtenScherm> {
       case 'stem': return 'Stem-bericht';
       case 'lied': return 'Liedje';
       case 'tekst': return 'Tekst';
+      case 'hartje': return 'Hartje';
       default: return 'Bericht';
     }
   }
