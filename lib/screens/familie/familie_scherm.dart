@@ -16,7 +16,6 @@ import '../../theme/kleuren.dart';
 import '../../data/geluiden.dart';
 import '../../data/debug_flags.dart';
 import '../../widgets/pulserend_hart.dart';
-import '../../data/debug_flags.dart';
 import 'kringleden_scherm.dart';
 
 class FamilieScherm extends StatefulWidget {
