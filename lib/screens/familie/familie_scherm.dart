@@ -1013,17 +1013,26 @@ class _StuurTabState extends State<StuurTab> {
             type: FileType.custom,
             allowedExtensions: ['jpg', 'jpeg', 'png', 'mp4'],
             withData: true);
-        if (result == null || result.files.first.bytes == null) return;
+        if (result == null) return;
         final f = result.files.first;
+        Uint8List? bytes = f.bytes;
+        if (bytes == null && f.xFile != null) {
+          try {
+            bytes = await f.xFile!.readAsBytes();
+          } catch (e) {
+            debugPrint('xFile.readAsBytes faalde: $e');
+          }
+        }
+        if (bytes == null) return;
         final ext = (f.extension ?? '').toLowerCase();
         final isVideo = ext == 'mp4' || f.name.toLowerCase().endsWith('.mp4');
-        if (isVideo && f.bytes!.lengthInBytes > 50 * 1024 * 1024) {
+        if (isVideo && bytes.lengthInBytes > 50 * 1024 * 1024) {
           _toonFout('Deze video is te groot. '
               'Kies een video van maximaal 50MB.');
           return;
         }
         setState(() {
-          _mediaBytes = f.bytes;
+          _mediaBytes = bytes;
           _mediaNaam = f.name;
           _type = isVideo ? 'video' : 'foto';
         });
