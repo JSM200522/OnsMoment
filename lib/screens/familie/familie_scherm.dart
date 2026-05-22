@@ -671,45 +671,30 @@ class _StuurTabState extends State<StuurTab> {
           _adresKeuze(),
           const SizedBox(height: 16),
         ],
+        // 3x2 grid: Foto/Video, Stem/Lied, Tekst/Hartje.
         Row(children: [
           _typeKnop('📷', 'Foto', 'foto'),
           const SizedBox(width: 10),
-          _typeKnop('🎙️', 'Stem', 'stem'),
+          _actieTegel(
+              icoon: const Text('🎥', style: TextStyle(fontSize: 28)),
+              label: 'Video',
+              onTap: () => _toonFout('Video komt binnenkort beschikbaar')),
         ]),
         const SizedBox(height: 10),
         Row(children: [
-          _typeKnop('🎵', 'Lied', 'lied'),
+          _typeKnop('🎙️', 'Stem', 'stem'),
           const SizedBox(width: 10),
-          _typeKnop('✏️', 'Tekst', 'tekst'),
+          _typeKnop('🎵', 'Lied', 'lied'),
         ]),
-
-        const SizedBox(height: 16),
-        // Snel een hartje sturen — extra optie onder de type-knoppen.
-        AnimatedScale(
-          scale: _hartScale,
-          duration: const Duration(milliseconds: 250),
-          curve: Curves.easeOutBack,
-          child: GestureDetector(
-            onTap: _stuurHartje,
-            child: Container(
-              width: double.infinity,
-              padding: const EdgeInsets.symmetric(vertical: 11),
-              decoration: BoxDecoration(
-                gradient: const LinearGradient(colors: [kRose, kPeach]),
-                borderRadius: BorderRadius.circular(14),
-                boxShadow: [BoxShadow(color: kRose.withOpacity(0.3),
-                    blurRadius: 10, offset: const Offset(0, 4))]),
-              child: const Row(mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  PulserendHart(grootte: 22),
-                  SizedBox(width: 10),
-                  Text('Stuur een hartje',
-                      style: TextStyle(fontSize: 15,
-                          fontWeight: FontWeight.w800, color: kWhite)),
-                ]),
-            ),
-          ),
-        ),
+        const SizedBox(height: 10),
+        Row(children: [
+          _typeKnop('✏️', 'Tekst', 'tekst'),
+          const SizedBox(width: 10),
+          _actieTegel(
+              icoon: const PulserendHart(grootte: 28),
+              label: 'Hartje',
+              onTap: _stuurHartje),
+        ]),
 
         if (_type.isNotEmpty) ...[
           const SizedBox(height: 20),
@@ -1236,6 +1221,27 @@ class _StuurTabState extends State<StuurTab> {
           Text(label, style: TextStyle(fontSize: 13,
               fontWeight: FontWeight.w800,
               color: _type == waarde ? kWhite : kBrown)),
+        ]),
+      ),
+    ));
+
+  /// Actie-tegel met dezelfde styling als _typeKnop, maar met een vrije onTap
+  /// en een widget als icoon (voor de Video-placeholder en het pulserende
+  /// Hartje). Nooit "geselecteerd" — dus altijd witte achtergrond.
+  Widget _actieTegel({required Widget icoon, required String label,
+      required VoidCallback onTap}) =>
+    Expanded(child: GestureDetector(
+      onTap: onTap,
+      child: Container(padding: const EdgeInsets.symmetric(vertical: 20),
+        decoration: BoxDecoration(
+          color: kWhite,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: kPeachLight, width: 2)),
+        child: Column(children: [
+          icoon,
+          const SizedBox(height: 4),
+          Text(label, style: const TextStyle(fontSize: 13,
+              fontWeight: FontWeight.w800, color: kBrown)),
         ]),
       ),
     ));
