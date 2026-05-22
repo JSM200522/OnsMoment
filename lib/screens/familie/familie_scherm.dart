@@ -595,7 +595,6 @@ class _StuurTabState extends State<StuurTab> {
   String? _mijnApparaatId;
   String? _ontvangerNaam;
   Future<List<Map<String, dynamic>>>? _kringFuture;
-  double _hartScale = 1.0;  // tik-bounce voor de hartje-knop
 
   @override
   void initState() {
@@ -675,10 +674,7 @@ class _StuurTabState extends State<StuurTab> {
         Row(children: [
           _typeKnop('📷', 'Foto', 'foto'),
           const SizedBox(width: 10),
-          _actieTegel(
-              icoon: const Text('🎥', style: TextStyle(fontSize: 28)),
-              label: 'Video',
-              onTap: () => _toonFout('Video komt binnenkort beschikbaar')),
+          _typeKnop('🎥', 'Video', 'video'),
         ]),
         const SizedBox(height: 10),
         Row(children: [
@@ -773,6 +769,7 @@ class _StuurTabState extends State<StuurTab> {
                 color: kBrown))));
     }
     if (_type == 'stem') return _stemOpname();
+    if (_type == 'video') return _videoPreviewKaart();
     return _bestandKiezen();
   }
 
@@ -956,12 +953,71 @@ class _StuurTabState extends State<StuurTab> {
     }
   }
 
+  Future<void> _kiesVideo() async {
+    try {
+      final result = await FilePicker.platform.pickFiles(
+          type: FileType.custom, allowedExtensions: ['mp4'], withData: true);
+      if (result == null) return;
+      final f = result.files.first;
+      Uint8List? bytes = f.bytes;
+      if (bytes == null && f.xFile != null) {
+        try {
+          bytes = await f.xFile!.readAsBytes();
+        } catch (e) {
+          debugPrint('xFile.readAsBytes faalde: $e');
+        }
+      }
+      if (bytes == null) {
+        _toonFout('Kon video niet laden. Probeer een ander bestand.');
+        return;
+      }
+      if (bytes.lengthInBytes > 50 * 1024 * 1024) {
+        _toonFout('Deze video is te groot. '
+            'Kies een video van maximaal 50MB.');
+        return;
+      }
+      setState(() {
+        _mediaBytes = bytes;
+        _mediaNaam = f.name;
+        _type = 'video';
+      });
+    } catch (e) {
+      _toonFout('Video kiezen niet mogelijk: $e');
+    }
+  }
+
+  Widget _videoPreviewKaart() => GestureDetector(
+    onTap: _kiesVideo,
+    child: Container(padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(color: kPeachPale,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: kPeachLight, width: 2)),
+      child: Column(children: [
+        const Icon(Icons.movie_rounded, size: 48, color: kPeach),
+        const SizedBox(height: 8),
+        const Text('🎥 Video klaar om te versturen',
+            textAlign: TextAlign.center,
+            style: TextStyle(fontSize: 14,
+                fontWeight: FontWeight.w800, color: kBrown)),
+        const SizedBox(height: 4),
+        Text(_mediaBytes != null
+            ? '$_mediaNaam — ${_formatBytes(_mediaBytes!.lengthInBytes)}'
+            : 'Tik om een video te kiezen',
+            textAlign: TextAlign.center,
+            style: const TextStyle(fontSize: 12, color: kTextMuted)),
+      ]),
+    ),
+  );
+
+  String _formatBytes(int bytes) {
+    if (bytes >= 1024 * 1024) {
+      return '${(bytes / (1024 * 1024)).toStringAsFixed(0)}MB';
+    }
+    if (bytes >= 1024) return '${(bytes / 1024).toStringAsFixed(0)}KB';
+    return '$bytes B';
+  }
+
   Future<void> _stuurHartje() async {
-    // Tik-bounce op de knop (1.0 -> 1.3 -> 1.0).
-    setState(() => _hartScale = 1.3);
-    Future.delayed(const Duration(milliseconds: 220), () {
-      if (mounted) setState(() => _hartScale = 1.0);
-    });
     toonZwevendeHartjes(context);
     try {
       final user = FirebaseAuth.instance.currentUser!;
@@ -1015,6 +1071,10 @@ class _StuurTabState extends State<StuurTab> {
   }
 
   Future<void> _verstuur() async {
+    if (_type == 'video') {
+      _toonFout('Video versturen komt binnenkort beschikbaar');
+      return;
+    }
     if (_type == 'tekst' && _berichtCtrl.text.trim().isEmpty) {
       _toonFout('Typ eerst een bericht'); return;
     }
