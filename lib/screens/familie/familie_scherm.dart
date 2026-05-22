@@ -995,14 +995,16 @@ class _StuurTabState extends State<StuurTab> {
       child: Column(children: [
         const Icon(Icons.movie_rounded, size: 48, color: kPeach),
         const SizedBox(height: 8),
-        const Text('🎥 Video klaar om te versturen',
+        Text(_mediaBytes != null
+            ? '🎥 Video klaar om te versturen'
+            : 'Tik om een video te kiezen',
             textAlign: TextAlign.center,
-            style: TextStyle(fontSize: 14,
+            style: const TextStyle(fontSize: 14,
                 fontWeight: FontWeight.w800, color: kBrown)),
         const SizedBox(height: 4),
         Text(_mediaBytes != null
             ? '$_mediaNaam — ${_formatBytes(_mediaBytes!.lengthInBytes)}'
-            : 'Tik om een video te kiezen',
+            : 'Alleen .mp4, max 50MB',
             textAlign: TextAlign.center,
             style: const TextStyle(fontSize: 12, color: kTextMuted)),
       ]),
