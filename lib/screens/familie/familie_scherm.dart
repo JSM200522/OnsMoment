@@ -16,6 +16,8 @@ import '../../theme/kleuren.dart';
 import '../../data/geluiden.dart';
 import '../../data/debug_flags.dart';
 import '../../widgets/pulserend_hart.dart';
+import '../../widgets/video_speler.dart';
+import 'package:image/image.dart' as img;
 import 'kringleden_scherm.dart';
 
 class FamilieScherm extends StatefulWidget {
@@ -393,6 +395,8 @@ class _FamilieSchermState extends State<FamilieScherm> {
                     color: kBrown, height: 1.4)),
           ],
         ]);
+      case 'video':
+        return VideoSpeler(url: url);
       case 'stem':
       case 'lied':
         return Column(mainAxisSize: MainAxisSize.min, children: [
@@ -441,6 +445,7 @@ class _FamilieSchermState extends State<FamilieScherm> {
       case 'lied': return '🎵';
       case 'tekst': return '✏️';
       case 'dagelijks': return '⏰';
+      case 'video': return '🎥';
       default: return '💕';
     }
   }
@@ -596,6 +601,8 @@ class _StuurTabState extends State<StuurTab> {
   String? _ontvangerNaam;
   Future<List<Map<String, dynamic>>>? _kringFuture;
   double _hartScale = 1.0;  // tik-bounce voor de hartje-knop
+  double? _uploadProgress;  // null = geen media-upload bezig
+  bool _uploadIndeterminate = false;  // web-fallback als progress 0->100 springt
 
   @override
   void initState() {
@@ -757,10 +764,8 @@ class _StuurTabState extends State<StuurTab> {
                 borderRadius: BorderRadius.circular(16),
                 boxShadow: [BoxShadow(color: kPeach.withOpacity(0.35),
                     blurRadius: 20, offset: const Offset(0, 8))]),
-              child: Center(child: _bezig
-                ? const SizedBox(width: 22, height: 22,
-                    child: CircularProgressIndicator(color: kWhite, strokeWidth: 3))
-                : Text(
+              child: Center(child: !_bezig
+                ? Text(
                     _testModus
                         ? (widget.alsOntvanger
                             ? (_gekozenPersoonsNaam == null
@@ -769,7 +774,29 @@ class _StuurTabState extends State<StuurTab> {
                             : '⚡ Stuur NU naar ${_ontvangerNaam ?? "ontvanger"}')
                         : 'Plan en stuur 💕',
                     style: const TextStyle(fontSize: 16,
-                        fontWeight: FontWeight.w800, color: kWhite))),
+                        fontWeight: FontWeight.w800, color: kWhite))
+                : _uploadProgress == null
+                    ? const SizedBox(width: 22, height: 22,
+                        child: CircularProgressIndicator(
+                            color: kWhite, strokeWidth: 3))
+                    : Column(mainAxisSize: MainAxisSize.min, children: [
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(8),
+                          child: LinearProgressIndicator(
+                              value: _uploadIndeterminate
+                                  ? null : _uploadProgress,
+                              minHeight: 6,
+                              backgroundColor: kWhite.withOpacity(0.3),
+                              valueColor: const
+                                  AlwaysStoppedAnimation<Color>(kWhite))),
+                        const SizedBox(height: 6),
+                        Text(_uploadIndeterminate
+                            ? 'Uploaden…'
+                            : 'Upload bezig: '
+                                '${((_uploadProgress ?? 0) * 100).round()}%',
+                            style: const TextStyle(fontSize: 13,
+                                fontWeight: FontWeight.w800, color: kWhite)),
+                      ])),
             ),
           ),
         ],
@@ -788,6 +815,7 @@ class _StuurTabState extends State<StuurTab> {
                 color: kBrown))));
     }
     if (_type == 'stem') return _stemOpname();
+    if (_type == 'video') return _videoPreviewKaart();
     return _bestandKiezen();
   }
 
@@ -903,9 +931,12 @@ class _StuurTabState extends State<StuurTab> {
         else Icon(_type == 'foto' ? Icons.add_photo_alternate_rounded
             : Icons.audiotrack_rounded, size: 40, color: kPeach),
         const SizedBox(height: 8),
-        Text(_mediaNaam.isNotEmpty ? '✓ $_mediaNaam'
-            : _type == 'foto' ? 'Tik om foto te kiezen'
-            : 'Tik om MP3 lied te kiezen',
+        Text(_type == 'foto'
+            ? (_mediaBytes != null
+                ? '📷 Foto klaar om te versturen'
+                : 'Tik om foto of video te kiezen')
+            : (_mediaNaam.isNotEmpty ? '✓ $_mediaNaam'
+                : 'Tik om MP3 lied te kiezen'),
             textAlign: TextAlign.center,
             style: const TextStyle(fontSize: 14,
                 fontWeight: FontWeight.w700, color: kBrown)),
@@ -931,6 +962,37 @@ class _StuurTabState extends State<StuurTab> {
     ),
   );
 
+  Widget _videoPreviewKaart() => GestureDetector(
+    onTap: _kiesMedia,
+    child: Container(padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(color: kPeachPale,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: kPeachLight, width: 2)),
+      child: Column(children: [
+        const Icon(Icons.movie_rounded, size: 48, color: kPeach),
+        const SizedBox(height: 8),
+        const Text('🎥 Video klaar om te versturen',
+            textAlign: TextAlign.center,
+            style: TextStyle(fontSize: 14,
+                fontWeight: FontWeight.w800, color: kBrown)),
+        const SizedBox(height: 4),
+        Text(_mediaNaam.isNotEmpty
+            ? '$_mediaNaam — ${_formatBytes(_mediaBytes?.lengthInBytes ?? 0)}'
+            : 'Tik om een andere video te kiezen',
+            textAlign: TextAlign.center,
+            style: const TextStyle(fontSize: 12, color: kTextMuted)),
+      ]),
+    ),
+  );
+
+  String _formatBytes(int bytes) {
+    if (bytes >= 1024 * 1024) {
+      return '${(bytes / (1024 * 1024)).toStringAsFixed(0)}MB';
+    }
+    if (bytes >= 1024) return '${(bytes / 1024).toStringAsFixed(0)}KB';
+    return '$bytes B';
+  }
+
   Future<void> _speelLiedPreview() async {
     if (_mediaBytes == null) return;
     try {
@@ -945,17 +1007,26 @@ class _StuurTabState extends State<StuurTab> {
 
   Future<void> _kiesMedia() async {
     try {
-      if (_type == 'foto') {
-        final picker = ImagePicker();
-        final foto = await picker.pickImage(source: ImageSource.gallery,
-            maxWidth: 1600, imageQuality: 85);
-        if (foto != null) {
-          final bytes = await foto.readAsBytes();
-          setState(() {
-            _mediaBytes = bytes;
-            _mediaNaam = foto.name;
-          });
+      if (_type == 'foto' || _type == 'video') {
+        // Eén knop voor foto én video (WhatsApp/iMessage-patroon).
+        final result = await FilePicker.platform.pickFiles(
+            type: FileType.custom,
+            allowedExtensions: ['jpg', 'jpeg', 'png', 'mp4'],
+            withData: true);
+        if (result == null || result.files.first.bytes == null) return;
+        final f = result.files.first;
+        final ext = (f.extension ?? '').toLowerCase();
+        final isVideo = ext == 'mp4' || f.name.toLowerCase().endsWith('.mp4');
+        if (isVideo && f.bytes!.lengthInBytes > 50 * 1024 * 1024) {
+          _toonFout('Deze video is te groot. '
+              'Kies een video van maximaal 50MB.');
+          return;
         }
+        setState(() {
+          _mediaBytes = f.bytes;
+          _mediaNaam = f.name;
+          _type = isVideo ? 'video' : 'foto';
+        });
       } else {
         final result = await FilePicker.platform.pickFiles(
             type: FileType.audio, withData: true);
@@ -969,6 +1040,45 @@ class _StuurTabState extends State<StuurTab> {
     } catch (e) {
       _toonFout('Bestand kiezen niet mogelijk: $e');
     }
+  }
+
+  /// Comprimeert een foto naar max 1600px breed, JPEG kwaliteit 85.
+  /// Roept de aanroeper aan binnen try/catch; bij fout wordt origineel gebruikt.
+  Future<Uint8List> _comprimeerFoto(Uint8List origineel) async {
+    final decoded = img.decodeImage(origineel);
+    if (decoded == null) return origineel;
+    final geschaald = decoded.width > 1600
+        ? img.copyResize(decoded, width: 1600)
+        : decoded;
+    return Uint8List.fromList(img.encodeJpg(geschaald, quality: 85));
+  }
+
+  /// Upload met live voortgang. Op web kan progress in één stap van 0 naar 100
+  /// springen; dan tonen we een indeterminate balk (altijd zichtbare beweging).
+  Future<String> _uploadMetProgress(
+      Reference ref, Uint8List bytes, String contentType) async {
+    setState(() {
+      _uploadProgress = 0;
+      _uploadIndeterminate = true;
+    });
+    final taak = ref.putData(bytes, SettableMetadata(contentType: contentType));
+    final sub = taak.snapshotEvents.listen((snap) {
+      if (snap.totalBytes > 0) {
+        final p = snap.bytesTransferred / snap.totalBytes;
+        if (mounted && p > 0 && p < 1) {
+          setState(() {
+            _uploadProgress = p;
+            _uploadIndeterminate = false;
+          });
+        }
+      }
+    });
+    try {
+      await taak;
+    } finally {
+      await sub.cancel();
+    }
+    return ref.getDownloadURL();
   }
 
   Future<void> _stuurHartje() async {
@@ -1036,10 +1146,17 @@ class _StuurTabState extends State<StuurTab> {
     if (_type == 'stem' && !_hebOpname) {
       _toonFout('Neem eerst een stembericht op'); return;
     }
-    if ((_type == 'foto' || _type == 'lied') && _mediaBytes == null) {
+    if ((_type == 'foto' || _type == 'lied' || _type == 'video')
+        && _mediaBytes == null) {
       _toonFout('Kies eerst een bestand'); return;
     }
     setState(() => _bezig = true);
+    // Optimistic UI: direct positieve feedback; upload loopt eronder verder.
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('Je bericht is onderweg 💕'),
+        backgroundColor: kPeach, duration: Duration(seconds: 2)));
+    }
     try {
       final user = FirebaseAuth.instance.currentUser!;
 
@@ -1065,6 +1182,24 @@ class _StuurTabState extends State<StuurTab> {
         await ref.putData(response.bodyBytes,
             SettableMetadata(contentType: 'audio/webm'));
         mediaUrl = await ref.getDownloadURL();
+      } else if (_type == 'foto' && _mediaBytes != null) {
+        // Comprimeer foto client-side; bij fout het origineel gebruiken.
+        Uint8List uploadBytes;
+        try {
+          uploadBytes = await _comprimeerFoto(_mediaBytes!);
+        } catch (e) {
+          debugPrint('compressie faalde: $e');
+          uploadBytes = _mediaBytes!;
+        }
+        final ref = FirebaseStorage.instance.ref()
+            .child('momenten')
+            .child('${DateTime.now().millisecondsSinceEpoch}.jpg');
+        mediaUrl = await _uploadMetProgress(ref, uploadBytes, 'image/jpeg');
+      } else if (_type == 'video' && _mediaBytes != null) {
+        final ref = FirebaseStorage.instance.ref()
+            .child('momenten')
+            .child('${DateTime.now().millisecondsSinceEpoch}.mp4');
+        mediaUrl = await _uploadMetProgress(ref, _mediaBytes!, 'video/mp4');
       } else if (_mediaBytes != null) {
         final ext = _type == 'foto' ? 'jpg' : 'mp3';
         final ref = FirebaseStorage.instance.ref()
@@ -1124,9 +1259,22 @@ class _StuurTabState extends State<StuurTab> {
         });
       }
     } catch (e) {
-      _toonFout('Versturen mislukt: $e');
+      debugPrint('versturen mislukt: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: const Text('Iets ging mis, probeer opnieuw'),
+          backgroundColor: kRood,
+          action: SnackBarAction(
+              label: 'Opnieuw', textColor: kWhite, onPressed: _verstuur)));
+      }
     } finally {
-      if (mounted) setState(() => _bezig = false);
+      if (mounted) {
+        setState(() {
+          _bezig = false;
+          _uploadProgress = null;
+          _uploadIndeterminate = false;
+        });
+      }
     }
   }
 
@@ -1216,8 +1364,10 @@ class _StuurTabState extends State<StuurTab> {
     },
   );
 
-  Widget _typeKnop(String emoji, String label, String waarde) =>
-    Expanded(child: GestureDetector(
+  Widget _typeKnop(String emoji, String label, String waarde) {
+    // "Foto" blijft gemarkeerd als er een video gekozen is (zelfde knop).
+    final actief = _type == waarde || (waarde == 'foto' && _type == 'video');
+    return Expanded(child: GestureDetector(
       onTap: () => setState(() {
         _type = _type == waarde ? '' : waarde;
         _mediaBytes = null;
@@ -1227,7 +1377,7 @@ class _StuurTabState extends State<StuurTab> {
       }),
       child: Container(padding: const EdgeInsets.symmetric(vertical: 20),
         decoration: BoxDecoration(
-          color: _type == waarde ? kPeach : kWhite,
+          color: actief ? kPeach : kWhite,
           borderRadius: BorderRadius.circular(16),
           border: Border.all(color: kPeachLight, width: 2)),
         child: Column(children: [
@@ -1235,10 +1385,11 @@ class _StuurTabState extends State<StuurTab> {
           const SizedBox(height: 4),
           Text(label, style: TextStyle(fontSize: 13,
               fontWeight: FontWeight.w800,
-              color: _type == waarde ? kWhite : kBrown)),
+              color: actief ? kWhite : kBrown)),
         ]),
       ),
     ));
+  }
 
   Widget _tijdDatumKnop(String emoji, String tekst, VoidCallback onTap) =>
     GestureDetector(onTap: onTap, child: Container(
@@ -1916,6 +2067,7 @@ class _GeplandItem extends StatelessWidget {
       case 'lied': return '🎵';
       case 'tekst': return '✏️';
       case 'hartje': return '💕';
+      case 'video': return '🎥';
       default: return '⭐';
     }
   }
@@ -1926,6 +2078,7 @@ class _GeplandItem extends StatelessWidget {
       case 'lied': return 'Liedje';
       case 'tekst': return 'Tekst bericht';
       case 'hartje': return 'Hartje';
+      case 'video': return 'Video';
       default: return 'Bericht';
     }
   }
@@ -3465,6 +3618,7 @@ class _OntvangenBerichtenSchermState extends State<OntvangenBerichtenScherm> {
       case 'stem': return '🎙️';
       case 'lied': return '🎵';
       case 'tekst': return '✏️';
+      case 'video': return '🎥';
       default: return '💕';
     }
   }
@@ -3476,6 +3630,7 @@ class _OntvangenBerichtenSchermState extends State<OntvangenBerichtenScherm> {
       case 'lied': return 'Liedje';
       case 'tekst': return 'Tekst';
       case 'hartje': return 'Hartje';
+      case 'video': return 'Video';
       default: return 'Bericht';
     }
   }
