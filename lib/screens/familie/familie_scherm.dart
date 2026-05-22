@@ -16,6 +16,7 @@ import '../../theme/kleuren.dart';
 import '../../data/geluiden.dart';
 import '../../data/debug_flags.dart';
 import '../../widgets/pulserend_hart.dart';
+import '../../widgets/video_speler.dart';
 import 'kringleden_scherm.dart';
 
 class FamilieScherm extends StatefulWidget {
@@ -429,6 +430,8 @@ class _FamilieSchermState extends State<FamilieScherm> {
         ]);
       case 'hartje':
         return const Center(child: PulserendHart(grootte: 130));
+      case 'video':
+        return VideoSpeler(url: url);
       default:
         return const SizedBox();
     }
@@ -441,6 +444,7 @@ class _FamilieSchermState extends State<FamilieScherm> {
       case 'lied': return '🎵';
       case 'tekst': return '✏️';
       case 'dagelijks': return '⏰';
+      case 'video': return '🎥';
       default: return '💕';
     }
   }

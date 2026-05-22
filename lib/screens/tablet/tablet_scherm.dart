@@ -9,6 +9,7 @@ import '../../theme/kleuren.dart';
 import '../../data/geluiden.dart';
 import '../../data/debug_flags.dart';
 import '../../widgets/pulserend_hart.dart';
+import '../../widgets/video_speler.dart';
 
 class TabletScherm extends StatefulWidget {
   const TabletScherm({super.key});
@@ -666,6 +667,8 @@ class _TabletSchermState extends State<TabletScherm> {
         ]);
       case 'hartje':
         return const Center(child: PulserendHart(grootte: 130));
+      case 'video':
+        return VideoSpeler(url: url);
       default:
         return const SizedBox();
     }
@@ -678,6 +681,7 @@ class _TabletSchermState extends State<TabletScherm> {
       case 'lied': return '🎵';
       case 'tekst': return '✏️';
       case 'dagelijks': return '⏰';
+      case 'video': return '🎥';
       default: return '💕';
     }
   }
