@@ -26,8 +26,6 @@ dependencies:
   intl: ^0.18.1
   http: ^1.2.0
   device_info_plus: ^10.1.0
-  image: ^4.0.0
-  video_player: 2.9.2
 
 dev_dependencies:
   flutter_test:

@@ -9,7 +9,6 @@ import '../../theme/kleuren.dart';
 import '../../data/geluiden.dart';
 import '../../data/debug_flags.dart';
 import '../../widgets/pulserend_hart.dart';
-import '../../widgets/video_speler.dart';
 
 class TabletScherm extends StatefulWidget {
   const TabletScherm({super.key});
@@ -632,8 +631,6 @@ class _TabletSchermState extends State<TabletScherm> {
                 style: const TextStyle(fontSize: 18, color: kBrown, height: 1.4)),
           ],
         ]);
-      case 'video':
-        return VideoSpeler(url: url);
       case 'stem':
       case 'lied':
         return Column(mainAxisSize: MainAxisSize.min, children: [
@@ -681,7 +678,6 @@ class _TabletSchermState extends State<TabletScherm> {
       case 'lied': return '🎵';
       case 'tekst': return '✏️';
       case 'dagelijks': return '⏰';
-      case 'video': return '🎥';
       default: return '💕';
     }
   }
