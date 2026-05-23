@@ -26,7 +26,8 @@ class FamilieScherm extends StatefulWidget {
   State<FamilieScherm> createState() => _FamilieSchermState();
 }
 
-class _FamilieSchermState extends State<FamilieScherm> {
+class _FamilieSchermState extends State<FamilieScherm>
+    with WidgetsBindingObserver {
   int _tab = 0;
 
   final _audioPlayer = AudioPlayer();
@@ -50,6 +51,7 @@ class _FamilieSchermState extends State<FamilieScherm> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     // Listeners pas starten ná apparaatId-load zodat _verwerkMomenten nooit
     // triggert met _mijnApparaatId == null (voorkomt off-by-one delay).
     DeviceModusService.krijgApparaatId().then((id) {
@@ -63,8 +65,10 @@ class _FamilieSchermState extends State<FamilieScherm> {
       }
     });
     if (widget.alsOntvanger) {
-      _checkTimer = Timer.periodic(
-          const Duration(seconds: 30), (_) => _checkGeplandeMomenten());
+      _checkTimer = Timer.periodic(const Duration(seconds: 30), (_) {
+        _checkGeplandeMomenten();
+        _herscanMomenten();
+      });
     }
     _audioPlayer.playerStateStream.listen((state) {
       if (state.processingState == ProcessingState.completed
@@ -78,6 +82,7 @@ class _FamilieSchermState extends State<FamilieScherm> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _autoSluitTimer?.cancel();
     _checkTimer?.cancel();
     _momentenListener?.cancel();
@@ -98,6 +103,27 @@ class _FamilieSchermState extends State<FamilieScherm> {
       behavior: SnackBarBehavior.floating,
       margin: const EdgeInsets.only(top: 60, left: 16, right: 16, bottom: 0),
     ));
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) _herscanMomenten();
+  }
+
+  /// Her-scant openstaande (ongeziene) momenten via een verse query en voert
+  /// ze door _verwerkMomenten. Vangt berichten op die binnenkwamen terwijl een
+  /// popup open was (Bug A) of de app op de achtergrond stond (Bug B).
+  Future<void> _herscanMomenten() async {
+    if (_huidigPopupId != null) return;
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return;
+    try {
+      final snap = await FirebaseFirestore.instance.collection('momenten')
+          .where('familieUid', isEqualTo: uid)
+          .where('gezien', isEqualTo: false)
+          .get();
+      if (mounted) _verwerkMomenten(snap);
+    } catch (_) {}
   }
 
   void _startMomentenListener() {
@@ -313,6 +339,8 @@ class _FamilieSchermState extends State<FamilieScherm> {
         _huidigPopupId = null;
       });
     }
+    // Toon na een korte rustpauze een eventueel gemist bericht (Bug A).
+    Future.delayed(const Duration(milliseconds: 500), _herscanMomenten);
   }
 
   Widget _popupOverlay() {
