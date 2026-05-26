@@ -9,6 +9,7 @@ import '../../services/apparaat_service.dart';
 import '../../services/device_modus_service.dart';
 import '../../theme/kleuren.dart';
 import '../../data/geluiden.dart';
+import '../../data/labels.dart';
 
 class SetupWizard extends StatefulWidget {
   const SetupWizard({super.key});
@@ -261,9 +262,10 @@ class _SetupWizardState extends State<SetupWizard> {
         ]),
         SizedBox(height: 6),
         Text(
-          '• Eén account voor de hele kring (tot 8 personen)\n'
-          '• De ontvanger logt in met dezelfde gegevens op zijn/haar apparaat\n'
-          '• Iedereen ziet en stuurt vanuit hetzelfde gezamenlijke profiel',
+          '• Maak een account aan\n'
+          '• Voeg een ontvanger toe\n'
+          '• Stuur foto\'s, stemberichten, video\'s en herinneringen\n'
+          '• Alles komt aan op het ontvanger-apparaat',
           style: TextStyle(fontSize: 12, color: kBrownLight, height: 1.6)),
       ])),
     const SizedBox(height: 20),
@@ -382,8 +384,8 @@ class _SetupWizardState extends State<SetupWizard> {
     _accountTypeKnop('💼', 'Ik ben zorgverlener',
         'om voor mijn cliënten te zorgen', 'zorg'),
     const SizedBox(height: 24),
-    const Text('Vertel ons over je dierbare',
-        style: TextStyle(fontSize: 28, fontWeight: FontWeight.w900,
+    Text('Vertel ons over ${jeDierbareLabel(_accountType)}',
+        style: const TextStyle(fontSize: 28, fontWeight: FontWeight.w900,
             color: kBrown, height: 1.2)),
     const SizedBox(height: 8),
     const Text('Hoe meer je vertelt, hoe persoonlijker de app voelt. '
@@ -392,7 +394,7 @@ class _SetupWizardState extends State<SetupWizard> {
     const SizedBox(height: 24),
 
     _sectieKop('📸 Achtergrondfoto',
-        'Kies een mooie foto van je dierbare. Deze foto wordt de '
+        'Kies een mooie foto van ${jeDierbareLabel(_accountType)}. Deze foto wordt de '
         'sfeervolle achtergrond op het home-scherm van het ontvanger-apparaat.'),
     const SizedBox(height: 12),
     Center(child: GestureDetector(
@@ -425,7 +427,10 @@ class _SetupWizardState extends State<SetupWizard> {
         'De naam staat op het home-scherm. Extra info helpt de kring '
         'gerichte berichten te sturen.'),
     const SizedBox(height: 12),
-    _input('👵', 'Naam van je dierbare', 'Bijv. Oma, Opa, Mam, Pap...',
+    _input('👵', 'Naam van ${jeDierbareLabel(_accountType)}',
+        _accountType == 'zorg'
+            ? 'Bijv. Mevr. de Vries, Dhr. Jansen...'
+            : 'Bijv. Oma, Opa, Mam, Pap...',
         _ontvangerNaamCtrl, false),
     const SizedBox(height: 6),
     const Text('Zo verschijnt zijn/haar naam in de app en bij berichten.',
@@ -446,7 +451,7 @@ class _SetupWizardState extends State<SetupWizard> {
 
     _sectieKop('🔔 Herkenningsgeluid',
         'Klinkt elke keer als er iets nieuws aankomt. Tik op een geluid om '
-        'het voor te beluisteren. Helpt je dierbare het te '
+        'het voor te beluisteren. Helpt ${jeDierbareLabel(_accountType)} het te '
         'herkennen als iets liefs.'),
     const SizedBox(height: 12),
     ...kGeluiden.map((g) => Padding(
