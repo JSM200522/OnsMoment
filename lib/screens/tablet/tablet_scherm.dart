@@ -35,6 +35,7 @@ class _TabletSchermState extends State<TabletScherm>
   StreamSubscription<QuerySnapshot>? _eenmaligSub;
   List<QueryDocumentSnapshot>? _eenmaligDocs;
   String? _mijnApparaatId;
+  String? _accountType;  // 'familie'/'zorg', geladen voor T4-T5 (labels)
 
   @override
   void initState() {
@@ -134,6 +135,10 @@ class _TabletSchermState extends State<TabletScherm>
       final nieuwGeluid = data?['herkenningsgeluid'] as String? ?? 'twinkel';
       if (mounted && _herkenningsgeluid != nieuwGeluid) {
         setState(() => _herkenningsgeluid = nieuwGeluid);
+      }
+      final nieuwType = data?['accountType'] as String? ?? 'familie';
+      if (mounted && _accountType != nieuwType) {
+        setState(() => _accountType = nieuwType);
       }
     });
   }

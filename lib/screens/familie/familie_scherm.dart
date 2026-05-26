@@ -38,6 +38,7 @@ class _FamilieSchermState extends State<FamilieScherm>
   String? _huidigPopupId;
   String _herkenningsgeluid = 'twinkel';
   String? _mijnApparaatId;
+  String? _accountType;  // 'familie'/'zorg', geladen voor T4-T5 (labels)
   Timer? _autoSluitTimer;
 
   // Dagelijkse + eenmalige momenten-flow — alleen actief in
@@ -146,6 +147,10 @@ class _FamilieSchermState extends State<FamilieScherm>
       final nieuwGeluid = data?['herkenningsgeluid'] as String? ?? 'twinkel';
       if (mounted && _herkenningsgeluid != nieuwGeluid) {
         setState(() => _herkenningsgeluid = nieuwGeluid);
+      }
+      final nieuwType = data?['accountType'] as String? ?? 'familie';
+      if (mounted && _accountType != nieuwType) {
+        setState(() => _accountType = nieuwType);
       }
     });
   }

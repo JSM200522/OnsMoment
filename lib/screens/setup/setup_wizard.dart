@@ -132,6 +132,7 @@ class _SetupWizardState extends State<SetupWizard> {
     setState(() {
       if (_rol != '' && _rol != nieuweRol) {
         _isInloggen = false;
+        _accountType = null;
         if (nieuweRol == 'ontvanger') {
           _naamCtrl.clear();
           _ontvangerNaamCtrl.clear();
