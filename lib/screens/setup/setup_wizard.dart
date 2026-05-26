@@ -165,7 +165,7 @@ class _SetupWizardState extends State<SetupWizard> {
                 fontWeight: FontWeight.w900, color: kBrown))),
         ]),
         content: const Text(
-          'Dit apparaat wordt zo ingesteld voor je dierbare — het '
+          'Dit apparaat wordt zo ingesteld voor je dierbare of cliënt — het '
           'ontvangt straks de berichten, foto\'s en stemberichten van '
           'de kring.\n\n'
           'Daarvoor moet eerst iemand van de kring een kringaccount '
@@ -219,7 +219,7 @@ class _SetupWizardState extends State<SetupWizard> {
         style: TextStyle(fontSize: 32, fontWeight: FontWeight.w900,
             color: kBrown, height: 1.2)),
     const SizedBox(height: 12),
-    const Text('Stuur lieve momenten naar je dierbare',
+    const Text('Stuur lieve momenten',
         style: TextStyle(fontSize: 15, color: kTextMuted)),
     const SizedBox(height: 20),
     Container(
@@ -242,7 +242,7 @@ class _SetupWizardState extends State<SetupWizard> {
         SizedBox(height: 8),
         Text(
           'Maak EERST het kringaccount aan op de telefoon van iemand '
-          'uit de kring.\n\nStel pas DAARNA het apparaat van je dierbare in.',
+          'uit de kring.\n\nStel pas DAARNA het ontvanger-apparaat in.',
           style: TextStyle(fontSize: 13,
               fontWeight: FontWeight.w700, color: kWhite, height: 1.4)),
       ])),
@@ -271,12 +271,12 @@ class _SetupWizardState extends State<SetupWizard> {
         style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800,
             color: kBrown)),
     const SizedBox(height: 12),
-    _rolKaart('👨‍👩‍👧 Kringlid of mantelzorger',
-      'Ik stuur foto\'s, stemberichtjes en herinneringen naar mijn dierbare',
+    _rolKaart('👨‍👩‍👧 Familielid of zorgverlener',
+      'Ik stuur foto\'s, stemberichtjes en herinneringen',
       () => _kiesRol('familie')),
     const SizedBox(height: 12),
     _rolKaart('👵 Ontvanger',
-      'Dit apparaat is voor mijn dierbare — om berichten te zien en horen',
+      'Dit apparaat is voor mijn dierbare of cliënt — om berichten te zien en horen',
       () => _kiesRol('ontvanger')),
   ]);
 
