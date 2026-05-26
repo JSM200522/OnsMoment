@@ -22,6 +22,7 @@ class _SetupWizardState extends State<SetupWizard> {
   bool _isInloggen = false;
   bool _bezig = false;
   String? _bezigModus;
+  String? _accountType;  // 'familie' of 'zorg', gekozen bij nieuw account
 
   final _naamCtrl = TextEditingController();
   final _emailCtrl = TextEditingController();
@@ -341,7 +342,45 @@ class _SetupWizardState extends State<SetupWizard> {
   // ───────────────────────────────────────────────────
   // STAP 2: ONTVANGER PROFIEL (alleen voor familie bij registratie)
   // ───────────────────────────────────────────────────
+  Widget _accountTypeKnop(
+      String emoji, String titel, String uitleg, String waarde) {
+    final gekozen = _accountType == waarde;
+    return GestureDetector(
+      onTap: () => setState(() => _accountType = waarde),
+      child: Container(
+        width: double.infinity,
+        margin: const EdgeInsets.only(bottom: 12),
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: gekozen ? kPeach : kWhite,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: gekozen ? kPeach : kPeachLight, width: 2)),
+        child: Row(children: [
+          Text(emoji, style: const TextStyle(fontSize: 28)),
+          const SizedBox(width: 12),
+          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+            Text(titel, style: TextStyle(fontSize: 16,
+                fontWeight: FontWeight.w900, color: gekozen ? kWhite : kBrown)),
+            const SizedBox(height: 2),
+            Text(uitleg, style: TextStyle(fontSize: 12, height: 1.3,
+                color: gekozen ? kWhite.withOpacity(0.9) : kTextMuted)),
+          ])),
+        ]),
+      ),
+    );
+  }
+
   Widget _ontvangerProfielStap() => Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+    const Text('Welkom! Wat is je rol?',
+        style: TextStyle(fontSize: 28, fontWeight: FontWeight.w900,
+            color: kBrown, height: 1.2)),
+    const SizedBox(height: 16),
+    _accountTypeKnop('🏠', 'Ik ben familielid',
+        'om met mijn dierbare in contact te blijven', 'familie'),
+    _accountTypeKnop('💼', 'Ik ben zorgverlener',
+        'om voor mijn cliënten te zorgen', 'zorg'),
+    const SizedBox(height: 24),
     const Text('Vertel ons over je dierbare',
         style: TextStyle(fontSize: 28, fontWeight: FontWeight.w900,
             color: kBrown, height: 1.2)),
@@ -579,7 +618,7 @@ class _SetupWizardState extends State<SetupWizard> {
   /// Ontvanger-naam is verplicht bij het aanmaken van een nieuwe kring.
   bool get _ontvangerNaamVerplichtMaarLeeg =>
       _rol == 'familie' && !_isInloggen && _stap == 2
-      && _ontvangerNaamCtrl.text.trim().isEmpty;
+      && (_ontvangerNaamCtrl.text.trim().isEmpty || _accountType == null);
 
   Widget _knop() {
     final geblokkeerd = _ontvangerNaamVerplichtMaarLeeg;
@@ -715,6 +754,7 @@ class _SetupWizardState extends State<SetupWizard> {
         'noodcontactNaam': _noodNaamCtrl.text.trim(),
         'noodcontactTel': _noodTelCtrl.text.trim(),
         'herkenningsgeluid': _gekozenGeluid,
+        'accountType': _accountType ?? 'familie',
         'tier': 'klein',
         'aangemaaktOp': FieldValue.serverTimestamp(),
       });

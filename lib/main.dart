@@ -72,6 +72,13 @@ class _RouterSchermState extends State<RouterScherm> {
       final apparaatId = await DeviceModusService.krijgApparaatId();
       ApparaatService.updateLaatstActief(
           familieUid: user.uid, apparaatId: apparaatId);
+      // Eenmalige migratie: bestaande accounts zonder accountType -> 'familie'.
+      FirebaseFirestore.instance.collection('gebruikers').doc(user.uid).get()
+          .then((d) {
+        if (d.exists && d.data()?['accountType'] == null) {
+          d.reference.set({'accountType': 'familie'}, SetOptions(merge: true));
+        }
+      }).catchError((_) {});
     }
     if (!mounted) return;
     setState(() => _initieelGeladen = true);
