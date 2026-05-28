@@ -15,6 +15,7 @@ class DeviceModusService {
   static const String _weergaveKey = 'ons_moment_weergave_modus';
   static const String _apparaatIdKey = 'ons_moment_apparaat_id';
   static const String _geregistreerdKey = 'ons_moment_geregistreerd';
+  static const String _actieveKringKey = 'ons_moment_actieve_kring_id';
   static const String FAMILIE = 'familie';
   static const String ONTVANGER = 'ontvanger';
   static const String VERGRENDELD = 'vergrendeld';
@@ -61,6 +62,7 @@ class DeviceModusService {
       final prefs = await SharedPreferences.getInstance();
       await prefs.remove(_key);
       await prefs.remove(_weergaveKey);
+      await prefs.remove(_actieveKringKey);
       notifier.value = null;
       weergaveModusNotifier.value = null;
     } catch (_) {}
@@ -140,5 +142,32 @@ class DeviceModusService {
     } catch (_) {
       return false;
     }
+  }
+
+  /// De kring waar dit apparaat momenteel actief mee verbonden is (V9).
+  /// Wordt gezet bij signup; multi-kring switching komt later. Null = geen
+  /// actieve kring (bv. vlak na uitloggen of bij accounts van vóór V9).
+  static Future<String?> krijgActieveKring() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      return prefs.getString(_actieveKringKey);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  static Future<void> zetActieveKring(String kringId) async {
+    if (kringId.isEmpty) return;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_actieveKringKey, kringId);
+    } catch (_) {}
+  }
+
+  static Future<void> wisActieveKring() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove(_actieveKringKey);
+    } catch (_) {}
   }
 }
