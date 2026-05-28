@@ -242,8 +242,8 @@ class _SetupWizardState extends State<SetupWizard> {
         ]),
         SizedBox(height: 8),
         Text(
-          'Maak EERST het kringaccount aan op de telefoon van iemand '
-          'uit de kring.\n\nStel pas DAARNA het ontvanger-apparaat in.',
+          'Maak EERST je account aan op je eigen telefoon.\n\n'
+          'Stel pas DAARNA het ontvanger-apparaat in.',
           style: TextStyle(fontSize: 13,
               fontWeight: FontWeight.w700, color: kWhite, height: 1.4)),
       ])),
@@ -262,10 +262,14 @@ class _SetupWizardState extends State<SetupWizard> {
         ]),
         SizedBox(height: 6),
         Text(
-          '• Maak een account aan\n'
-          '• Voeg een ontvanger toe\n'
-          '• Stuur foto\'s, stemberichten, video\'s en herinneringen\n'
-          '• Alles komt aan op het ontvanger-apparaat',
+          '1️⃣ Maak een account aan op je eigen telefoon\n'
+          '    Vul je gegevens in en kies je rol.\n\n'
+          '2️⃣ Voeg een ontvanger toe\n'
+          '    Vertel ons over de persoon die berichten krijgt.\n\n'
+          '3️⃣ Stel het ontvanger-apparaat in\n'
+          '    Een aparte tablet of telefoon bij de ontvanger toont alles wat je stuurt.\n\n'
+          '4️⃣ Stuur lieve momenten\n'
+          '    Foto\'s, stemberichten, video\'s en herinneringen vanaf je telefoon.',
           style: TextStyle(fontSize: 12, color: kBrownLight, height: 1.6)),
       ])),
     const SizedBox(height: 20),

@@ -2319,7 +2319,9 @@ class _InstellingenTabState extends State<InstellingenTab> {
               () => _toonModusDialog(context, naam)),
         if (_isAccountMaker && !widget.alsOntvanger)
           _item('✉️', 'Email of wachtwoord wijzigen',
-              'Voor jou en je kringleden',
+              _accountType == 'zorg'
+                  ? 'Voor jou en je collega\'s'
+                  : 'Voor jou en je kringleden',
               () => showDialog(context: context,
                   builder: (ctx) => const _AccountWijzigDialog())),
         const SizedBox(height: 20),
