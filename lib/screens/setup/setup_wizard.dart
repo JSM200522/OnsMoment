@@ -820,7 +820,6 @@ class _SetupWizardState extends State<SetupWizard> {
         batch.set(
             FirebaseFirestore.instance.collection('dagelijkse_momenten').doc(),
             {
-          'familieUid': uid,
           'kringId': kringId,
           'emoji': m.emoji,
           'label': m.label,

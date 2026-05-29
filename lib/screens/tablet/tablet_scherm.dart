@@ -35,6 +35,7 @@ class _TabletSchermState extends State<TabletScherm>
   StreamSubscription<QuerySnapshot>? _eenmaligSub;
   List<QueryDocumentSnapshot>? _eenmaligDocs;
   String? _mijnApparaatId;
+  String? _kringId;
   String? _accountType;  // 'familie'/'zorg', geladen voor T4-T5 (labels)
 
   @override
@@ -49,8 +50,15 @@ class _TabletSchermState extends State<TabletScherm>
       setState(() => _mijnApparaatId = id);
       _startMomentenListener();
       _startGebruikerListener();
-      _startDagelijksListener();
       _startEenmaligListener();
+    });
+    // V9 1.1f: dagelijkse_momenten listener pas starten ná kringId-resolve,
+    // anders krijgt _startDagelijksListener een null-filter en hoort de
+    // ontvanger geen herkenningsgeluiden meer.
+    DeviceModusService.huidigeKringIdMetFallback().then((id) {
+      if (!mounted) return;
+      setState(() => _kringId = id);
+      if (id != null) _startDagelijksListener();
     });
     _checkTimer = Timer.periodic(const Duration(seconds: 30), (_) {
       _checkGeplandeMomenten();
@@ -144,11 +152,11 @@ class _TabletSchermState extends State<TabletScherm>
   }
 
   void _startDagelijksListener() {
-    final uid = FirebaseAuth.instance.currentUser?.uid;
-    if (uid == null) return;
+    final kringId = _kringId;
+    if (kringId == null) return;
     _dagelijkseSub = FirebaseFirestore.instance
         .collection('dagelijkse_momenten')
-        .where('familieUid', isEqualTo: uid)
+        .where('kringId', isEqualTo: kringId)
         .where('actief', isEqualTo: true)
         .snapshots()
         .listen((snap) => _dagelijkseDocs = snap.docs);
@@ -459,11 +467,11 @@ class _TabletSchermState extends State<TabletScherm>
   }
 
   Widget _volgendeMomentKaart() {
-    final uid = FirebaseAuth.instance.currentUser?.uid;
-    if (uid == null) return const SizedBox();
+    final kringId = _kringId;
+    if (kringId == null) return const SizedBox();
     return StreamBuilder<QuerySnapshot>(
       stream: FirebaseFirestore.instance.collection('dagelijkse_momenten')
-          .where('familieUid', isEqualTo: uid)
+          .where('kringId', isEqualTo: kringId)
           .where('actief', isEqualTo: true).snapshots(),
       builder: (ctx, snap) {
         if (!snap.hasData || snap.data!.docs.isEmpty) return const SizedBox();

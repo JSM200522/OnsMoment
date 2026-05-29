@@ -39,6 +39,7 @@ class _FamilieSchermState extends State<FamilieScherm>
   String? _huidigPopupId;
   String _herkenningsgeluid = 'twinkel';
   String? _mijnApparaatId;
+  String? _kringId;
   String? _accountType;  // 'familie'/'zorg', geladen voor T4-T5 (labels)
   Timer? _autoSluitTimer;
 
@@ -62,9 +63,16 @@ class _FamilieSchermState extends State<FamilieScherm>
       _startMomentenListener();
       _startGebruikerListener();
       if (widget.alsOntvanger) {
-        _startDagelijksListener();
         _startEenmaligListener();
       }
+    });
+    // V9 1.1f: dagelijkse_momenten listener pas starten ná kringId-resolve,
+    // anders krijgt _startDagelijksListener een null-filter en hoort de
+    // ontvanger geen herkenningsgeluiden meer.
+    DeviceModusService.huidigeKringIdMetFallback().then((id) {
+      if (!mounted) return;
+      setState(() => _kringId = id);
+      if (id != null && widget.alsOntvanger) _startDagelijksListener();
     });
     if (widget.alsOntvanger) {
       _checkTimer = Timer.periodic(const Duration(seconds: 30), (_) {
@@ -157,11 +165,11 @@ class _FamilieSchermState extends State<FamilieScherm>
   }
 
   void _startDagelijksListener() {
-    final uid = FirebaseAuth.instance.currentUser?.uid;
-    if (uid == null) return;
+    final kringId = _kringId;
+    if (kringId == null) return;
     _dagelijkseSub = FirebaseFirestore.instance
         .collection('dagelijkse_momenten')
-        .where('familieUid', isEqualTo: uid)
+        .where('kringId', isEqualTo: kringId)
         .where('actief', isEqualTo: true)
         .snapshots()
         .listen((snap) => _dagelijkseDocs = snap.docs);
@@ -1455,25 +1463,36 @@ class AgendaTab extends StatelessWidget {
               style: TextStyle(fontSize: 12, color: kTextMuted)),
           ),
           const _SectieTitel('🔁 ELKE DAG'),
-          StreamBuilder<QuerySnapshot>(
-            stream: FirebaseFirestore.instance.collection('dagelijkse_momenten')
-                .where('familieUid', isEqualTo: uid)
-                .where('actief', isEqualTo: true).snapshots(),
-            builder: (ctx, snap) {
-              if (!snap.hasData) return const Padding(
-                padding: EdgeInsets.all(20),
-                child: Center(child: CircularProgressIndicator(color: kPeach)));
-              final docs = snap.data!.docs.toList();
-              if (docs.isEmpty) return _leeg('Nog geen dagelijkse momenten');
-              docs.sort((a, b) {
-                final ua = (a.data() as Map)['uur'] ?? 0;
-                final ub = (b.data() as Map)['uur'] ?? 0;
-                if (ua != ub) return (ua as int).compareTo(ub as int);
-                return ((a.data() as Map)['minuut'] as int)
-                    .compareTo((b.data() as Map)['minuut'] as int);
-              });
-              return Column(children: docs.map((d) =>
-                _DagelijksItem(doc: d)).toList());
+          FutureBuilder<String?>(
+            future: DeviceModusService.huidigeKringIdMetFallback(),
+            builder: (ctx, kringSnap) {
+              final kringId = kringSnap.data;
+              if (kringId == null) return const SizedBox();
+              return StreamBuilder<QuerySnapshot>(
+                stream: FirebaseFirestore.instance
+                    .collection('dagelijkse_momenten')
+                    .where('kringId', isEqualTo: kringId)
+                    .where('actief', isEqualTo: true).snapshots(),
+                builder: (ctx, snap) {
+                  if (!snap.hasData) return const Padding(
+                    padding: EdgeInsets.all(20),
+                    child: Center(
+                        child: CircularProgressIndicator(color: kPeach)));
+                  final docs = snap.data!.docs.toList();
+                  if (docs.isEmpty) {
+                    return _leeg('Nog geen dagelijkse momenten');
+                  }
+                  docs.sort((a, b) {
+                    final ua = (a.data() as Map)['uur'] ?? 0;
+                    final ub = (b.data() as Map)['uur'] ?? 0;
+                    if (ua != ub) return (ua as int).compareTo(ub as int);
+                    return ((a.data() as Map)['minuut'] as int)
+                        .compareTo((b.data() as Map)['minuut'] as int);
+                  });
+                  return Column(children: docs.map((d) =>
+                    _DagelijksItem(doc: d)).toList());
+                },
+              );
             },
           ),
           const SizedBox(height: 20),
@@ -2533,9 +2552,14 @@ class MomentenBeherenScherm extends StatelessWidget {
               style: TextStyle(color: kWhite, fontWeight: FontWeight.w800))),
       ]),
       body: uid == null ? const SizedBox()
-        : StreamBuilder<QuerySnapshot>(
+        : FutureBuilder<String?>(
+        future: DeviceModusService.huidigeKringIdMetFallback(),
+        builder: (ctx, kringSnap) {
+          final kringId = kringSnap.data;
+          if (kringId == null) return const SizedBox();
+          return StreamBuilder<QuerySnapshot>(
         stream: FirebaseFirestore.instance.collection('dagelijkse_momenten')
-            .where('familieUid', isEqualTo: uid)
+            .where('kringId', isEqualTo: kringId)
             .where('actief', isEqualTo: true).snapshots(),
         builder: (ctx, snap) {
           if (!snap.hasData) return const Center(
@@ -2598,6 +2622,8 @@ class MomentenBeherenScherm extends StatelessWidget {
               );
             }).toList());
         },
+      );
+        },
       ),
     );
   }
@@ -2618,8 +2644,10 @@ class MomentenBeherenScherm extends StatelessWidget {
         'minuut': result['minuut'],
       });
     } else {
+      final kringId = await DeviceModusService.huidigeKringIdMetFallback();
+      if (kringId == null) return;
       await FirebaseFirestore.instance.collection('dagelijkse_momenten').add({
-        'familieUid': uid,
+        'kringId': kringId,
         'emoji': result['emoji'],
         'label': result['label'],
         'uur': result['uur'],
