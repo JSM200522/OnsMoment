@@ -2111,6 +2111,7 @@ class _NotitiesTabState extends State<NotitiesTab> {
   final _ctrl = TextEditingController();
   String? _ontvangerNaam;
   String? _accountType;
+  String? _kringId;
 
   @override
   void initState() {
@@ -2126,11 +2127,15 @@ class _NotitiesTabState extends State<NotitiesTab> {
         });
       });
     }
+    DeviceModusService.huidigeKringIdMetFallback().then((id) {
+      if (!mounted) return;
+      setState(() => _kringId = id);
+    });
   }
 
   @override
   Widget build(BuildContext context) {
-    final uid = FirebaseAuth.instance.currentUser?.uid;
+    final kringId = _kringId;
     return Padding(padding: const EdgeInsets.all(20),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         const Text('Notities',
@@ -2146,7 +2151,7 @@ class _NotitiesTabState extends State<NotitiesTab> {
             border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
             filled: true, fillColor: kWhite)),
         const SizedBox(height: 10),
-        GestureDetector(onTap: () => _opslaan(uid),
+        GestureDetector(onTap: _opslaan,
           child: Container(padding: const EdgeInsets.symmetric(vertical: 12),
             decoration: BoxDecoration(
               gradient: const LinearGradient(colors: [kPeach, kRose]),
@@ -2161,10 +2166,10 @@ class _NotitiesTabState extends State<NotitiesTab> {
             style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800,
                 color: kTextMuted, letterSpacing: 0.8)),
         const SizedBox(height: 8),
-        Expanded(child: uid == null ? const SizedBox()
+        Expanded(child: kringId == null ? const SizedBox()
           : StreamBuilder<QuerySnapshot>(
           stream: FirebaseFirestore.instance.collection('notities')
-              .where('familieUid', isEqualTo: uid).snapshots(),
+              .where('kringId', isEqualTo: kringId).snapshots(),
           builder: (ctx, snap) {
             if (!snap.hasData) return const Center(
                 child: CircularProgressIndicator(color: kPeach));
@@ -2219,13 +2224,15 @@ class _NotitiesTabState extends State<NotitiesTab> {
     );
   }
 
-  Future<void> _opslaan(String? uid) async {
-    if (uid == null || _ctrl.text.trim().isEmpty) return;
+  Future<void> _opslaan() async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    final kringId = await DeviceModusService.huidigeKringIdMetFallback();
+    if (uid == null || kringId == null || _ctrl.text.trim().isEmpty) return;
     final familieDoc = await FirebaseFirestore.instance
         .collection('gebruikers').doc(uid).get();
     final familieNaam = familieDoc.data()?['familieNaam'] ?? 'Kringlid';
     await FirebaseFirestore.instance.collection('notities').add({
-      'familieUid': uid,
+      'kringId': kringId,
       'vanNaam': familieNaam,
       'tekst': _ctrl.text.trim(),
       'aangemaaktOp': FieldValue.serverTimestamp(),
