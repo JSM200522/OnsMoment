@@ -2192,14 +2192,25 @@ class _NotitiesTabState extends State<NotitiesTab> {
             return ListView.builder(itemCount: docs.length,
               itemBuilder: (c, i) {
                 final d = docs[i].data() as Map<String, dynamic>;
+                final vanNaam = d['vanNaam'] as String? ?? 'Kringlid';
+                final ts = d['aangemaaktOp'] as Timestamp?;
+                final header = ts != null
+                    ? '$vanNaam · ${_kortDatumTijdNl(ts.toDate())}'
+                    : vanNaam;
                 return Container(margin: const EdgeInsets.only(bottom: 8),
                   padding: const EdgeInsets.all(14),
                   decoration: BoxDecoration(color: kWhite,
                       borderRadius: BorderRadius.circular(12),
                       border: Border.all(color: kPeachLight, width: 1.5)),
-                  child: Text(d['tekst'] ?? '',
-                      style: const TextStyle(fontSize: 13,
-                          color: kBrown, height: 1.4)));
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(header, style: const TextStyle(fontSize: 11,
+                          fontWeight: FontWeight.w600, color: kTextMuted)),
+                      const SizedBox(height: 6),
+                      Text(d['tekst'] ?? '',
+                          style: const TextStyle(fontSize: 13,
+                              color: kBrown, height: 1.4)),
+                    ]));
               });
           },
         )),
@@ -2241,6 +2252,14 @@ class _NotitiesTabState extends State<NotitiesTab> {
     if (mounted) ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Notitie opgeslagen'),
             backgroundColor: kGreen));
+  }
+
+  String _kortDatumTijdNl(DateTime d) {
+    const m = ['jan', 'feb', 'mrt', 'apr', 'mei', 'jun',
+               'jul', 'aug', 'sep', 'okt', 'nov', 'dec'];
+    final hh = d.hour.toString().padLeft(2, '0');
+    final mm = d.minute.toString().padLeft(2, '0');
+    return '${d.day} ${m[d.month - 1]}, $hh:$mm';
   }
 }
 
