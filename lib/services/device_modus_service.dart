@@ -1,4 +1,5 @@
 import 'dart:math' show Random;
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -162,6 +163,17 @@ class DeviceModusService {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString(_actieveKringKey, kringId);
     } catch (_) {}
+  }
+
+  /// Resolveer kringId voor services die Storage/Firestore-paden bouwen.
+  /// V9-accounts: opgeslagen actieveKringId (los van auth-uid).
+  /// V7/V8-accounts vóór 1.1c hadden nog geen kring-doc — daar viel
+  /// kringId in de praktijk samen met auth.uid; vandaar de fallback.
+  /// Null als niemand is ingelogd én geen actieve kring bekend is.
+  static Future<String?> huidigeKringIdMetFallback() async {
+    final kringId = await krijgActieveKring();
+    if (kringId != null && kringId.isNotEmpty) return kringId;
+    return FirebaseAuth.instance.currentUser?.uid;
   }
 
   static Future<void> wisActieveKring() async {

@@ -3,12 +3,12 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 
 /// Upload/verwijder-helpers voor de aangepaste audio per dagelijks moment.
-/// Storage-pad: dagelijkse_audio/{familieUid}/{momentId}.{webm|mp3}
+/// Storage-pad: dagelijkse_audio/{kringId}/{momentId}.{webm|mp3}
 class DagelijksAudioService {
   /// Upload bytes naar Storage en zet aangepasteAudioUrl/Type in het
   /// moment-doc. Probeert oude file met andere extensie eerst weg te halen.
   static Future<bool> upload({
-    required String familieUid,
+    required String kringId,
     required String momentId,
     required Uint8List bytes,
     required String type,
@@ -18,10 +18,10 @@ class DagelijksAudioService {
     try {
       final ext = type == 'stem' ? 'webm' : 'mp3';
       final mime = type == 'stem' ? 'audio/webm' : 'audio/mpeg';
-      await _verwijderBestaand(familieUid, momentId);
+      await _verwijderBestaand(kringId, momentId);
       final ref = FirebaseStorage.instance.ref()
           .child('dagelijkse_audio')
-          .child(familieUid).child('$momentId.$ext');
+          .child(kringId).child('$momentId.$ext');
       await ref.putData(bytes, SettableMetadata(contentType: mime));
       final url = await ref.getDownloadURL();
       await FirebaseFirestore.instance.collection(collectie)
@@ -38,12 +38,12 @@ class DagelijksAudioService {
 
   /// Verwijdert audio uit Storage en reset de doc-velden naar standaard bel.
   static Future<bool> reset({
-    required String familieUid,
+    required String kringId,
     required String momentId,
     String collectie = 'dagelijkse_momenten',
   }) async {
     try {
-      await _verwijderBestaand(familieUid, momentId);
+      await _verwijderBestaand(kringId, momentId);
       await FirebaseFirestore.instance.collection(collectie)
           .doc(momentId).update({
         'aangepasteAudioUrl': FieldValue.delete(),
@@ -57,12 +57,12 @@ class DagelijksAudioService {
   }
 
   static Future<void> _verwijderBestaand(
-      String familieUid, String momentId) async {
+      String kringId, String momentId) async {
     for (final ext in ['webm', 'mp3']) {
       try {
         await FirebaseStorage.instance.ref()
             .child('dagelijkse_audio')
-            .child(familieUid).child('$momentId.$ext').delete();
+            .child(kringId).child('$momentId.$ext').delete();
       } catch (_) {}
     }
   }

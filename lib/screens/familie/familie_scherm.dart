@@ -1629,10 +1629,11 @@ class _EenmaligItem extends StatelessWidget {
           IconButton(icon: const Icon(Icons.delete_outline_rounded,
               color: Colors.red),
             onPressed: () async {
-              final fUid = FirebaseAuth.instance.currentUser?.uid;
-              if (fUid != null) {
+              final kringId =
+                  await DeviceModusService.huidigeKringIdMetFallback();
+              if (kringId != null) {
                 await DagelijksAudioService.reset(
-                    familieUid: fUid, momentId: doc.id,
+                    kringId: kringId, momentId: doc.id,
                     collectie: 'gepland_momenten');
               }
               await doc.reference.update({'actief': false});
@@ -1809,11 +1810,11 @@ class _AudioInstelDialogState extends State<_AudioInstelDialog> {
 
   Future<void> _opslaanOpname() async {
     if (_opnameBytes == null) return;
-    final uid = FirebaseAuth.instance.currentUser?.uid;
-    if (uid == null) return;
+    final kringId = await DeviceModusService.huidigeKringIdMetFallback();
+    if (kringId == null) return;
     setState(() => _bezig = true);
     final ok = await DagelijksAudioService.upload(
-      familieUid: uid,
+      kringId: kringId,
       momentId: widget.doc.id,
       bytes: _opnameBytes!,
       type: 'stem',
@@ -1833,11 +1834,11 @@ class _AudioInstelDialogState extends State<_AudioInstelDialog> {
 
   Future<void> _opslaanMp3() async {
     if (_mp3Bytes == null) return;
-    final uid = FirebaseAuth.instance.currentUser?.uid;
-    if (uid == null) return;
+    final kringId = await DeviceModusService.huidigeKringIdMetFallback();
+    if (kringId == null) return;
     setState(() => _bezig = true);
     final ok = await DagelijksAudioService.upload(
-      familieUid: uid,
+      kringId: kringId,
       momentId: widget.doc.id,
       bytes: _mp3Bytes!,
       type: 'mp3',
@@ -1855,11 +1856,11 @@ class _AudioInstelDialogState extends State<_AudioInstelDialog> {
   }
 
   Future<void> _zetTerugNaarBel() async {
-    final uid = FirebaseAuth.instance.currentUser?.uid;
-    if (uid == null) return;
+    final kringId = await DeviceModusService.huidigeKringIdMetFallback();
+    if (kringId == null) return;
     setState(() => _bezig = true);
     final ok = await DagelijksAudioService.reset(
-        familieUid: uid, momentId: widget.doc.id,
+        kringId: kringId, momentId: widget.doc.id,
         collectie: widget.doc.reference.parent.id);
     if (!mounted) return;
     setState(() => _bezig = false);
@@ -2558,10 +2559,11 @@ class MomentenBeherenScherm extends StatelessWidget {
                     IconButton(icon: const Icon(Icons.delete_outline_rounded,
                         color: Colors.red),
                       onPressed: () async {
-                        final fUid = FirebaseAuth.instance.currentUser?.uid;
-                        if (fUid != null) {
+                        final kringId = await DeviceModusService
+                            .huidigeKringIdMetFallback();
+                        if (kringId != null) {
                           await DagelijksAudioService.reset(
-                              familieUid: fUid, momentId: doc.id);
+                              kringId: kringId, momentId: doc.id);
                         }
                         await doc.reference.update({'actief': false});
                       }),
