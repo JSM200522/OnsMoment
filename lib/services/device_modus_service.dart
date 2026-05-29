@@ -1,4 +1,5 @@
 import 'dart:math' show Random;
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -162,6 +163,23 @@ class DeviceModusService {
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString(_actieveKringKey, kringId);
+    } catch (_) {}
+  }
+
+  /// Zoekt in Firestore de eerste kring waarvan deze uid eigenaar is en
+  /// slaat de doc-id op als actieveKringId. Stil bij geen kring of fout.
+  /// Aangeroepen direct na signIn-blokken zodat reads die op kringId
+  /// filteren (V9 1.1d+) werken voor bestaande eigenaars.
+  static Future<void> zetActieveKringVoorEigenaar(String uid) async {
+    if (uid.isEmpty) return;
+    try {
+      final snap = await FirebaseFirestore.instance
+          .collection('kringen')
+          .where('eigenaarUid', isEqualTo: uid)
+          .limit(1)
+          .get();
+      if (snap.docs.isEmpty) return;
+      await zetActieveKring(snap.docs.first.id);
     } catch (_) {}
   }
 

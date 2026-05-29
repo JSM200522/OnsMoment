@@ -707,6 +707,7 @@ class _SetupWizardState extends State<SetupWizard> {
       await FirebaseAuth.instance.signInWithEmailAndPassword(
           email: _emailCtrl.text.trim(), password: _wachtwoordCtrl.text);
       final uid = FirebaseAuth.instance.currentUser!.uid;
+      await DeviceModusService.zetActieveKringVoorEigenaar(uid);
       final apparaatId = await DeviceModusService.krijgApparaatId();
       final doc = await FirebaseFirestore.instance
           .collection('gebruikers').doc(uid)
@@ -872,6 +873,7 @@ class _SetupWizardState extends State<SetupWizard> {
       await FirebaseAuth.instance.signInWithEmailAndPassword(
           email: _emailCtrl.text.trim(), password: _wachtwoordCtrl.text);
       final uid = FirebaseAuth.instance.currentUser!.uid;
+      await DeviceModusService.zetActieveKringVoorEigenaar(uid);
       final apparaatId = await DeviceModusService.krijgApparaatId();
       final doc = await FirebaseFirestore.instance
           .collection('gebruikers').doc(uid)
