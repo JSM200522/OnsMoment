@@ -475,66 +475,97 @@ class _TabletSchermState extends State<TabletScherm>
       stream: FirebaseFirestore.instance.collection('dagelijkse_momenten')
           .where('kringId', isEqualTo: kringId)
           .where('actief', isEqualTo: true).snapshots(),
-      builder: (ctx, snap) {
-        if (!snap.hasData || snap.data!.docs.isEmpty) return const SizedBox();
-        final docs = snap.data!.docs.toList();
-        final nu = DateTime.now();
-        final huidigMin = nu.hour * 60 + nu.minute;
-        Map<String, dynamic>? volgende;
-        int volgendeMin = 24 * 60;
-        bool isMorgen = false;
-        for (final doc in docs) {
-          final d = doc.data() as Map<String, dynamic>;
-          final min = (d['uur'] as int) * 60 + (d['minuut'] as int);
-          if (min > huidigMin && min < volgendeMin) {
-            volgende = d;
-            volgendeMin = min;
-          }
-        }
-        if (volgende == null) {
-          // Geen vandaag, pak vroegste van morgen
-          isMorgen = true;
-          int vroegsteMin = 24 * 60;
-          for (final doc in docs) {
-            final d = doc.data() as Map<String, dynamic>;
-            final min = (d['uur'] as int) * 60 + (d['minuut'] as int);
-            if (min < vroegsteMin) {
-              volgende = d;
-              vroegsteMin = min;
+      builder: (ctx, dagelijksSnap) {
+        return StreamBuilder<QuerySnapshot>(
+          stream: FirebaseFirestore.instance.collection('gepland_momenten')
+              .where('kringId', isEqualTo: kringId)
+              .where('actief', isEqualTo: true).snapshots(),
+          builder: (ctx, eenmaligSnap) {
+            if (!dagelijksSnap.hasData && !eenmaligSnap.hasData) {
+              return const SizedBox();
             }
-          }
-        }
-        if (volgende == null) return const SizedBox();
-        return Container(
-          padding: const EdgeInsets.all(18),
-          decoration: BoxDecoration(
-            color: kWhite.withOpacity(0.94),
-            borderRadius: BorderRadius.circular(20),
-            boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.2),
-                blurRadius: 20, offset: const Offset(0, 6))]),
-          child: Row(mainAxisSize: MainAxisSize.min, children: [
-            Text(volgende['emoji'] ?? '⭐',
-                style: const TextStyle(fontSize: 44)),
-            const SizedBox(width: 16),
-            Column(crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min, children: [
-              Text(isMorgen ? 'Morgen' : 'Vandaag',
-                  style: const TextStyle(fontSize: 11, color: kTextMuted,
-                      fontWeight: FontWeight.w800, letterSpacing: 0.8)),
-              const SizedBox(height: 2),
-              Text(volgende['label'] ?? 'Moment',
-                  style: const TextStyle(fontSize: 20,
-                      fontWeight: FontWeight.w800, color: kBrown)),
-            ]),
-            const SizedBox(width: 16),
-            Container(padding: const EdgeInsets.symmetric(
-                horizontal: 14, vertical: 8),
-              decoration: BoxDecoration(color: kPeachPale,
-                  borderRadius: BorderRadius.circular(12)),
-              child: Text('${(volgende['uur'] ?? 0).toString().padLeft(2, '0')}:${(volgende['minuut'] ?? 0).toString().padLeft(2, '0')}',
-                  style: const TextStyle(fontSize: 20,
-                      fontWeight: FontWeight.w800, color: kBrown))),
-          ]),
+            final nu = DateTime.now();
+            final kandidaten = <_VolgendeKandidaat>[];
+
+            // Dagelijks: bereken volgende DateTime (vandaag als nog niet
+            // voorbij, anders morgen op zelfde tijd)
+            for (final doc in dagelijksSnap.data?.docs ?? []) {
+              final d = doc.data() as Map<String, dynamic>;
+              final uur = d['uur'] as int? ?? 0;
+              final minuut = d['minuut'] as int? ?? 0;
+              DateTime moment = DateTime(nu.year, nu.month, nu.day,
+                  uur, minuut);
+              if (!moment.isAfter(nu)) {
+                moment = moment.add(const Duration(days: 1));
+              }
+              kandidaten.add(_VolgendeKandidaat(
+                  when: moment,
+                  emoji: d['emoji'] as String? ?? '⭐',
+                  label: d['label'] as String? ?? 'Moment'));
+            }
+
+            // Eenmalig: gebruik geplandOp direct, alleen toekomst
+            for (final doc in eenmaligSnap.data?.docs ?? []) {
+              final d = doc.data() as Map<String, dynamic>;
+              final geplandOp = (d['geplandOp'] as Timestamp?)?.toDate();
+              if (geplandOp == null || !geplandOp.isAfter(nu)) continue;
+              kandidaten.add(_VolgendeKandidaat(
+                  when: geplandOp,
+                  emoji: d['emoji'] as String? ?? '⭐',
+                  label: d['label'] as String? ?? 'Moment'));
+            }
+
+            if (kandidaten.isEmpty) return const SizedBox();
+            kandidaten.sort((a, b) => a.when.compareTo(b.when));
+            final volgende = kandidaten.first;
+
+            // Datumlabel: 'Vandaag' / 'Morgen' / 'DD-MM'
+            final beginVandaag = DateTime(nu.year, nu.month, nu.day);
+            final beginMorgen = beginVandaag.add(const Duration(days: 1));
+            final beginOvermorgen =
+                beginMorgen.add(const Duration(days: 1));
+            final dagLabel = volgende.when.isBefore(beginMorgen)
+                ? 'Vandaag'
+                : volgende.when.isBefore(beginOvermorgen)
+                    ? 'Morgen'
+                    : '${volgende.when.day.toString().padLeft(2, '0')}-'
+                      '${volgende.when.month.toString().padLeft(2, '0')}';
+            final tijdLabel =
+                '${volgende.when.hour.toString().padLeft(2, '0')}:'
+                '${volgende.when.minute.toString().padLeft(2, '0')}';
+
+            return Container(
+              padding: const EdgeInsets.all(18),
+              decoration: BoxDecoration(
+                color: kWhite.withOpacity(0.94),
+                borderRadius: BorderRadius.circular(20),
+                boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.2),
+                    blurRadius: 20, offset: const Offset(0, 6))]),
+              child: Row(mainAxisSize: MainAxisSize.min, children: [
+                Text(volgende.emoji,
+                    style: const TextStyle(fontSize: 44)),
+                const SizedBox(width: 16),
+                Column(crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min, children: [
+                  Text(dagLabel,
+                      style: const TextStyle(fontSize: 11, color: kTextMuted,
+                          fontWeight: FontWeight.w800, letterSpacing: 0.8)),
+                  const SizedBox(height: 2),
+                  Text(volgende.label,
+                      style: const TextStyle(fontSize: 20,
+                          fontWeight: FontWeight.w800, color: kBrown)),
+                ]),
+                const SizedBox(width: 16),
+                Container(padding: const EdgeInsets.symmetric(
+                    horizontal: 14, vertical: 8),
+                  decoration: BoxDecoration(color: kPeachPale,
+                      borderRadius: BorderRadius.circular(12)),
+                  child: Text(tijdLabel,
+                      style: const TextStyle(fontSize: 20,
+                          fontWeight: FontWeight.w800, color: kBrown))),
+              ]),
+            );
+          },
         );
       },
     );
@@ -786,4 +817,18 @@ class _KlokState extends State<_Klok> {
                      'juli', 'augustus', 'september', 'oktober', 'november', 'december'];
     return '${dagen[d.weekday - 1]} ${d.day} ${maanden[d.month - 1]}';
   }
+}
+
+/// Genormaliseerde kandidaat voor _volgendeMomentKaart: één type voor zowel
+/// dagelijkse (waar `when` op uur:minuut vandaag of morgen wordt gezet) als
+/// eenmalige momenten (waar `when` gelijk is aan `geplandOp`).
+class _VolgendeKandidaat {
+  final DateTime when;
+  final String emoji;
+  final String label;
+  const _VolgendeKandidaat({
+    required this.when,
+    required this.emoji,
+    required this.label,
+  });
 }

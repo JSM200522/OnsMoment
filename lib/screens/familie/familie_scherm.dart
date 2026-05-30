@@ -2592,76 +2592,110 @@ class MomentenBeherenScherm extends StatelessWidget {
         builder: (ctx, kringSnap) {
           final kringId = kringSnap.data;
           if (kringId == null) return const SizedBox();
-          return StreamBuilder<QuerySnapshot>(
-        stream: FirebaseFirestore.instance.collection('dagelijkse_momenten')
-            .where('kringId', isEqualTo: kringId)
-            .where('actief', isEqualTo: true).snapshots(),
-        builder: (ctx, snap) {
-          if (!snap.hasData) return const Center(
-              child: CircularProgressIndicator(color: kPeach));
-          final docs = snap.data!.docs.toList();
-          if (docs.isEmpty) return const Center(child: Padding(
-            padding: EdgeInsets.all(40),
-            child: Column(mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-              Text('📅', style: TextStyle(fontSize: 56)),
-              SizedBox(height: 12),
-              Text('Geen dagelijkse momenten', style: TextStyle(
-                  fontSize: 16, fontWeight: FontWeight.w800, color: kBrown)),
-              SizedBox(height: 6),
-              Text('Tik op "Nieuw moment" om er een toe te voegen',
-                  style: TextStyle(fontSize: 13, color: kTextMuted)),
-            ])));
-          docs.sort((a, b) {
-            final ua = (a.data() as Map)['uur'] ?? 0;
-            final ub = (b.data() as Map)['uur'] ?? 0;
-            if (ua != ub) return (ua as int).compareTo(ub as int);
-            return ((a.data() as Map)['minuut'] as int)
-                .compareTo((b.data() as Map)['minuut'] as int);
-          });
-          return ListView(padding: const EdgeInsets.all(20),
-            children: docs.map((doc) {
-              final d = doc.data() as Map<String, dynamic>;
-              return GestureDetector(
-                onTap: () => _opnenDialog(context, uid, bestaand: doc),
-                child: Container(margin: const EdgeInsets.only(bottom: 10),
-                  padding: const EdgeInsets.all(14),
-                  decoration: BoxDecoration(color: kWhite,
-                      borderRadius: BorderRadius.circular(14),
-                      border: Border.all(color: kPeachLight, width: 2)),
-                  child: Row(children: [
-                    Text(d['emoji'] ?? '⭐',
-                        style: const TextStyle(fontSize: 28)),
-                    const SizedBox(width: 14),
-                    Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                      Text(d['label'] ?? 'Moment', style: const TextStyle(
-                          fontSize: 15, fontWeight: FontWeight.w800,
-                          color: kBrown)),
-                      Text('${(d['uur'] ?? 0).toString().padLeft(2, '0')}:${(d['minuut'] ?? 0).toString().padLeft(2, '0')} elke dag',
-                          style: const TextStyle(fontSize: 12, color: kTextMuted)),
-                    ])),
-                    IconButton(icon: const Icon(Icons.delete_outline_rounded,
-                        color: Colors.red),
-                      onPressed: () async {
-                        final kringId = await DeviceModusService
-                            .huidigeKringIdMetFallback();
-                        if (kringId != null) {
-                          await DagelijksAudioService.reset(
-                              kringId: kringId, momentId: doc.id);
-                        }
-                        await doc.reference.update({'actief': false});
-                      }),
-                  ]),
-                ),
-              );
-            }).toList());
-        },
-      );
+          return ListView(padding: const EdgeInsets.all(20), children: [
+            const _SectieTitel('🔁 DAGELIJKSE MOMENTEN'),
+            const SizedBox(height: 8),
+            StreamBuilder<QuerySnapshot>(
+              stream: FirebaseFirestore.instance
+                  .collection('dagelijkse_momenten')
+                  .where('kringId', isEqualTo: kringId)
+                  .where('actief', isEqualTo: true).snapshots(),
+              builder: (ctx, snap) {
+                if (!snap.hasData) return const Padding(
+                  padding: EdgeInsets.all(20),
+                  child: Center(child: CircularProgressIndicator(
+                      color: kPeach)));
+                final docs = snap.data!.docs.toList();
+                if (docs.isEmpty) {
+                  return _beheerLeeg('Nog geen dagelijkse momenten');
+                }
+                docs.sort((a, b) {
+                  final ua = (a.data() as Map)['uur'] ?? 0;
+                  final ub = (b.data() as Map)['uur'] ?? 0;
+                  if (ua != ub) return (ua as int).compareTo(ub as int);
+                  return ((a.data() as Map)['minuut'] as int)
+                      .compareTo((b.data() as Map)['minuut'] as int);
+                });
+                return Column(children: docs.map((doc) {
+                  final d = doc.data() as Map<String, dynamic>;
+                  return GestureDetector(
+                    onTap: () => _opnenDialog(context, uid, bestaand: doc),
+                    child: Container(
+                      margin: const EdgeInsets.only(bottom: 10),
+                      padding: const EdgeInsets.all(14),
+                      decoration: BoxDecoration(color: kWhite,
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(color: kPeachLight, width: 2)),
+                      child: Row(children: [
+                        Text(d['emoji'] ?? '⭐',
+                            style: const TextStyle(fontSize: 28)),
+                        const SizedBox(width: 14),
+                        Expanded(child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(d['label'] ?? 'Moment',
+                                style: const TextStyle(
+                                    fontSize: 15,
+                                    fontWeight: FontWeight.w800,
+                                    color: kBrown)),
+                            Text('${(d['uur'] ?? 0).toString().padLeft(2, '0')}:${(d['minuut'] ?? 0).toString().padLeft(2, '0')} elke dag',
+                                style: const TextStyle(
+                                    fontSize: 12, color: kTextMuted)),
+                          ])),
+                        IconButton(
+                          icon: const Icon(Icons.delete_outline_rounded,
+                              color: Colors.red),
+                          onPressed: () async {
+                            final kringId = await DeviceModusService
+                                .huidigeKringIdMetFallback();
+                            if (kringId != null) {
+                              await DagelijksAudioService.reset(
+                                  kringId: kringId, momentId: doc.id);
+                            }
+                            await doc.reference.update({'actief': false});
+                          }),
+                      ]),
+                    ),
+                  );
+                }).toList());
+              },
+            ),
+            const SizedBox(height: 24),
+            const _SectieTitel('📅 EENMALIGE MOMENTEN'),
+            const SizedBox(height: 8),
+            StreamBuilder<QuerySnapshot>(
+              stream: FirebaseFirestore.instance
+                  .collection('gepland_momenten')
+                  .where('kringId', isEqualTo: kringId)
+                  .where('actief', isEqualTo: true).snapshots(),
+              builder: (ctx, snap) {
+                if (!snap.hasData) return const Padding(
+                  padding: EdgeInsets.all(20),
+                  child: Center(child: CircularProgressIndicator(
+                      color: kPeach)));
+                final docs = snap.data!.docs.toList()..sort((a, b) {
+                  final ta = (a.data() as Map)['geplandOp'] as Timestamp?;
+                  final tb = (b.data() as Map)['geplandOp'] as Timestamp?;
+                  if (ta == null || tb == null) return 0;
+                  return ta.compareTo(tb);
+                });
+                if (docs.isEmpty) {
+                  return _beheerLeeg('Nog geen eenmalige momenten');
+                }
+                return Column(children: docs.map((d) =>
+                    _EenmaligItem(doc: d)).toList());
+              },
+            ),
+          ]);
         },
       ),
     );
   }
+
+  Widget _beheerLeeg(String tekst) => Padding(
+    padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 4),
+    child: Text(tekst,
+        style: const TextStyle(fontSize: 12, color: kTextMuted)));
 
   Future<void> _opnenDialog(BuildContext context, String? uid,
       {QueryDocumentSnapshot? bestaand}) async {
