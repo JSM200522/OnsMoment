@@ -2673,7 +2673,16 @@ class MomentenBeherenScherm extends StatelessWidget {
                   padding: EdgeInsets.all(20),
                   child: Center(child: CircularProgressIndicator(
                       color: kPeach)));
-                final docs = snap.data!.docs.toList()..sort((a, b) {
+                // Verberg eenmalige momenten meer dan 24u na hun tijd —
+                // beheer-lijst blijft schoon voor mantelzorger. Popup-pad
+                // (actief+getoond) is ongewijzigd; alleen UI-filter.
+                final grens =
+                    DateTime.now().subtract(const Duration(hours: 24));
+                final docs = snap.data!.docs.where((d) {
+                  final t = ((d.data() as Map)['geplandOp'] as Timestamp?)
+                      ?.toDate();
+                  return t != null && t.isAfter(grens);
+                }).toList()..sort((a, b) {
                   final ta = (a.data() as Map)['geplandOp'] as Timestamp?;
                   final tb = (b.data() as Map)['geplandOp'] as Timestamp?;
                   if (ta == null || tb == null) return 0;
