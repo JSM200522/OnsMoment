@@ -2682,8 +2682,59 @@ class MomentenBeherenScherm extends StatelessWidget {
                 if (docs.isEmpty) {
                   return _beheerLeeg('Nog geen eenmalige momenten');
                 }
-                return Column(children: docs.map((d) =>
-                    _EenmaligItem(doc: d)).toList());
+                return Column(children: docs.map((doc) {
+                  final d = doc.data() as Map<String, dynamic>;
+                  final geplandOp =
+                      (d['geplandOp'] as Timestamp?)?.toDate();
+                  final tijdLabel = geplandOp != null
+                      ? '${geplandOp.day.toString().padLeft(2, '0')}-'
+                        '${geplandOp.month.toString().padLeft(2, '0')} • '
+                        '${geplandOp.hour.toString().padLeft(2, '0')}:'
+                        '${geplandOp.minute.toString().padLeft(2, '0')}'
+                      : 'Geen tijdstip';
+                  return GestureDetector(
+                    onTap: () =>
+                        _opnenEenmaligDialog(context, uid, bestaand: doc),
+                    child: Container(
+                      margin: const EdgeInsets.only(bottom: 10),
+                      padding: const EdgeInsets.all(14),
+                      decoration: BoxDecoration(color: kWhite,
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(color: kPeachLight, width: 2)),
+                      child: Row(children: [
+                        Text(d['emoji'] ?? '⭐',
+                            style: const TextStyle(fontSize: 28)),
+                        const SizedBox(width: 14),
+                        Expanded(child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(d['label'] ?? 'Moment',
+                                style: const TextStyle(
+                                    fontSize: 15,
+                                    fontWeight: FontWeight.w800,
+                                    color: kBrown)),
+                            Text(tijdLabel,
+                                style: const TextStyle(
+                                    fontSize: 12, color: kTextMuted)),
+                          ])),
+                        IconButton(
+                          icon: const Icon(Icons.delete_outline_rounded,
+                              color: Colors.red),
+                          onPressed: () async {
+                            final kringId = await DeviceModusService
+                                .huidigeKringIdMetFallback();
+                            if (kringId != null) {
+                              await DagelijksAudioService.reset(
+                                  kringId: kringId, momentId: doc.id,
+                                  collectie: 'gepland_momenten');
+                            }
+                            await doc.reference
+                                .update({'actief': false});
+                          }),
+                      ]),
+                    ),
+                  );
+                }).toList());
               },
             ),
           ]);
@@ -2728,24 +2779,39 @@ class MomentenBeherenScherm extends StatelessWidget {
     }
   }
 
-  Future<void> _opnenEenmaligDialog(BuildContext context, String? uid) async {
+  Future<void> _opnenEenmaligDialog(BuildContext context, String? uid,
+      {QueryDocumentSnapshot? bestaand}) async {
     if (uid == null) return;
+    final initial = bestaand?.data() as Map<String, dynamic>?;
     final result = await showDialog<Map<String, dynamic>>(
-      context: context, builder: (ctx) => const _EenmaligMomentDialog());
+      context: context,
+      builder: (ctx) => _EenmaligMomentDialog(initial: initial));
     if (result == null) return;
-    final kringId = await DeviceModusService.huidigeKringIdMetFallback();
-    if (kringId == null) return;
-    await FirebaseFirestore.instance.collection('gepland_momenten').add({
-      'kringId': kringId,
-      'emoji': result['emoji'],
-      'label': result['label'],
-      'uur': result['uur'],
-      'minuut': result['minuut'],
-      'geplandOp': Timestamp.fromDate(result['geplandOp'] as DateTime),
-      'actief': true,
-      'getoond': false,
-      'aangemaakt': FieldValue.serverTimestamp(),
-    });
+    if (bestaand != null) {
+      // Update alleen de bewerkbare velden — kringId/actief/getoond/aangemaakt
+      // blijven bewust ongemoeid zodat de popup-trigger en historie kloppen.
+      await bestaand.reference.update({
+        'emoji': result['emoji'],
+        'label': result['label'],
+        'uur': result['uur'],
+        'minuut': result['minuut'],
+        'geplandOp': Timestamp.fromDate(result['geplandOp'] as DateTime),
+      });
+    } else {
+      final kringId = await DeviceModusService.huidigeKringIdMetFallback();
+      if (kringId == null) return;
+      await FirebaseFirestore.instance.collection('gepland_momenten').add({
+        'kringId': kringId,
+        'emoji': result['emoji'],
+        'label': result['label'],
+        'uur': result['uur'],
+        'minuut': result['minuut'],
+        'geplandOp': Timestamp.fromDate(result['geplandOp'] as DateTime),
+        'actief': true,
+        'getoond': false,
+        'aangemaakt': FieldValue.serverTimestamp(),
+      });
+    }
   }
 }
 
@@ -2846,17 +2912,31 @@ class _NieuwMomentDialogState extends State<_NieuwMomentDialog> {
 }
 
 class _EenmaligMomentDialog extends StatefulWidget {
-  const _EenmaligMomentDialog();
+  final Map<String, dynamic>? initial;
+  const _EenmaligMomentDialog({this.initial});
   @override
   State<_EenmaligMomentDialog> createState() => _EenmaligMomentDialogState();
 }
 
 class _EenmaligMomentDialogState extends State<_EenmaligMomentDialog> {
-  String _emoji = '⭐';
-  final _labelCtrl = TextEditingController();
-  DateTime _datum = DateTime.now().add(const Duration(days: 1));
-  TimeOfDay _tijd = const TimeOfDay(hour: 12, minute: 0);
+  late String _emoji;
+  late final TextEditingController _labelCtrl;
+  late DateTime _datum;
+  late TimeOfDay _tijd;
   final _emojis = ['⭐', '☀️', '☕', '🍽️', '🌙', '💕', '🎵', '🌸', '🌳', '📚', '🐦', '🍰'];
+
+  @override
+  void initState() {
+    super.initState();
+    final i = widget.initial;
+    final geplandOp = (i?['geplandOp'] as Timestamp?)?.toDate();
+    _emoji = (i?['emoji'] as String?) ?? '⭐';
+    _labelCtrl = TextEditingController(text: (i?['label'] as String?) ?? '');
+    _datum = geplandOp ?? DateTime.now().add(const Duration(days: 1));
+    _tijd = geplandOp != null
+        ? TimeOfDay(hour: geplandOp.hour, minute: geplandOp.minute)
+        : const TimeOfDay(hour: 12, minute: 0);
+  }
 
   @override
   void dispose() {
