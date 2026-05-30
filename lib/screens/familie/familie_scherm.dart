@@ -61,19 +61,19 @@ class _FamilieSchermState extends State<FamilieScherm>
       if (!mounted) return;
       setState(() => _mijnApparaatId = id);
       _startGebruikerListener();
-      if (widget.alsOntvanger) {
-        _startEenmaligListener();
-      }
     });
-    // V9 1.1f/1.1g: zowel dagelijkse_momenten als momenten filteren op
-    // kringId — listeners pas starten ná resolve, anders null-filter en
-    // hoort de ontvanger geen popups/herkenningsgeluiden meer.
+    // V9 1.1f/1.1g/1.1h: alle kringId-gefilterde listeners pas starten ná
+    // resolve, anders null-filter en hoort de ontvanger geen popups/
+    // herkenningsgeluiden meer.
     DeviceModusService.huidigeKringIdMetFallback().then((id) {
       if (!mounted) return;
       setState(() => _kringId = id);
       if (id != null) {
         _startMomentenListener();
-        if (widget.alsOntvanger) _startDagelijksListener();
+        if (widget.alsOntvanger) {
+          _startDagelijksListener();
+          _startEenmaligListener();
+        }
       }
     });
     if (widget.alsOntvanger) {
@@ -178,11 +178,11 @@ class _FamilieSchermState extends State<FamilieScherm>
   }
 
   void _startEenmaligListener() {
-    final uid = FirebaseAuth.instance.currentUser?.uid;
-    if (uid == null) return;
+    final kringId = _kringId;
+    if (kringId == null) return;
     _eenmaligSub = FirebaseFirestore.instance
         .collection('gepland_momenten')
-        .where('familieUid', isEqualTo: uid)
+        .where('kringId', isEqualTo: kringId)
         .where('actief', isEqualTo: true)
         .snapshots()
         .listen((snap) => _eenmaligDocs = snap.docs);
@@ -1514,16 +1514,16 @@ class AgendaTab extends StatelessWidget {
           ),
           const SizedBox(height: 20),
           const _SectieTitel('📅 GEPLAND'),
-          StreamBuilder<QuerySnapshot>(
-            stream: FirebaseFirestore.instance.collection('gepland_momenten')
-                .where('familieUid', isEqualTo: uid)
-                .where('actief', isEqualTo: true).snapshots(),
-            builder: (ctx, eenmaligSnap) {
-              return FutureBuilder<String?>(
-                future: DeviceModusService.huidigeKringIdMetFallback(),
-                builder: (ctx, kringSnap) {
-                  final kringId = kringSnap.data;
-                  if (kringId == null) return const SizedBox();
+          FutureBuilder<String?>(
+            future: DeviceModusService.huidigeKringIdMetFallback(),
+            builder: (ctx, kringSnap) {
+              final kringId = kringSnap.data;
+              if (kringId == null) return const SizedBox();
+              return StreamBuilder<QuerySnapshot>(
+                stream: FirebaseFirestore.instance.collection('gepland_momenten')
+                    .where('kringId', isEqualTo: kringId)
+                    .where('actief', isEqualTo: true).snapshots(),
+                builder: (ctx, eenmaligSnap) {
                   return StreamBuilder<QuerySnapshot>(
                     stream: FirebaseFirestore.instance.collection('momenten')
                         .where('kringId', isEqualTo: kringId)
@@ -2699,8 +2699,10 @@ class MomentenBeherenScherm extends StatelessWidget {
     final result = await showDialog<Map<String, dynamic>>(
       context: context, builder: (ctx) => const _EenmaligMomentDialog());
     if (result == null) return;
+    final kringId = await DeviceModusService.huidigeKringIdMetFallback();
+    if (kringId == null) return;
     await FirebaseFirestore.instance.collection('gepland_momenten').add({
-      'familieUid': uid,
+      'kringId': kringId,
       'emoji': result['emoji'],
       'label': result['label'],
       'uur': result['uur'],

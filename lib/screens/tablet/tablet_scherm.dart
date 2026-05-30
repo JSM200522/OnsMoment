@@ -49,17 +49,17 @@ class _TabletSchermState extends State<TabletScherm>
       if (!mounted) return;
       setState(() => _mijnApparaatId = id);
       _startGebruikerListener();
-      _startEenmaligListener();
     });
-    // V9 1.1f/1.1g: zowel dagelijkse_momenten als momenten filteren op
-    // kringId — listeners pas starten ná resolve, anders null-filter en
-    // hoort de ontvanger geen popups/herkenningsgeluiden meer.
+    // V9 1.1f/1.1g/1.1h: alle kringId-gefilterde listeners pas starten ná
+    // resolve, anders null-filter en hoort de ontvanger geen popups/
+    // herkenningsgeluiden meer.
     DeviceModusService.huidigeKringIdMetFallback().then((id) {
       if (!mounted) return;
       setState(() => _kringId = id);
       if (id != null) {
         _startMomentenListener();
         _startDagelijksListener();
+        _startEenmaligListener();
       }
     });
     _checkTimer = Timer.periodic(const Duration(seconds: 30), (_) {
@@ -165,11 +165,11 @@ class _TabletSchermState extends State<TabletScherm>
   }
 
   void _startEenmaligListener() {
-    final uid = FirebaseAuth.instance.currentUser?.uid;
-    if (uid == null) return;
+    final kringId = _kringId;
+    if (kringId == null) return;
     _eenmaligSub = FirebaseFirestore.instance
         .collection('gepland_momenten')
-        .where('familieUid', isEqualTo: uid)
+        .where('kringId', isEqualTo: kringId)
         .where('actief', isEqualTo: true)
         .snapshots()
         .listen((snap) => _eenmaligDocs = snap.docs);
