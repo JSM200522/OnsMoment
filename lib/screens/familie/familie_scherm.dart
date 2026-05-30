@@ -60,19 +60,21 @@ class _FamilieSchermState extends State<FamilieScherm>
     DeviceModusService.krijgApparaatId().then((id) {
       if (!mounted) return;
       setState(() => _mijnApparaatId = id);
-      _startMomentenListener();
       _startGebruikerListener();
       if (widget.alsOntvanger) {
         _startEenmaligListener();
       }
     });
-    // V9 1.1f: dagelijkse_momenten listener pas starten ná kringId-resolve,
-    // anders krijgt _startDagelijksListener een null-filter en hoort de
-    // ontvanger geen herkenningsgeluiden meer.
+    // V9 1.1f/1.1g: zowel dagelijkse_momenten als momenten filteren op
+    // kringId — listeners pas starten ná resolve, anders null-filter en
+    // hoort de ontvanger geen popups/herkenningsgeluiden meer.
     DeviceModusService.huidigeKringIdMetFallback().then((id) {
       if (!mounted) return;
       setState(() => _kringId = id);
-      if (id != null && widget.alsOntvanger) _startDagelijksListener();
+      if (id != null) {
+        _startMomentenListener();
+        if (widget.alsOntvanger) _startDagelijksListener();
+      }
     });
     if (widget.alsOntvanger) {
       _checkTimer = Timer.periodic(const Duration(seconds: 30), (_) {
@@ -125,11 +127,11 @@ class _FamilieSchermState extends State<FamilieScherm>
   /// popup open was (Bug A) of de app op de achtergrond stond (Bug B).
   Future<void> _herscanMomenten() async {
     if (_huidigPopupId != null) return;
-    final uid = FirebaseAuth.instance.currentUser?.uid;
-    if (uid == null) return;
+    final kringId = _kringId;
+    if (kringId == null) return;
     try {
       final snap = await FirebaseFirestore.instance.collection('momenten')
-          .where('familieUid', isEqualTo: uid)
+          .where('kringId', isEqualTo: kringId)
           .where('gezien', isEqualTo: false)
           .get();
       if (mounted) _verwerkMomenten(snap);
@@ -137,10 +139,10 @@ class _FamilieSchermState extends State<FamilieScherm>
   }
 
   void _startMomentenListener() {
-    final uid = FirebaseAuth.instance.currentUser?.uid;
-    if (uid == null) return;
+    final kringId = _kringId;
+    if (kringId == null) return;
     _momentenListener = FirebaseFirestore.instance.collection('momenten')
-        .where('familieUid', isEqualTo: uid)
+        .where('kringId', isEqualTo: kringId)
         .where('gezien', isEqualTo: false)
         .snapshots()
         .listen(_verwerkMomenten);
@@ -1090,7 +1092,15 @@ class _StuurTabState extends State<StuurTab> {
   Future<void> _stuurHartje() async {
     toonZwevendeHartjes(context);
     try {
-      final user = FirebaseAuth.instance.currentUser!;
+      final kringId = await DeviceModusService.huidigeKringIdMetFallback();
+      if (kringId == null) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text('Kring niet beschikbaar — log opnieuw in'),
+            backgroundColor: Colors.red));
+        }
+        return;
+      }
       final leden = await (_kringFuture
           ?? Future.value(<Map<String, dynamic>>[]));
       final mijnNaam = (leden.firstWhere(
@@ -1109,7 +1119,7 @@ class _StuurTabState extends State<StuurTab> {
       }
 
       await FirebaseFirestore.instance.collection('momenten').add({
-        'familieUid': user.uid,
+        'kringId': kringId,
         'vanNaam': vanNaam,
         'vanApparaatId': _mijnApparaatId,
         'vanApparaatModus': DeviceModusService.notifier.value ?? 'familie',
@@ -1153,7 +1163,14 @@ class _StuurTabState extends State<StuurTab> {
     }
     setState(() => _bezig = true);
     try {
-      final user = FirebaseAuth.instance.currentUser!;
+      final kringId = await DeviceModusService.huidigeKringIdMetFallback();
+      if (kringId == null) {
+        if (mounted) {
+          setState(() => _bezig = false);
+          _toonFout('Kring niet beschikbaar — log opnieuw in');
+        }
+        return;
+      }
 
       // Afzender = de echte persoon op DIT apparaat (persoonsNaam uit de
       // kringlijst), niet de account-brede familieNaam.
@@ -1207,7 +1224,7 @@ class _StuurTabState extends State<StuurTab> {
       }
 
       await FirebaseFirestore.instance.collection('momenten').add({
-        'familieUid': user.uid,
+        'kringId': kringId,
         'vanNaam': vanNaam,
         'vanApparaatId': _mijnApparaatId,
         'vanApparaatModus':
@@ -1502,49 +1519,67 @@ class AgendaTab extends StatelessWidget {
                 .where('familieUid', isEqualTo: uid)
                 .where('actief', isEqualTo: true).snapshots(),
             builder: (ctx, eenmaligSnap) {
-              return StreamBuilder<QuerySnapshot>(
-                stream: FirebaseFirestore.instance.collection('momenten')
-                    .where('familieUid', isEqualTo: uid)
-                    .where('gezien', isEqualTo: false).snapshots(),
-                builder: (ctx, momentenSnap) {
-                  if (!eenmaligSnap.hasData || !momentenSnap.hasData) {
-                    return const SizedBox();
-                  }
-                  final nu = DateTime.now();
-                  final items = <MapEntry<DateTime, Widget>>[];
-                  for (final doc in eenmaligSnap.data!.docs) {
-                    final g = ((doc.data() as Map)['geplandOp'] as Timestamp?)
-                        ?.toDate();
-                    if (g == null || !g.isAfter(nu)) continue;
-                    items.add(MapEntry(g, _EenmaligItem(doc: doc)));
-                  }
-                  for (final doc in momentenSnap.data!.docs) {
-                    final data = doc.data() as Map<String, dynamic>;
-                    if (data['testModus'] == true) continue;
-                    final g = (data['geplandOp'] as Timestamp?)?.toDate();
-                    if (g == null || !g.isAfter(nu)) continue;
-                    items.add(MapEntry(g, _GeplandItem(doc: doc)));
-                  }
-                  if (items.isEmpty) return _leeg('Geen geplande momenten');
-                  items.sort((a, b) => a.key.compareTo(b.key));
-                  return Column(
-                      children: items.map((e) => e.value).toList());
+              return FutureBuilder<String?>(
+                future: DeviceModusService.huidigeKringIdMetFallback(),
+                builder: (ctx, kringSnap) {
+                  final kringId = kringSnap.data;
+                  if (kringId == null) return const SizedBox();
+                  return StreamBuilder<QuerySnapshot>(
+                    stream: FirebaseFirestore.instance.collection('momenten')
+                        .where('kringId', isEqualTo: kringId)
+                        .where('gezien', isEqualTo: false).snapshots(),
+                    builder: (ctx, momentenSnap) {
+                      if (!eenmaligSnap.hasData || !momentenSnap.hasData) {
+                        return const SizedBox();
+                      }
+                      final nu = DateTime.now();
+                      final items = <MapEntry<DateTime, Widget>>[];
+                      for (final doc in eenmaligSnap.data!.docs) {
+                        final g = ((doc.data() as Map)['geplandOp']
+                            as Timestamp?)?.toDate();
+                        if (g == null || !g.isAfter(nu)) continue;
+                        items.add(MapEntry(g, _EenmaligItem(doc: doc)));
+                      }
+                      for (final doc in momentenSnap.data!.docs) {
+                        final data = doc.data() as Map<String, dynamic>;
+                        if (data['testModus'] == true) continue;
+                        final g = (data['geplandOp'] as Timestamp?)?.toDate();
+                        if (g == null || !g.isAfter(nu)) continue;
+                        items.add(MapEntry(g, _GeplandItem(doc: doc)));
+                      }
+                      if (items.isEmpty) {
+                        return _leeg('Geen geplande momenten');
+                      }
+                      items.sort((a, b) => a.key.compareTo(b.key));
+                      return Column(
+                          children: items.map((e) => e.value).toList());
+                    },
+                  );
                 },
               );
             },
           ),
           const SizedBox(height: 20),
           const _SectieTitel('✓ VERSTUURD'),
-          StreamBuilder<QuerySnapshot>(
-            stream: FirebaseFirestore.instance.collection('momenten')
-                .where('familieUid', isEqualTo: uid)
-                .where('gezien', isEqualTo: true).snapshots(),
-            builder: (ctx, snap) {
-              if (!snap.hasData) return const SizedBox();
-              final docs = snap.data!.docs.toList();
-              if (docs.isEmpty) return _leeg('Nog geen verstuurde momenten');
-              return Column(children: docs.take(5).map((d) =>
-                _GeplandItem(doc: d, isHistorie: true)).toList());
+          FutureBuilder<String?>(
+            future: DeviceModusService.huidigeKringIdMetFallback(),
+            builder: (ctx, kringSnap) {
+              final kringId = kringSnap.data;
+              if (kringId == null) return const SizedBox();
+              return StreamBuilder<QuerySnapshot>(
+                stream: FirebaseFirestore.instance.collection('momenten')
+                    .where('kringId', isEqualTo: kringId)
+                    .where('gezien', isEqualTo: true).snapshots(),
+                builder: (ctx, snap) {
+                  if (!snap.hasData) return const SizedBox();
+                  final docs = snap.data!.docs.toList();
+                  if (docs.isEmpty) {
+                    return _leeg('Nog geen verstuurde momenten');
+                  }
+                  return Column(children: docs.take(5).map((d) =>
+                    _GeplandItem(doc: d, isHistorie: true)).toList());
+                },
+              );
             },
           ),
         ])),
@@ -3519,6 +3554,7 @@ class OntvangenBerichtenScherm extends StatefulWidget {
 class _OntvangenBerichtenSchermState extends State<OntvangenBerichtenScherm> {
   String _ontvangerNaam = 'je dierbare';
   List<String>? _ontvangerApparaatIds;
+  String? _kringId;
 
   @override
   void initState() {
@@ -3530,11 +3566,13 @@ class _OntvangenBerichtenSchermState extends State<OntvangenBerichtenScherm> {
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null) return;
     try {
+      final kringId = await DeviceModusService.huidigeKringIdMetFallback();
       final naamDoc = await FirebaseFirestore.instance
           .collection('gebruikers').doc(uid).get();
       final leden = await ApparaatService.kringLeden(uid);
       if (!mounted) return;
       setState(() {
+        _kringId = kringId;
         _ontvangerNaam = dierbareNaamLabel(
             naamDoc.data()?['accountType'] as String?,
             naamDoc.data()?['ontvangerNaam'] as String?);
@@ -3562,13 +3600,13 @@ class _OntvangenBerichtenSchermState extends State<OntvangenBerichtenScherm> {
       ),
       body: uid == null
           ? const SizedBox()
-          : (_ontvangerApparaatIds == null
+          : (_kringId == null || _ontvangerApparaatIds == null
               ? const Center(child: CircularProgressIndicator(color: kPeach))
               : (_ontvangerApparaatIds!.isEmpty
                   ? _leeg('Er is nog geen ontvanger-apparaat in deze kring')
                   : StreamBuilder<QuerySnapshot>(
                       stream: FirebaseFirestore.instance.collection('momenten')
-                          .where('familieUid', isEqualTo: uid)
+                          .where('kringId', isEqualTo: _kringId)
                           .where('vanApparaatId',
                               whereIn: _ontvangerApparaatIds!.take(10).toList())
                           .snapshots(),

@@ -48,17 +48,19 @@ class _TabletSchermState extends State<TabletScherm>
     DeviceModusService.krijgApparaatId().then((id) {
       if (!mounted) return;
       setState(() => _mijnApparaatId = id);
-      _startMomentenListener();
       _startGebruikerListener();
       _startEenmaligListener();
     });
-    // V9 1.1f: dagelijkse_momenten listener pas starten ná kringId-resolve,
-    // anders krijgt _startDagelijksListener een null-filter en hoort de
-    // ontvanger geen herkenningsgeluiden meer.
+    // V9 1.1f/1.1g: zowel dagelijkse_momenten als momenten filteren op
+    // kringId — listeners pas starten ná resolve, anders null-filter en
+    // hoort de ontvanger geen popups/herkenningsgeluiden meer.
     DeviceModusService.huidigeKringIdMetFallback().then((id) {
       if (!mounted) return;
       setState(() => _kringId = id);
-      if (id != null) _startDagelijksListener();
+      if (id != null) {
+        _startMomentenListener();
+        _startDagelijksListener();
+      }
     });
     _checkTimer = Timer.periodic(const Duration(seconds: 30), (_) {
       _checkGeplandeMomenten();
@@ -111,11 +113,11 @@ class _TabletSchermState extends State<TabletScherm>
   /// popup open was (Bug A) of de app op de achtergrond stond (Bug B).
   Future<void> _herscanMomenten() async {
     if (_huidigPopupId != null) return;
-    final uid = FirebaseAuth.instance.currentUser?.uid;
-    if (uid == null) return;
+    final kringId = _kringId;
+    if (kringId == null) return;
     try {
       final snap = await FirebaseFirestore.instance.collection('momenten')
-          .where('familieUid', isEqualTo: uid)
+          .where('kringId', isEqualTo: kringId)
           .where('gezien', isEqualTo: false)
           .get();
       if (mounted) _verwerkMomenten(snap);
@@ -123,11 +125,11 @@ class _TabletSchermState extends State<TabletScherm>
   }
 
   void _startMomentenListener() {
-    final uid = FirebaseAuth.instance.currentUser?.uid;
-    if (uid == null) return;
+    final kringId = _kringId;
+    if (kringId == null) return;
     // Realtime listener — pakt nieuwe momenten direct op
     _momentenListener = FirebaseFirestore.instance.collection('momenten')
-        .where('familieUid', isEqualTo: uid)
+        .where('kringId', isEqualTo: kringId)
         .where('gezien', isEqualTo: false)
         .snapshots()
         .listen(_verwerkMomenten);
@@ -539,11 +541,11 @@ class _TabletSchermState extends State<TabletScherm>
   }
 
   Widget _eerderVandaag({required bool hasBackground}) {
-    final uid = FirebaseAuth.instance.currentUser?.uid;
-    if (uid == null) return const SizedBox();
+    final kringId = _kringId;
+    if (kringId == null) return const SizedBox();
     return StreamBuilder<QuerySnapshot>(
       stream: FirebaseFirestore.instance.collection('momenten')
-          .where('familieUid', isEqualTo: uid)
+          .where('kringId', isEqualTo: kringId)
           .where('gezien', isEqualTo: true).snapshots(),
       builder: (ctx, snap) {
         if (!snap.hasData) return const SizedBox();
