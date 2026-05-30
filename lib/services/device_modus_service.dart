@@ -184,14 +184,33 @@ class DeviceModusService {
   }
 
   /// Resolveer kringId voor services die Storage/Firestore-paden bouwen.
-  /// V9-accounts: opgeslagen actieveKringId (los van auth-uid).
-  /// V7/V8-accounts vóór 1.1c hadden nog geen kring-doc — daar viel
-  /// kringId in de praktijk samen met auth.uid; vandaar de fallback.
-  /// Null als niemand is ingelogd én geen actieve kring bekend is.
+  /// 2-tier: eerst cache (SharedPreferences), bij miss een live Firestore-
+  /// lookup op kringen waar eigenaarUid==uid (en het resultaat meteen
+  /// cachen), en pas als ultieme fallback auth.uid voor V7/V8-accounts
+  /// zonder kring-doc. Null als niemand is ingelogd.
+  ///
+  /// De live-lookup dekt device-switch-scenario's: een ontvanger-apparaat
+  /// dat nooit door _ontvangerInloggenActie ging (1.1f-fix) heeft een
+  /// lege SharedPreferences-cache; zonder live-lookup zou de helper
+  /// terugvallen op auth.uid en de kring-doc-id mislopen → geen popups.
   static Future<String?> huidigeKringIdMetFallback() async {
-    final kringId = await krijgActieveKring();
-    if (kringId != null && kringId.isNotEmpty) return kringId;
-    return FirebaseAuth.instance.currentUser?.uid;
+    final cached = await krijgActieveKring();
+    if (cached != null && cached.isNotEmpty) return cached;
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return null;
+    try {
+      final snap = await FirebaseFirestore.instance
+          .collection('kringen')
+          .where('eigenaarUid', isEqualTo: uid)
+          .limit(1)
+          .get();
+      if (snap.docs.isNotEmpty) {
+        final kringId = snap.docs.first.id;
+        await zetActieveKring(kringId);
+        return kringId;
+      }
+    } catch (_) {}
+    return uid;
   }
 
   static Future<void> wisActieveKring() async {
