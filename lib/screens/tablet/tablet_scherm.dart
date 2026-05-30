@@ -481,7 +481,10 @@ class _TabletSchermState extends State<TabletScherm>
               .where('kringId', isEqualTo: kringId)
               .where('actief', isEqualTo: true).snapshots(),
           builder: (ctx, eenmaligSnap) {
-            if (!dagelijksSnap.hasData && !eenmaligSnap.hasData) {
+            // Wacht tot BEIDE streams hun eerste snapshot hebben geleverd,
+            // anders rendert de kaart een dagelijks-only kandidaat terwijl
+            // een eerder eenmalig moment nog op de eenmalig-stream wacht.
+            if (!dagelijksSnap.hasData || !eenmaligSnap.hasData) {
               return const SizedBox();
             }
             final nu = DateTime.now();
