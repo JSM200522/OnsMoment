@@ -7,11 +7,9 @@ import 'package:image_picker/image_picker.dart';
 import 'package:just_audio/just_audio.dart';
 import '../../services/apparaat_service.dart';
 import '../../services/device_modus_service.dart';
+import '../../services/kring_service.dart';
 import '../../theme/kleuren.dart';
 import '../../data/geluiden.dart';
-import '../../data/labels.dart';
-import '../../data/kring.dart';
-import '../../data/kring_membership.dart';
 
 class SetupWizard extends StatefulWidget {
   const SetupWizard({super.key});
@@ -695,11 +693,6 @@ class _SetupWizardState extends State<SetupWizard> {
           email: _emailCtrl.text.trim(), password: _wachtwoordCtrl.text);
       final uid = cred.user!.uid;
 
-      // V9: kringId los van auth-uid (klaar voor multi-kring). Dual-write
-      // naast bestaande gebruikers/{uid} velden — geen breaking change.
-      final kringId =
-          FirebaseFirestore.instance.collection('kringen').doc().id;
-
       // Profielfoto uploaden (geen exception bij fail; zie #22)
       String profielFotoUrl = '';
       bool fotoUploadFaalde = false;
@@ -736,44 +729,20 @@ class _SetupWizardState extends State<SetupWizard> {
         'aangemaaktOp': FieldValue.serverTimestamp(),
       });
 
-      // V9 schema: schrijf kringen/{kringId} + leden/{uid} parallel.
-      // Bestaande lees-paden (familie_scherm, tablet_scherm) blijven de
-      // gebruikers/{uid}-doc lezen tot 1.1d+ de queries omdraait.
-      final kring = Kring(
-        id: kringId,
-        naam: _ontvangerNaamCtrl.text.trim(),
-        foto: profielFotoUrl.isEmpty ? null : profielFotoUrl,
-        lievelingsdingen: _lievelingsdingenCtrl.text.trim().isEmpty
-            ? null : _lievelingsdingenCtrl.text.trim(),
-        woonplaats: _woonplaatsCtrl.text.trim().isEmpty
-            ? null : _woonplaatsCtrl.text.trim(),
-        noodcontactNaam: _noodNaamCtrl.text.trim().isEmpty
-            ? null : _noodNaamCtrl.text.trim(),
-        noodcontactTel: _noodTelCtrl.text.trim().isEmpty
-            ? null : _noodTelCtrl.text.trim(),
-        herkenningsgeluid: _gekozenGeluid,
+      // V9 schema: kring + eigenaar-membership atomair in batch.
+      // KringId wordt teruggegeven zodat dagelijkse_momenten hieronder
+      // hetzelfde id meekrijgen.
+      final kringId = KringService.voegKringMetEigenaarToeAanBatch(
+        batch: batch,
         eigenaarUid: uid,
-        aangemaaktOp: DateTime.now(), // wordt direct overschreven met server-stamp
-        laatsteUpdate: DateTime.now(),
-        type: Kring.TYPE_FAMILIE,
-        modus: Kring.MODUS_VERGRENDELD,
+        ontvangerNaam: _ontvangerNaamCtrl.text.trim(),
+        foto: profielFotoUrl,
+        lievelingsdingen: _lievelingsdingenCtrl.text.trim(),
+        woonplaats: _woonplaatsCtrl.text.trim(),
+        noodcontactNaam: _noodNaamCtrl.text.trim(),
+        noodcontactTel: _noodTelCtrl.text.trim(),
+        herkenningsgeluid: _gekozenGeluid,
       );
-      final kringMap = kring.toFirestoreMap(bijUpdate: true);
-      kringMap['aangemaaktOp'] = FieldValue.serverTimestamp();
-      batch.set(
-          FirebaseFirestore.instance.collection('kringen').doc(kringId),
-          kringMap);
-
-      final membership = Membership(
-        userUid: uid,
-        rol: AccountRol.eigenaar,
-        gejoindOp: DateTime.now(),
-        uitgenodigdDoor: null,
-      );
-      batch.set(
-          FirebaseFirestore.instance.collection('kringen').doc(kringId)
-              .collection('leden').doc(uid),
-          membership.toFirestoreMap(bijCreate: true));
 
       for (final m in _momenten) {
         batch.set(
