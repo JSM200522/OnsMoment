@@ -1612,32 +1612,28 @@ class _DagelijksItem extends StatelessWidget {
     final audioLabel = audioType == 'stem' ? '🎤 Eigen stem'
         : audioType == 'mp3' ? '🎵 Eigen MP3'
         : '🔔 Standaard bel';
-    return GestureDetector(
-      onTap: () => showDialog(context: context,
-          builder: (ctx) => _AudioInstelDialog(doc: doc)),
-      child: Container(margin: const EdgeInsets.only(bottom: 8),
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(color: kWhite,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: kPeachLight, width: 1.5)),
-        child: Row(children: [
-          Text(d['emoji'] ?? '⭐', style: const TextStyle(fontSize: 24)),
-          const SizedBox(width: 10),
-          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-            Text(d['label'] ?? 'Moment', style: const TextStyle(fontSize: 14,
-                fontWeight: FontWeight.w800, color: kBrown)),
-            Text('Elke dag • $audioLabel',
-                style: const TextStyle(fontSize: 11, color: kTextMuted)),
-          ])),
-          Container(padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-            decoration: BoxDecoration(color: kPeachPale,
-                borderRadius: BorderRadius.circular(8)),
-            child: Text('${(d['uur'] ?? 0).toString().padLeft(2, '0')}:${(d['minuut'] ?? 0).toString().padLeft(2, '0')}',
-                style: const TextStyle(fontSize: 13,
-                    fontWeight: FontWeight.w800, color: kBrown))),
-        ]),
-      ),
+    return Container(margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(color: kWhite,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: kPeachLight, width: 1.5)),
+      child: Row(children: [
+        Text(d['emoji'] ?? '⭐', style: const TextStyle(fontSize: 24)),
+        const SizedBox(width: 10),
+        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+          Text(d['label'] ?? 'Moment', style: const TextStyle(fontSize: 14,
+              fontWeight: FontWeight.w800, color: kBrown)),
+          Text('Elke dag • $audioLabel',
+              style: const TextStyle(fontSize: 11, color: kTextMuted)),
+        ])),
+        Container(padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+          decoration: BoxDecoration(color: kPeachPale,
+              borderRadius: BorderRadius.circular(8)),
+          child: Text('${(d['uur'] ?? 0).toString().padLeft(2, '0')}:${(d['minuut'] ?? 0).toString().padLeft(2, '0')}',
+              style: const TextStyle(fontSize: 13,
+                  fontWeight: FontWeight.w800, color: kBrown))),
+      ]),
     );
   }
 }
@@ -1660,40 +1656,36 @@ class _EenmaligItem extends StatelessWidget {
     final audioLabel = audioType == 'stem' ? '🎤 Eigen stem'
         : audioType == 'mp3' ? '🎵 Eigen MP3'
         : '🔔 Standaard bel';
-    return GestureDetector(
-      onTap: () => showDialog(context: context,
-          builder: (ctx) => _AudioInstelDialog(doc: doc)),
-      child: Container(margin: const EdgeInsets.only(bottom: 8),
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(color: kWhite,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: kPeachLight, width: 1.5)),
-        child: Row(children: [
-          Text(d['emoji'] ?? '⭐', style: const TextStyle(fontSize: 24)),
-          const SizedBox(width: 10),
-          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-            Text(d['label'] ?? 'Moment', style: const TextStyle(fontSize: 14,
-                fontWeight: FontWeight.w800, color: kBrown)),
-            Text(geplandOp != null
-                ? '${_formatDatumTijd(geplandOp)} • $audioLabel'
-                : audioLabel,
-                style: const TextStyle(fontSize: 11, color: kTextMuted)),
-          ])),
-          IconButton(icon: const Icon(Icons.delete_outline_rounded,
-              color: Colors.red),
-            onPressed: () async {
-              final kringId =
-                  await DeviceModusService.huidigeKringIdMetFallback();
-              if (kringId != null) {
-                await DagelijksAudioService.reset(
-                    kringId: kringId, momentId: doc.id,
-                    collectie: 'gepland_momenten');
-              }
-              await doc.reference.update({'actief': false});
-            }),
-        ]),
-      ),
+    return Container(margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(color: kWhite,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: kPeachLight, width: 1.5)),
+      child: Row(children: [
+        Text(d['emoji'] ?? '⭐', style: const TextStyle(fontSize: 24)),
+        const SizedBox(width: 10),
+        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+          Text(d['label'] ?? 'Moment', style: const TextStyle(fontSize: 14,
+              fontWeight: FontWeight.w800, color: kBrown)),
+          Text(geplandOp != null
+              ? '${_formatDatumTijd(geplandOp)} • $audioLabel'
+              : audioLabel,
+              style: const TextStyle(fontSize: 11, color: kTextMuted)),
+        ])),
+        IconButton(icon: const Icon(Icons.delete_outline_rounded,
+            color: Colors.red),
+          onPressed: () async {
+            final kringId =
+                await DeviceModusService.huidigeKringIdMetFallback();
+            if (kringId != null) {
+              await DagelijksAudioService.reset(
+                  kringId: kringId, momentId: doc.id,
+                  collectie: 'gepland_momenten');
+            }
+            await doc.reference.update({'actief': false});
+          }),
+      ]),
     );
   }
 }
@@ -1946,7 +1938,7 @@ class _AudioInstelDialogState extends State<_AudioInstelDialog> {
         child: SingleChildScrollView(
           child: Column(mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text('Geluid voor "$label"',
+            Text('Eigen stem of liedje voor "$label"',
                 style: const TextStyle(fontSize: 18,
                     fontWeight: FontWeight.w900, color: kBrown)),
             const SizedBox(height: 4),
@@ -2763,7 +2755,8 @@ class MomentenBeherenScherm extends StatelessWidget {
     final initial = bestaand?.data() as Map<String, dynamic>?;
     final result = await showDialog<Map<String, dynamic>>(
       context: context,
-      builder: (ctx) => _NieuwMomentDialog(initial: initial));
+      builder: (ctx) => _NieuwMomentDialog(
+          initial: initial, bestaand: bestaand));
     if (result == null) return;
     if (bestaand != null) {
       await bestaand.reference.update({
@@ -2794,7 +2787,8 @@ class MomentenBeherenScherm extends StatelessWidget {
     final initial = bestaand?.data() as Map<String, dynamic>?;
     final result = await showDialog<Map<String, dynamic>>(
       context: context,
-      builder: (ctx) => _EenmaligMomentDialog(initial: initial));
+      builder: (ctx) => _EenmaligMomentDialog(
+          initial: initial, bestaand: bestaand));
     if (result == null) return;
     if (bestaand != null) {
       // Update alleen de bewerkbare velden — kringId/actief/getoond/aangemaakt
@@ -2826,7 +2820,8 @@ class MomentenBeherenScherm extends StatelessWidget {
 
 class _NieuwMomentDialog extends StatefulWidget {
   final Map<String, dynamic>? initial;
-  const _NieuwMomentDialog({this.initial});
+  final QueryDocumentSnapshot? bestaand;
+  const _NieuwMomentDialog({this.initial, this.bestaand});
   @override
   State<_NieuwMomentDialog> createState() => _NieuwMomentDialogState();
 }
@@ -2899,6 +2894,38 @@ class _NieuwMomentDialogState extends State<_NieuwMomentDialog> {
                 style: const TextStyle(fontSize: 14,
                     fontWeight: FontWeight.w800, color: kBrown)))),
           ]),
+          const SizedBox(height: 16),
+          if (widget.bestaand != null)
+            GestureDetector(
+              onTap: () => showDialog(context: context,
+                  builder: (ctx) =>
+                      _AudioInstelDialog(doc: widget.bestaand!)),
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 14, vertical: 10),
+                decoration: BoxDecoration(color: kPeachPale,
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: kPeach, width: 1.5)),
+                child: const Row(mainAxisSize: MainAxisSize.min, children: [
+                  Text('🎤 ', style: TextStyle(fontSize: 18)),
+                  Flexible(child: Text(
+                      'Eigen stem of liedje toevoegen',
+                      style: TextStyle(fontSize: 13,
+                          fontWeight: FontWeight.w800, color: kBrown))),
+                ]),
+              ),
+            )
+          else
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(color: kPeachPale,
+                  borderRadius: BorderRadius.circular(8)),
+              child: const Text(
+                '💡 Je kunt je eigen stem of een liedje toevoegen '
+                'nadat je dit moment hebt opgeslagen.',
+                style: TextStyle(fontSize: 12,
+                    color: kBrownLight, height: 1.4)),
+            ),
           const SizedBox(height: 20),
           Row(mainAxisAlignment: MainAxisAlignment.end, children: [
             TextButton(onPressed: () => Navigator.pop(context),
@@ -2922,7 +2949,8 @@ class _NieuwMomentDialogState extends State<_NieuwMomentDialog> {
 
 class _EenmaligMomentDialog extends StatefulWidget {
   final Map<String, dynamic>? initial;
-  const _EenmaligMomentDialog({this.initial});
+  final QueryDocumentSnapshot? bestaand;
+  const _EenmaligMomentDialog({this.initial, this.bestaand});
   @override
   State<_EenmaligMomentDialog> createState() => _EenmaligMomentDialogState();
 }
@@ -3027,6 +3055,38 @@ class _EenmaligMomentDialogState extends State<_EenmaligMomentDialog> {
                   style: const TextStyle(fontSize: 14,
                       fontWeight: FontWeight.w800, color: kBrown)))),
             ]),
+            const SizedBox(height: 16),
+            if (widget.bestaand != null)
+              GestureDetector(
+                onTap: () => showDialog(context: context,
+                    builder: (ctx) =>
+                        _AudioInstelDialog(doc: widget.bestaand!)),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 14, vertical: 10),
+                  decoration: BoxDecoration(color: kPeachPale,
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: kPeach, width: 1.5)),
+                  child: const Row(mainAxisSize: MainAxisSize.min, children: [
+                    Text('🎤 ', style: TextStyle(fontSize: 18)),
+                    Flexible(child: Text(
+                        'Eigen stem of liedje toevoegen',
+                        style: TextStyle(fontSize: 13,
+                            fontWeight: FontWeight.w800, color: kBrown))),
+                  ]),
+                ),
+              )
+            else
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(color: kPeachPale,
+                    borderRadius: BorderRadius.circular(8)),
+                child: const Text(
+                  '💡 Je kunt je eigen stem of een liedje toevoegen '
+                  'nadat je dit moment hebt opgeslagen.',
+                  style: TextStyle(fontSize: 12,
+                      color: kBrownLight, height: 1.4)),
+              ),
             const SizedBox(height: 20),
             Row(mainAxisAlignment: MainAxisAlignment.end, children: [
               TextButton(onPressed: () => Navigator.pop(context),
