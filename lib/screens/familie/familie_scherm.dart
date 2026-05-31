@@ -1476,7 +1476,9 @@ class AgendaTab extends StatelessWidget {
               color: kPeachPale,
               borderRadius: BorderRadius.circular(10)),
             child: const Text(
-              '💡 Tijd aanpassen kan via Instellingen > Momenten beheren',
+              '💡 Tijd, datum en het geluidje van een moment pas je aan '
+              'via Instellingen → Momenten beheren. Daar kun je ook je '
+              'eigen stem of een liedje toevoegen.',
               style: TextStyle(fontSize: 12, color: kTextMuted)),
           ),
           const _SectieTitel('🔁 ELKE DAG'),
