@@ -452,7 +452,7 @@ class _SetupWizardState extends State<SetupWizard> {
         border: Border.all(color: kPeachLight, width: 1.5)),
       child: const Text(
         '💡 Tip: in de app kun je later ook eigen stem of muziek '
-        'toevoegen per moment via Agenda.',
+        'toevoegen per moment via Instellingen → Momenten beheren.',
         style: TextStyle(fontSize: 12, color: kTextMuted, height: 1.4)),
     ),
     const SizedBox(height: 24),

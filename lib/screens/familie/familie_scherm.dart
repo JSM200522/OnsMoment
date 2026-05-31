@@ -40,7 +40,6 @@ class _FamilieSchermState extends State<FamilieScherm>
   String _herkenningsgeluid = 'twinkel';
   String? _mijnApparaatId;
   String? _kringId;
-  String? _accountType;  // 'familie'/'zorg', geladen voor T4-T5 (labels)
   Timer? _autoSluitTimer;
 
   // Dagelijkse + eenmalige momenten-flow — alleen actief in
@@ -158,10 +157,6 @@ class _FamilieSchermState extends State<FamilieScherm>
       final nieuwGeluid = data?['herkenningsgeluid'] as String? ?? 'twinkel';
       if (mounted && _herkenningsgeluid != nieuwGeluid) {
         setState(() => _herkenningsgeluid = nieuwGeluid);
-      }
-      final nieuwType = data?['accountType'] as String? ?? 'familie';
-      if (mounted && _accountType != nieuwType) {
-        setState(() => _accountType = nieuwType);
       }
     });
   }
@@ -2158,7 +2153,6 @@ class NotitiesTab extends StatefulWidget {
 class _NotitiesTabState extends State<NotitiesTab> {
   final _ctrl = TextEditingController();
   String? _ontvangerNaam;
-  String? _accountType;
   String? _kringId;
 
   @override
@@ -2170,7 +2164,6 @@ class _NotitiesTabState extends State<NotitiesTab> {
           .then((doc) {
         if (!mounted) return;
         setState(() {
-          _accountType = doc.data()?['accountType'] as String?;
           _ontvangerNaam = doc.data()?['ontvangerNaam'] as String?;
         });
       });
@@ -2190,8 +2183,8 @@ class _NotitiesTabState extends State<NotitiesTab> {
             style: TextStyle(fontSize: 24, fontWeight: FontWeight.w900,
                 color: kBrown)),
         const SizedBox(height: 8),
-        Text('Deel observaties met ${_accountType == 'zorg' ? 'je collega\'s' : 'andere kringleden en mantelzorgers'}',
-            style: const TextStyle(fontSize: 13, color: kTextMuted)),
+        const Text('Deel observaties met andere kringleden en mantelzorgers',
+            style: TextStyle(fontSize: 13, color: kTextMuted)),
         const SizedBox(height: 16),
         TextField(controller: _ctrl, maxLines: 3,
           decoration: InputDecoration(
@@ -2272,9 +2265,9 @@ class _NotitiesTabState extends State<NotitiesTab> {
             const Text('🔒', style: TextStyle(fontSize: 16)),
             const SizedBox(width: 8),
             Expanded(child: Text(
-              'Notities zijn alleen zichtbaar voor '
-              '${_accountType == 'zorg' ? 'collega\'s' : 'familieleden en mantelzorgers'}. '
-              '${dierbareNaamLabel(_accountType, _ontvangerNaam)} ziet deze niet.',
+              'Notities zijn alleen zichtbaar voor familieleden en '
+              'mantelzorgers. '
+              '${dierbareNaamLabel(null, _ontvangerNaam)} ziet deze niet.',
               style: const TextStyle(fontSize: 11,
                   color: kBrownLight, height: 1.4))),
           ]),
@@ -2323,7 +2316,6 @@ class InstellingenTab extends StatefulWidget {
 
 class _InstellingenTabState extends State<InstellingenTab> {
   String? _ontvangerNaam;
-  String? _accountType;
   bool _isAccountMaker = false;
   String? _huidigeOntvangerModus;
 
@@ -2336,7 +2328,6 @@ class _InstellingenTabState extends State<InstellingenTab> {
         .then((doc) {
       if (!mounted) return;
       setState(() {
-        _accountType = doc.data()?['accountType'] as String?;
         _ontvangerNaam = doc.data()?['ontvangerNaam'] as String?;
       });
     });
@@ -2357,7 +2348,7 @@ class _InstellingenTabState extends State<InstellingenTab> {
 
   @override
   Widget build(BuildContext context) {
-    final naam = dierbareNaamLabel(_accountType, _ontvangerNaam);
+    final naam = dierbareNaamLabel(null, _ontvangerNaam);
     return Padding(padding: const EdgeInsets.all(20),
       child: ListView(children: [
         const Text('Instellingen',
@@ -2378,7 +2369,7 @@ class _InstellingenTabState extends State<InstellingenTab> {
               builder: (c) => const OntvangerInfoScherm()));
         }),
         _item('📥', 'Ontvangen berichten van $naam',
-            'Alle berichten die ${jeDierbareLabel(_accountType)} heeft gestuurd', () {
+            'Alle berichten die ${jeDierbareLabel(null)} heeft gestuurd', () {
           Navigator.push(context, MaterialPageRoute(
               builder: (c) => const OntvangenBerichtenScherm()));
         }),
@@ -2394,9 +2385,7 @@ class _InstellingenTabState extends State<InstellingenTab> {
               () => _toonModusDialog(context, naam)),
         if (_isAccountMaker && !widget.alsOntvanger)
           _item('✉️', 'Email of wachtwoord wijzigen',
-              _accountType == 'zorg'
-                  ? 'Voor jou en je collega\'s'
-                  : 'Voor jou en je kringleden',
+              'Voor jou en je kringleden',
               () => showDialog(context: context,
                   builder: (ctx) => const _AccountWijzigDialog())),
         const SizedBox(height: 20),
@@ -3771,8 +3760,7 @@ class _OntvangenBerichtenSchermState extends State<OntvangenBerichtenScherm> {
       setState(() {
         _kringId = kringId;
         _ontvangerNaam = dierbareNaamLabel(
-            naamDoc.data()?['accountType'] as String?,
-            naamDoc.data()?['ontvangerNaam'] as String?);
+            null, naamDoc.data()?['ontvangerNaam'] as String?);
         _ontvangerApparaatIds = leden
             .where((l) => l['modus'] == 'ontvanger')
             .map((l) => l['apparaatId'] as String)
