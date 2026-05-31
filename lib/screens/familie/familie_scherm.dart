@@ -2610,6 +2610,11 @@ class MomentenBeherenScherm extends StatelessWidget {
                 });
                 return Column(children: docs.map((doc) {
                   final d = doc.data() as Map<String, dynamic>;
+                  final audioType =
+                      d['aangepasteAudioType'] as String? ?? '';
+                  final audioLabel = audioType == 'stem' ? '🎤 Eigen stem'
+                      : audioType == 'mp3' ? '🎵 Eigen MP3'
+                      : '🔔 Standaard bel';
                   return GestureDetector(
                     onTap: () => _opnenDialog(context, uid, bestaand: doc),
                     child: Container(
@@ -2630,7 +2635,7 @@ class MomentenBeherenScherm extends StatelessWidget {
                                     fontSize: 15,
                                     fontWeight: FontWeight.w800,
                                     color: kBrown)),
-                            Text('${(d['uur'] ?? 0).toString().padLeft(2, '0')}:${(d['minuut'] ?? 0).toString().padLeft(2, '0')} elke dag',
+                            Text('${(d['uur'] ?? 0).toString().padLeft(2, '0')}:${(d['minuut'] ?? 0).toString().padLeft(2, '0')} elke dag • $audioLabel',
                                 style: const TextStyle(
                                     fontSize: 12, color: kTextMuted)),
                           ])),
@@ -2693,6 +2698,11 @@ class MomentenBeherenScherm extends StatelessWidget {
                         '${geplandOp.hour.toString().padLeft(2, '0')}:'
                         '${geplandOp.minute.toString().padLeft(2, '0')}'
                       : 'Geen tijdstip';
+                  final audioType =
+                      d['aangepasteAudioType'] as String? ?? '';
+                  final audioLabel = audioType == 'stem' ? '🎤 Eigen stem'
+                      : audioType == 'mp3' ? '🎵 Eigen MP3'
+                      : '🔔 Standaard bel';
                   return GestureDetector(
                     onTap: () =>
                         _opnenEenmaligDialog(context, uid, bestaand: doc),
@@ -2714,7 +2724,7 @@ class MomentenBeherenScherm extends StatelessWidget {
                                     fontSize: 15,
                                     fontWeight: FontWeight.w800,
                                     color: kBrown)),
-                            Text(tijdLabel,
+                            Text('$tijdLabel • $audioLabel',
                                 style: const TextStyle(
                                     fontSize: 12, color: kTextMuted)),
                           ])),
