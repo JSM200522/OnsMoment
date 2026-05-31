@@ -25,7 +25,6 @@ class _SetupWizardState extends State<SetupWizard> {
   bool _isInloggen = false;
   bool _bezig = false;
   String? _bezigModus;
-  String? _accountType;  // 'familie' of 'zorg', gekozen bij nieuw account
 
   final _naamCtrl = TextEditingController();
   final _emailCtrl = TextEditingController();
@@ -135,7 +134,6 @@ class _SetupWizardState extends State<SetupWizard> {
     setState(() {
       if (_rol != '' && _rol != nieuweRol) {
         _isInloggen = false;
-        _accountType = null;
         if (nieuweRol == 'ontvanger') {
           _naamCtrl.clear();
           _ontvangerNaamCtrl.clear();
@@ -168,7 +166,7 @@ class _SetupWizardState extends State<SetupWizard> {
                 fontWeight: FontWeight.w900, color: kBrown))),
         ]),
         content: const Text(
-          'Dit apparaat wordt zo ingesteld voor je dierbare of cliënt — het '
+          'Dit apparaat wordt zo ingesteld voor je dierbare — het '
           'ontvangt straks de berichten, foto\'s en stemberichten van '
           'de kring.\n\n'
           'Daarvoor moet eerst iemand van de kring een kringaccount '
@@ -279,12 +277,12 @@ class _SetupWizardState extends State<SetupWizard> {
         style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800,
             color: kBrown)),
     const SizedBox(height: 12),
-    _rolKaart('👨‍👩‍👧 Familielid of zorgverlener',
+    _rolKaart('👨‍👩‍👧 Familielid of mantelzorger',
       'Ik stuur foto\'s, stemberichtjes en herinneringen',
       () => _kiesRol('familie')),
     const SizedBox(height: 12),
     _rolKaart('👵 Ontvanger',
-      'Dit apparaat is voor mijn dierbare of cliënt — om berichten te zien en horen',
+      'Dit apparaat is voor mijn dierbare — om berichten te zien en horen',
       () => _kiesRol('ontvanger')),
   ]);
 
@@ -351,47 +349,9 @@ class _SetupWizardState extends State<SetupWizard> {
   // ───────────────────────────────────────────────────
   // STAP 2: ONTVANGER PROFIEL (alleen voor familie bij registratie)
   // ───────────────────────────────────────────────────
-  Widget _accountTypeKnop(
-      String emoji, String titel, String uitleg, String waarde) {
-    final gekozen = _accountType == waarde;
-    return GestureDetector(
-      onTap: () => setState(() => _accountType = waarde),
-      child: Container(
-        width: double.infinity,
-        margin: const EdgeInsets.only(bottom: 12),
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: gekozen ? kPeach : kWhite,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: gekozen ? kPeach : kPeachLight, width: 2)),
-        child: Row(children: [
-          Text(emoji, style: const TextStyle(fontSize: 28)),
-          const SizedBox(width: 12),
-          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-            Text(titel, style: TextStyle(fontSize: 16,
-                fontWeight: FontWeight.w900, color: gekozen ? kWhite : kBrown)),
-            const SizedBox(height: 2),
-            Text(uitleg, style: TextStyle(fontSize: 12, height: 1.3,
-                color: gekozen ? kWhite.withOpacity(0.9) : kTextMuted)),
-          ])),
-        ]),
-      ),
-    );
-  }
-
   Widget _ontvangerProfielStap() => Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-    const Text('Welkom! Wat is je rol?',
+    const Text('Vertel ons over je dierbare',
         style: TextStyle(fontSize: 28, fontWeight: FontWeight.w900,
-            color: kBrown, height: 1.2)),
-    const SizedBox(height: 16),
-    _accountTypeKnop('🏠', 'Ik ben familielid',
-        'om met mijn dierbare in contact te blijven', 'familie'),
-    _accountTypeKnop('💼', 'Ik ben zorgverlener',
-        'om voor mijn cliënten te zorgen', 'zorg'),
-    const SizedBox(height: 24),
-    Text('Vertel ons over ${jeDierbareLabel(_accountType)}',
-        style: const TextStyle(fontSize: 28, fontWeight: FontWeight.w900,
             color: kBrown, height: 1.2)),
     const SizedBox(height: 8),
     const Text('Hoe meer je vertelt, hoe persoonlijker de app voelt. '
@@ -400,7 +360,7 @@ class _SetupWizardState extends State<SetupWizard> {
     const SizedBox(height: 24),
 
     _sectieKop('📸 Achtergrondfoto',
-        'Kies een mooie foto van ${jeDierbareLabel(_accountType)}. Deze foto wordt de '
+        'Kies een mooie foto van je dierbare. Deze foto wordt de '
         'sfeervolle achtergrond op het home-scherm van het ontvanger-apparaat.'),
     const SizedBox(height: 12),
     Center(child: GestureDetector(
@@ -433,10 +393,8 @@ class _SetupWizardState extends State<SetupWizard> {
         'De naam staat op het home-scherm. Extra info helpt de kring '
         'gerichte berichten te sturen.'),
     const SizedBox(height: 12),
-    _input('👵', 'Naam van ${jeDierbareLabel(_accountType)}',
-        _accountType == 'zorg'
-            ? 'Bijv. Mevr. de Vries, Dhr. Jansen...'
-            : 'Bijv. Oma, Opa, Mam, Pap...',
+    _input('👵', 'Naam van je dierbare',
+        'Bijv. Oma, Opa, Mam, Pap...',
         _ontvangerNaamCtrl, false),
     const SizedBox(height: 6),
     const Text('Zo verschijnt zijn/haar naam in de app en bij berichten.',
@@ -457,8 +415,8 @@ class _SetupWizardState extends State<SetupWizard> {
 
     _sectieKop('🔔 Herkenningsgeluid',
         'Klinkt elke keer als er iets nieuws aankomt. Tik op een geluid om '
-        'het voor te beluisteren. Helpt ${jeDierbareLabel(_accountType)} het te '
-        'herkennen als iets liefs.'),
+        'het voor te beluisteren. Helpt je dierbare het te herkennen als '
+        'iets liefs.'),
     const SizedBox(height: 12),
     ...kGeluiden.map((g) => Padding(
       padding: const EdgeInsets.only(bottom: 8),
@@ -630,7 +588,7 @@ class _SetupWizardState extends State<SetupWizard> {
   /// Ontvanger-naam is verplicht bij het aanmaken van een nieuwe kring.
   bool get _ontvangerNaamVerplichtMaarLeeg =>
       _rol == 'familie' && !_isInloggen && _stap == 2
-      && (_ontvangerNaamCtrl.text.trim().isEmpty || _accountType == null);
+      && _ontvangerNaamCtrl.text.trim().isEmpty;
 
   Widget _knop() {
     final geblokkeerd = _ontvangerNaamVerplichtMaarLeeg;
@@ -773,7 +731,7 @@ class _SetupWizardState extends State<SetupWizard> {
         'noodcontactNaam': _noodNaamCtrl.text.trim(),
         'noodcontactTel': _noodTelCtrl.text.trim(),
         'herkenningsgeluid': _gekozenGeluid,
-        'accountType': _accountType ?? 'familie',
+        'accountType': 'familie',
         'tier': 'klein',
         'aangemaaktOp': FieldValue.serverTimestamp(),
       });
@@ -797,7 +755,7 @@ class _SetupWizardState extends State<SetupWizard> {
         eigenaarUid: uid,
         aangemaaktOp: DateTime.now(), // wordt direct overschreven met server-stamp
         laatsteUpdate: DateTime.now(),
-        type: _accountType == 'zorg' ? Kring.TYPE_ZORG : Kring.TYPE_FAMILIE,
+        type: Kring.TYPE_FAMILIE,
         modus: Kring.MODUS_VERGRENDELD,
       );
       final kringMap = kring.toFirestoreMap(bijUpdate: true);
