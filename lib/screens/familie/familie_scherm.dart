@@ -3554,11 +3554,10 @@ class _HulpDialog extends StatelessWidget {
     // ── Voor families ──
     _FAQ('Voor families', "Hoe voeg ik iemand toe aan de kring?",
         "Open Instellingen en kies 'Kringleden beheren'. Je ziet daar wie er al "
-        "in de kring zit. Om een familielid of vriend toe te voegen, deel je "
-        "het e-mailadres en wachtwoord van de kring met diegene. Wil je een "
-        "zorgverlener uitnodigen? Stuur dan een uitnodigingslink via "
-        "'Zorgverlener uitnodigen'. Een kring telt maximaal acht of twintig "
-        "personen, afhankelijk van je abonnement."),
+        "in de kring zit. Om een familielid, vriend of mantelzorger toe te "
+        "voegen, deel je het e-mailadres en wachtwoord van de kring met "
+        "diegene. Een kring telt maximaal acht of twintig kringleden, "
+        "afhankelijk van je abonnement."),
     _FAQ('Voor families', "Hoe stuur ik een bericht?",
         "Open het tabblad 'Sturen'. Kies wat je wilt versturen: een foto, een "
         "stem-bericht, een liedje of een tekst. Vul in voor wie het bedoeld is "
@@ -3593,52 +3592,16 @@ class _HulpDialog extends StatelessWidget {
         "blijven verstuurde berichten klaarstaan. Zodra het apparaat weer "
         "aangaat en verbinding heeft, verschijnen de berichten alsnog. Er gaat "
         "niets verloren."),
-    // ── Voor zorgverleners ──
-    _FAQ('Voor zorgverleners', "Kan ik Ons Moment gebruiken als zorgverlener?",
-        "Ja. Met een zorg-abonnement beheer je meerdere cliënten vanuit één "
-        "account. Je switcht eenvoudig tussen cliënten via het menu. Je betaalt "
-        "op basis van het aantal cliënten dat je beheert."),
-    _FAQ('Voor zorgverleners',
-        "Hoe begin ik als zorgverlener bij een nieuwe cliënt?",
-        "Er zijn twee manieren. De makkelijkste: vraag de familie van je cliënt "
-        "om je uit te nodigen via een link. Familie heeft dan al een apparaat "
-        "ingericht bij de cliënt en jij wordt automatisch toegevoegd aan hun "
-        "overzicht. Heeft je cliënt geen familie die meedoet? Dan installeer je "
-        "zelf de Ons Moment-app op een apparaat bij je cliënt, configureer je "
-        "dat in de gewenste modus, en stuur je een toestemmingslink naar een "
-        "wettelijk vertegenwoordiger."),
-    _FAQ('Voor zorgverleners', "Hoe werkt het als familie mij uitnodigt?",
-        "Een familielid kan je een uitnodigingslink sturen. Als je daarop "
-        "klikt, wordt hun dierbare als cliënt aan je overzicht toegevoegd. "
-        "Omdat familie je zelf uitnodigt, geldt dat als toestemming — een "
-        "aparte toestemmingslink is dan niet nodig."),
-    _FAQ('Voor zorgverleners', "Wat als mijn cliënt geen familie heeft?",
-        "Dan maak je de cliënt zelf aan via 'Nieuwe cliënt'. De app vraagt om "
-        "toestemming van een wettelijk vertegenwoordiger: je kunt zelf "
-        "bevestigen dat je die hebt, of een toestemmingslink versturen. Diegene "
-        "klikt op de link, bevestigt dat ze akkoord zijn en de cliënt wordt "
-        "actief in je overzicht."),
-    _FAQ('Voor zorgverleners',
-        "Wat als familie mij wel uitnodigt, maar later weer verwijdert?",
-        "Familie kan op elk moment iemand uit hun kring verwijderen, inclusief "
-        "de uitgenodigde zorgverlener. Als dat gebeurt verlies je toegang tot "
-        "die cliënt. De cliënt verdwijnt uit jouw overzicht en je betaalt vanaf "
-        "de volgende periode niet meer voor die plek in je abonnement."),
     // ── Abonnement ──
     _FAQ('Abonnement', "Wat kost Ons Moment?",
-        "Voor families is er een Klein-abonnement (tot 8 personen) en een "
-        "Groot-abonnement (tot 20 personen). Voor zorgverleners zijn er "
-        "abonnementen vanaf 1 cliënt tot onbeperkt. Je kunt kiezen voor "
-        "maandelijks betalen of voor een jaarabonnement met korting. Alle "
-        "abonnementen starten met een gratis proefperiode van 5 dagen zonder "
-        "dat je betaalgegevens hoeft op te geven."),
+        "Er zijn twee abonnementen: Klein (tot 8 kringleden) en Groot (tot 20 "
+        "kringleden). Je kunt kiezen voor maandelijks betalen of een "
+        "jaarabonnement met korting. Alle abonnementen starten met een gratis "
+        "proefperiode van 5 dagen — je hoeft geen betaalgegevens op te geven "
+        "om te beginnen."),
     _FAQ('Abonnement', "Wie telt mee in mijn abonnement?",
-        "Bij een familie-abonnement tellen alle mensen mee die berichten kunnen "
-        "sturen — familieleden, vrienden en een eventueel uitgenodigde "
-        "zorgverlener. Je dierbare zelf telt niet mee. Bij een zorg-abonnement "
-        "telt het aantal cliënten dat je beheert; familieleden van die cliënten "
-        "hebben hun eigen familie-abonnement en tellen niet mee in jouw "
-        "zorg-abonnement."),
+        "Iedereen in de kring die berichten kan sturen telt mee — familieleden, "
+        "vrienden en mantelzorgers. Je dierbare zelf telt niet mee."),
   ];
 
   @override
