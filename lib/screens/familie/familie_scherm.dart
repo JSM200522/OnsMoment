@@ -2552,8 +2552,13 @@ class _InstellingenTabState extends State<InstellingenTab> {
           Navigator.push(context, MaterialPageRoute(
               builder: (c) => const OntvangerInfoScherm()));
         }),
-        _item('📥', 'Ontvangen berichten van $naam',
-            'Alle berichten die $naam heeft gestuurd', () {
+        _item('📥',
+            widget.alsOntvanger
+                ? 'Ontvangen berichten'
+                : 'Ontvangen berichten van $naam',
+            widget.alsOntvanger
+                ? 'Alle berichten die je hebt gestuurd'
+                : 'Alle berichten die $naam heeft gestuurd', () {
           Navigator.push(context, MaterialPageRoute(
               builder: (c) => const OntvangenBerichtenScherm()));
         }),
