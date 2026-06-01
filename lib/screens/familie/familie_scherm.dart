@@ -38,6 +38,10 @@ class _FamilieSchermState extends State<FamilieScherm>
   final _geluidPlayer = AudioPlayer();
   StreamSubscription<QuerySnapshot>? _momentenListener;
   StreamSubscription<DocumentSnapshot>? _gebruikerSub;
+  // V9 2.4-a-3: kring-doc als primaire bron voor geluid + foto;
+  // _gebruikerSub blijft als legacy-fallback.
+  StreamSubscription<Kring?>? _actieveKringSub;
+  String? _kringFoto;
   Map<String, dynamic>? _huidigPopup;
   String? _huidigPopupId;
   String _herkenningsgeluid = 'twinkel';
@@ -88,6 +92,19 @@ class _FamilieSchermState extends State<FamilieScherm>
     // listeners automatisch herstarten met de nieuwe kring.
     DeviceModusService.actieveKringNotifier
         .addListener(_opActieveKringWijziging);
+    // V9 2.4-a-3: lees naam/foto/geluid uit het ACTIEVE kring-doc
+    // (overschrijft de waarden uit _gebruikerSub bij elke kring-emit).
+    _actieveKringSub = KringService.actieveKringStream().listen((kring) {
+      if (!mounted || kring == null) return;
+      setState(() {
+        if (kring.foto != null && kring.foto!.isNotEmpty) {
+          _kringFoto = kring.foto;
+        }
+        if (kring.herkenningsgeluid.isNotEmpty) {
+          _herkenningsgeluid = kring.herkenningsgeluid;
+        }
+      });
+    });
     _audioPlayer.playerStateStream.listen((state) {
       if (state.processingState == ProcessingState.completed
           && (_huidigPopup?['type'] == 'stem'
@@ -107,6 +124,7 @@ class _FamilieSchermState extends State<FamilieScherm>
     _checkTimer?.cancel();
     _momentenListener?.cancel();
     _gebruikerSub?.cancel();
+    _actieveKringSub?.cancel();
     _dagelijkseSub?.cancel();
     _eenmaligSub?.cancel();
     _audioPlayer.dispose();
@@ -540,8 +558,13 @@ class _FamilieSchermState extends State<FamilieScherm>
       stream: FirebaseFirestore.instance
           .collection('gebruikers').doc(uid).snapshots(),
       builder: (ctx, snap) {
-        final url = (snap.data?.data() as Map<String, dynamic>?)
+        final gebruikersFoto = (snap.data?.data() as Map<String, dynamic>?)
             ?['ontvangerFoto'] as String? ?? '';
+        // V9 2.4-a-3: kring-foto heeft voorrang; gebruikers/{uid} als
+        // fallback (V7/V8-accounts zonder kring-doc).
+        final url = (_kringFoto != null && _kringFoto!.isNotEmpty)
+            ? _kringFoto!
+            : gebruikersFoto;
         return _buildScaffold(achtergrondFotoUrl: url);
       },
     );
@@ -675,10 +698,20 @@ class _StuurTabState extends State<StuurTab> {
 
   String? _gekozenPersoonsNaam;  // null = iedereen in kring
   String? _mijnApparaatId;
-  String? _ontvangerNaam;
+  String? _ontvangerNaam;       // legacy: uit gebruikers/{uid}
+  String? _kringNaam;            // V9 2.4-a-3: uit actieve kring-doc
+  StreamSubscription<Kring?>? _actieveKringSub;
   Future<List<Map<String, dynamic>>>? _kringFuture;
   double? _uploadProgress;  // null = geen media-upload bezig
   bool _uploadIndeterminate = false;  // web-fallback als progress 0->100 springt
+
+  /// V9 2.4-a-3: kring-doc primair, gebruikers/{uid} als fallback,
+  /// 'je dierbare' als ultieme default. Nooit lege naam.
+  String get _toonNaam {
+    if ((_kringNaam ?? '').isNotEmpty) return _kringNaam!;
+    if ((_ontvangerNaam ?? '').isNotEmpty) return _ontvangerNaam!;
+    return 'je dierbare';
+  }
 
   @override
   void initState() {
@@ -698,10 +731,18 @@ class _StuurTabState extends State<StuurTab> {
         });
       });
     }
+    _actieveKringSub = KringService.actieveKringStream().listen((kring) {
+      if (!mounted) return;
+      setState(() {
+        _kringNaam = (kring != null && kring.naam.isNotEmpty)
+            ? kring.naam : null;
+      });
+    });
   }
 
   @override
   void dispose() {
+    _actieveKringSub?.cancel();
     _recorder.dispose();
     _previewPlayer.dispose();
     _opnameTimer?.cancel();
@@ -829,7 +870,7 @@ class _StuurTabState extends State<StuurTab> {
                             ? (_gekozenPersoonsNaam == null
                                 ? '⚡ Stuur NU naar de kring'
                                 : '⚡ Stuur NU naar $_gekozenPersoonsNaam')
-                            : '⚡ Stuur NU naar ${_ontvangerNaam ?? "ontvanger"}')
+                            : '⚡ Stuur NU naar $_toonNaam')
                         : 'Plan en stuur 💕',
                     style: const TextStyle(fontSize: 16,
                         fontWeight: FontWeight.w800, color: kWhite))
@@ -2191,8 +2232,18 @@ class NotitiesTab extends StatefulWidget {
 
 class _NotitiesTabState extends State<NotitiesTab> {
   final _ctrl = TextEditingController();
-  String? _ontvangerNaam;
+  String? _ontvangerNaam;       // legacy: uit gebruikers/{uid}
+  String? _kringNaam;            // V9 2.4-a-3: uit actieve kring-doc
   String? _kringId;
+  StreamSubscription<Kring?>? _actieveKringSub;
+
+  /// V9 2.4-a-3: kring-doc primair, gebruikers/{uid} als fallback,
+  /// 'je dierbare' als ultieme default.
+  String get _toonNaam {
+    if ((_kringNaam ?? '').isNotEmpty) return _kringNaam!;
+    if ((_ontvangerNaam ?? '').isNotEmpty) return _ontvangerNaam!;
+    return 'je dierbare';
+  }
 
   @override
   void initState() {
@@ -2214,12 +2265,21 @@ class _NotitiesTabState extends State<NotitiesTab> {
     // V9 2.2b: kring-switch updatet _kringId zodat de StreamBuilder
     // van notities automatisch herlaadt op de nieuwe kring.
     DeviceModusService.actieveKringNotifier.addListener(_opKringWijziging);
+    // V9 2.4-a-3: actieve-kring-doc voor naam (overschrijft fallback).
+    _actieveKringSub = KringService.actieveKringStream().listen((kring) {
+      if (!mounted) return;
+      setState(() {
+        _kringNaam = (kring != null && kring.naam.isNotEmpty)
+            ? kring.naam : null;
+      });
+    });
   }
 
   @override
   void dispose() {
     DeviceModusService.actieveKringNotifier
         .removeListener(_opKringWijziging);
+    _actieveKringSub?.cancel();
     _ctrl.dispose();
     super.dispose();
   }
@@ -2322,8 +2382,7 @@ class _NotitiesTabState extends State<NotitiesTab> {
             const SizedBox(width: 8),
             Expanded(child: Text(
               'Notities zijn alleen zichtbaar voor familieleden en '
-              'mantelzorgers. '
-              '${dierbareNaamLabel(null, _ontvangerNaam)} ziet deze niet.',
+              'mantelzorgers. $_toonNaam ziet deze niet.',
               style: const TextStyle(fontSize: 11,
                   color: kBrownLight, height: 1.4))),
           ]),
@@ -2371,12 +2430,22 @@ class InstellingenTab extends StatefulWidget {
 }
 
 class _InstellingenTabState extends State<InstellingenTab> {
-  String? _ontvangerNaam;
+  String? _ontvangerNaam;       // legacy: uit gebruikers/{uid}
+  String? _kringNaam;            // V9 2.4-a-3: uit actieve kring-doc
   bool _isAccountMaker = false;
   String? _huidigeOntvangerModus;
   // V9 2.3a: kring-switcher state
   List<Kring>? _kringen;
   String? _huidigeKringId;
+  StreamSubscription<Kring?>? _actieveKringSub;
+
+  /// V9 2.4-a-3: kring-doc primair, gebruikers/{uid} fallback,
+  /// 'je dierbare' als ultieme default.
+  String get _toonNaam {
+    if ((_kringNaam ?? '').isNotEmpty) return _kringNaam!;
+    if ((_ontvangerNaam ?? '').isNotEmpty) return _ontvangerNaam!;
+    return 'je dierbare';
+  }
 
   @override
   void initState() {
@@ -2405,11 +2474,20 @@ class _InstellingenTabState extends State<InstellingenTab> {
       _laadKringen();
       DeviceModusService.actieveKringNotifier.addListener(_opKringSwitch);
     }
+    // V9 2.4-a-3: naam uit actieve kring-doc (wisselt mee bij switch).
+    _actieveKringSub = KringService.actieveKringStream().listen((kring) {
+      if (!mounted) return;
+      setState(() {
+        _kringNaam = (kring != null && kring.naam.isNotEmpty)
+            ? kring.naam : null;
+      });
+    });
   }
 
   @override
   void dispose() {
     DeviceModusService.actieveKringNotifier.removeListener(_opKringSwitch);
+    _actieveKringSub?.cancel();
     super.dispose();
   }
 
@@ -2441,7 +2519,7 @@ class _InstellingenTabState extends State<InstellingenTab> {
 
   @override
   Widget build(BuildContext context) {
-    final naam = dierbareNaamLabel(null, _ontvangerNaam);
+    final naam = _toonNaam;
     return Padding(padding: const EdgeInsets.all(20),
       child: ListView(children: [
         const Text('Instellingen',
@@ -2475,7 +2553,7 @@ class _InstellingenTabState extends State<InstellingenTab> {
               builder: (c) => const OntvangerInfoScherm()));
         }),
         _item('📥', 'Ontvangen berichten van $naam',
-            'Alle berichten die ${jeDierbareLabel(null)} heeft gestuurd', () {
+            'Alle berichten die $naam heeft gestuurd', () {
           Navigator.push(context, MaterialPageRoute(
               builder: (c) => const OntvangenBerichtenScherm()));
         }),
@@ -3860,14 +3938,37 @@ class OntvangenBerichtenScherm extends StatefulWidget {
 }
 
 class _OntvangenBerichtenSchermState extends State<OntvangenBerichtenScherm> {
-  String _ontvangerNaam = 'je dierbare';
+  String? _ontvangerNaam;  // legacy: uit gebruikers/{uid}
+  String? _kringNaam;       // V9 2.4-a-3: uit actieve kring-doc
   List<String>? _ontvangerApparaatIds;
   String? _kringId;
+  StreamSubscription<Kring?>? _actieveKringSub;
+
+  /// V9 2.4-a-3: kring-doc primair, gebruikers/{uid} fallback,
+  /// 'je dierbare' als ultieme default.
+  String get _toonNaam {
+    if ((_kringNaam ?? '').isNotEmpty) return _kringNaam!;
+    if ((_ontvangerNaam ?? '').isNotEmpty) return _ontvangerNaam!;
+    return 'je dierbare';
+  }
 
   @override
   void initState() {
     super.initState();
     _laad();
+    _actieveKringSub = KringService.actieveKringStream().listen((kring) {
+      if (!mounted) return;
+      setState(() {
+        _kringNaam = (kring != null && kring.naam.isNotEmpty)
+            ? kring.naam : null;
+      });
+    });
+  }
+
+  @override
+  void dispose() {
+    _actieveKringSub?.cancel();
+    super.dispose();
   }
 
   Future<void> _laad() async {
@@ -3881,8 +3982,7 @@ class _OntvangenBerichtenSchermState extends State<OntvangenBerichtenScherm> {
       if (!mounted) return;
       setState(() {
         _kringId = kringId;
-        _ontvangerNaam = dierbareNaamLabel(
-            null, naamDoc.data()?['ontvangerNaam'] as String?);
+        _ontvangerNaam = naamDoc.data()?['ontvangerNaam'] as String?;
         _ontvangerApparaatIds = leden
             .where((l) => l['modus'] == 'ontvanger')
             .map((l) => l['apparaatId'] as String)
@@ -3901,7 +4001,7 @@ class _OntvangenBerichtenSchermState extends State<OntvangenBerichtenScherm> {
       appBar: AppBar(
         backgroundColor: Colors.transparent, elevation: 0,
         iconTheme: const IconThemeData(color: kBrown),
-        title: Text('Ontvangen van $_ontvangerNaam',
+        title: Text('Ontvangen van $_toonNaam',
             style: const TextStyle(color: kBrown,
                 fontWeight: FontWeight.w900)),
       ),
@@ -3932,7 +4032,7 @@ class _OntvangenBerichtenSchermState extends State<OntvangenBerichtenScherm> {
                             return tb.compareTo(ta);
                           });
                         if (docs.isEmpty) {
-                          return _leeg('Nog geen berichten van $_ontvangerNaam');
+                          return _leeg('Nog geen berichten van $_toonNaam');
                         }
                         return ListView(
                           padding: const EdgeInsets.all(20),
