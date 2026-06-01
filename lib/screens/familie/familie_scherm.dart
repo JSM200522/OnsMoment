@@ -82,6 +82,10 @@ class _FamilieSchermState extends State<FamilieScherm>
         _herscanMomenten();
       });
     }
+    // V9 2.2b: luister op kring-switch zodat alle kringId-afhankelijke
+    // listeners automatisch herstarten met de nieuwe kring.
+    DeviceModusService.actieveKringNotifier
+        .addListener(_opActieveKringWijziging);
     _audioPlayer.playerStateStream.listen((state) {
       if (state.processingState == ProcessingState.completed
           && (_huidigPopup?['type'] == 'stem'
@@ -95,6 +99,8 @@ class _FamilieSchermState extends State<FamilieScherm>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    DeviceModusService.actieveKringNotifier
+        .removeListener(_opActieveKringWijziging);
     _autoSluitTimer?.cancel();
     _checkTimer?.cancel();
     _momentenListener?.cancel();
@@ -104,6 +110,36 @@ class _FamilieSchermState extends State<FamilieScherm>
     _audioPlayer.dispose();
     _geluidPlayer.dispose();
     super.dispose();
+  }
+
+  /// V9 2.2b: callback voor actieveKringNotifier. Triggert herstart van
+  /// kringId-afhankelijke listeners zodra een andere kring actief wordt.
+  void _opActieveKringWijziging() {
+    final nieuwe = DeviceModusService.actieveKringNotifier.value;
+    if (nieuwe != null) _herstartListeners(nieuwe);
+  }
+
+  /// V9 2.2b: cancelt en herstart alle kringId-afhankelijke listeners.
+  /// No-op als de meegegeven kringId gelijk is aan de huidige (voorkomt
+  /// onnodige reload bij normale inlog-flow waar de notifier ook fired).
+  Future<void> _herstartListeners(String nieuweKringId) async {
+    if (nieuweKringId == _kringId) return;
+    await _momentenListener?.cancel(); _momentenListener = null;
+    await _dagelijkseSub?.cancel();    _dagelijkseSub    = null;
+    await _eenmaligSub?.cancel();      _eenmaligSub      = null;
+    if (!mounted) return;
+    setState(() {
+      _kringId = nieuweKringId;
+      _dagelijkseDocs = null;
+      _eenmaligDocs   = null;
+      _huidigPopup    = null;
+      _huidigPopupId  = null;
+    });
+    _startMomentenListener();
+    if (widget.alsOntvanger) {
+      _startDagelijksListener();
+      _startEenmaligListener();
+    }
   }
 
   void _debugLog(String msg) {
@@ -2173,6 +2209,23 @@ class _NotitiesTabState extends State<NotitiesTab> {
       if (!mounted) return;
       setState(() => _kringId = id);
     });
+    // V9 2.2b: kring-switch updatet _kringId zodat de StreamBuilder
+    // van notities automatisch herlaadt op de nieuwe kring.
+    DeviceModusService.actieveKringNotifier.addListener(_opKringWijziging);
+  }
+
+  @override
+  void dispose() {
+    DeviceModusService.actieveKringNotifier
+        .removeListener(_opKringWijziging);
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  void _opKringWijziging() {
+    final nieuwe = DeviceModusService.actieveKringNotifier.value;
+    if (nieuwe == null || nieuwe == _kringId) return;
+    if (mounted) setState(() => _kringId = nieuwe);
   }
 
   @override

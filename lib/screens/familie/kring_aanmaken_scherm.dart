@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:just_audio/just_audio.dart';
 import '../../data/geluiden.dart';
+import '../../services/device_modus_service.dart';
 import '../../services/kring_service.dart';
 import '../../theme/kleuren.dart';
 
@@ -146,6 +147,11 @@ class _KringAanmakenSchermState extends State<KringAanmakenScherm> {
       }
 
       await batch.commit();
+
+      // V9 2.2b: switch direct naar de nieuwe kring. De notifier in
+      // DeviceModusService triggert _FamilieSchermState + NotitiesTab om
+      // hun kringId-listeners te herstarten.
+      await DeviceModusService.zetActieveKring(kringId);
 
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(

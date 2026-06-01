@@ -33,6 +33,12 @@ class DeviceModusService {
   static final ValueNotifier<String?> weergaveModusNotifier =
       ValueNotifier<String?>(null);
 
+  /// Reactief gepubliceerde actieveKringId. Wijzigt bij zetActieveKring
+  /// en wisActieveKring. Familie-scherm en NotitiesTab luisteren hierop
+  /// (V9 2.2b) om listeners te herstarten bij kring-switch.
+  static final ValueNotifier<String?> actieveKringNotifier =
+      ValueNotifier<String?>(null);
+
   /// Lees huidige modus uit storage en publiceer naar [notifier]. Null als nog niet ingesteld.
   static Future<String?> get() async {
     try {
@@ -164,6 +170,7 @@ class DeviceModusService {
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString(_actieveKringKey, kringId);
+      actieveKringNotifier.value = kringId;
     } catch (_) {}
   }
 
@@ -227,6 +234,7 @@ class DeviceModusService {
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.remove(_actieveKringKey);
+      actieveKringNotifier.value = null;
     } catch (_) {}
   }
 }
