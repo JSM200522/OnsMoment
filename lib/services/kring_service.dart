@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/foundation.dart';
 import '../data/kring.dart';
 import '../data/kring_membership.dart';
 
@@ -77,5 +78,36 @@ class KringService {
         membership.toFirestoreMap(bijCreate: true));
 
     return id;
+  }
+
+  /// Geeft alle kringen terug waar deze uid lid van is (eigenaar of gast).
+  /// Gebaseerd op de membership-subcollectie via een collectionGroup-query.
+  ///
+  /// Vereist:
+  /// - Single-field collection-group exemption op `leden.userUid` ASC
+  /// - Firestore rule `match /{path=**}/leden/{lidId}` read voor auth
+  ///
+  /// Faalt safely op een lege lijst bij fouten (rights/index/network).
+  static Future<List<Kring>> mijnKringen(String uid) async {
+    if (uid.isEmpty) return [];
+    try {
+      final ledenSnap = await FirebaseFirestore.instance
+          .collectionGroup('leden')
+          .where('userUid', isEqualTo: uid)
+          .get();
+      final kringRefs = ledenSnap.docs
+          .map((d) => d.reference.parent.parent)
+          .whereType<DocumentReference>()
+          .toList();
+      if (kringRefs.isEmpty) return [];
+      final kringDocs = await Future.wait(kringRefs.map((r) => r.get()));
+      return kringDocs
+          .where((d) => d.exists)
+          .map(Kring.fromFirestore)
+          .toList();
+    } catch (e) {
+      debugPrint('🌀 [KringService] mijnKringen($uid) faalde: $e');
+      return [];
+    }
   }
 }

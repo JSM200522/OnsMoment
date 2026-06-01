@@ -664,6 +664,16 @@ class _SetupWizardState extends State<SetupWizard> {
           email: _emailCtrl.text.trim(), password: _wachtwoordCtrl.text);
       final uid = FirebaseAuth.instance.currentUser!.uid;
       await DeviceModusService.zetActieveKringVoorEigenaar(uid);
+      // TIJDELIJKE DEBUG (V9 2.1b — verwijderen in 2.1c): verifieert dat
+      // de collectionGroup-query voor mijnKringen werkt. Verwacht voor het
+      // test-account: 1 kring (waar uid eigenaar van is).
+      final mijneKringen = await KringService.mijnKringen(uid);
+      debugPrint('🌀 [2.1b debug] Ingelogd als $uid — '
+          'aantal kringen: ${mijneKringen.length}');
+      for (final k in mijneKringen) {
+        debugPrint('   • kringId=${k.id} naam="${k.naam}" '
+            'eigenaar=${k.eigenaarUid == uid}');
+      }
       final apparaatId = await DeviceModusService.krijgApparaatId();
       final doc = await FirebaseFirestore.instance
           .collection('gebruikers').doc(uid)
