@@ -20,6 +20,8 @@ import '../../widgets/video_speler.dart';
 import '../../data/labels.dart';
 import 'kringleden_scherm.dart';
 import 'kring_aanmaken_scherm.dart';
+import '../../data/kring.dart';
+import '../../services/kring_service.dart';
 
 class FamilieScherm extends StatefulWidget {
   final bool alsOntvanger;
@@ -2372,6 +2374,9 @@ class _InstellingenTabState extends State<InstellingenTab> {
   String? _ontvangerNaam;
   bool _isAccountMaker = false;
   String? _huidigeOntvangerModus;
+  // V9 2.3a: kring-switcher state
+  List<Kring>? _kringen;
+  String? _huidigeKringId;
 
   @override
   void initState() {
@@ -2397,7 +2402,41 @@ class _InstellingenTabState extends State<InstellingenTab> {
           if (mounted) setState(() => _huidigeOntvangerModus = huidig);
         }
       });
+      _laadKringen();
+      DeviceModusService.actieveKringNotifier.addListener(_opKringSwitch);
     }
+  }
+
+  @override
+  void dispose() {
+    DeviceModusService.actieveKringNotifier.removeListener(_opKringSwitch);
+    super.dispose();
+  }
+
+  void _opKringSwitch() {
+    // Notifier triggert bij elke zetActieveKring — herlaad de lijst
+    // (nieuw aangemaakte kring verschijnt, huidige markering schuift).
+    _laadKringen();
+  }
+
+  Future<void> _laadKringen() async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return;
+    final kringen = await KringService.mijnKringen(uid);
+    final huidig = await DeviceModusService.krijgActieveKring();
+    if (!mounted) return;
+    setState(() {
+      _kringen = kringen;
+      _huidigeKringId = huidig;
+    });
+  }
+
+  Future<void> _switchNaarKring(String kringId) async {
+    if (kringId == _huidigeKringId) return;
+    await DeviceModusService.zetActieveKring(kringId);
+    // _opKringSwitch wordt vanzelf getriggerd via notifier; bovendien
+    // herstart _FamilieSchermState._herstartListeners (2.2b) de
+    // kringId-afhankelijke streams.
   }
 
   @override
@@ -2418,6 +2457,10 @@ class _InstellingenTabState extends State<InstellingenTab> {
         if (!widget.alsOntvanger) ...[
           const SizedBox(height: 20),
           _sectie('KRINGEN'),
+          if (_kringen != null && _kringen!.isNotEmpty) ...[
+            ..._kringen!.map(_kringTegel),
+            const SizedBox(height: 4),
+          ],
           _item('🪄', 'Nieuwe kring aanmaken',
               'Voor een tweede dierbare bijvoorbeeld', () {
             Navigator.push(context, MaterialPageRoute(
@@ -2598,6 +2641,59 @@ class _InstellingenTabState extends State<InstellingenTab> {
         const Icon(Icons.chevron_right_rounded, color: kTextMuted),
       ]),
     ));
+
+  /// V9 2.3a: tegel voor één kring in de switcher-lijst. Huidige kring
+  /// krijgt peach-pale achtergrond + vinkje + subtekst "(huidige kring)";
+  /// andere kringen zijn tikbaar om naar te switchen.
+  Widget _kringTegel(Kring k) {
+    final isHuidig = k.id == _huidigeKringId;
+    final foto = k.foto;
+    return GestureDetector(
+      onTap: isHuidig ? null : () => _switchNaarKring(k.id),
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 8),
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: isHuidig ? kPeachPale : kWhite,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+              color: isHuidig ? kPeach : kPeachLight,
+              width: isHuidig ? 2 : 1.5)),
+        child: Row(children: [
+          Container(
+            width: 40, height: 40,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: kPeachPale,
+              border: Border.all(color: kPeachLight, width: 1.5),
+              image: (foto != null && foto.isNotEmpty)
+                  ? DecorationImage(image: NetworkImage(foto),
+                      fit: BoxFit.cover)
+                  : null,
+            ),
+            child: (foto == null || foto.isEmpty)
+                ? const Center(child: Icon(Icons.person_rounded,
+                    color: kPeach, size: 22))
+                : null,
+          ),
+          const SizedBox(width: 12),
+          Expanded(child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(k.naam.isEmpty ? 'Naamloze kring' : k.naam,
+                  style: const TextStyle(fontSize: 14,
+                      fontWeight: FontWeight.w800, color: kBrown)),
+              if (isHuidig)
+                const Padding(padding: EdgeInsets.only(top: 2),
+                  child: Text('(huidige kring)',
+                      style: TextStyle(fontSize: 11, color: kTextMuted))),
+            ])),
+          if (isHuidig)
+            const Icon(Icons.check_circle_rounded, color: kPeach, size: 22),
+        ]),
+      ),
+    );
+  }
 }
 
 // ════════════════════════════════════════════════════════════
