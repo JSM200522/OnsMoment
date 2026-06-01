@@ -3,6 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'kring_service.dart';
 
 /// Beheert de "modus" van dit specifieke apparaat:
 /// - 'familie' = familie portaal (Sturen, Agenda, Notities, Instellingen)
@@ -184,15 +185,16 @@ class DeviceModusService {
   }
 
   /// Resolveer kringId voor services die Storage/Firestore-paden bouwen.
-  /// 2-tier: eerst cache (SharedPreferences), bij miss een live Firestore-
-  /// lookup op kringen waar eigenaarUid==uid (en het resultaat meteen
-  /// cachen), en pas als ultieme fallback auth.uid voor V7/V8-accounts
-  /// zonder kring-doc. Null als niemand is ingelogd.
+  /// Keten (V9 2.1c):
+  /// 1. cache (SharedPreferences) — snel pad
+  /// 2. live lookup op kringen.eigenaarUid==uid (eigenaar-pad)
+  /// 3. eerste membership uit KringService.mijnKringen (gast-pad voor
+  ///    uitgenodigde leden zonder eigen kring)
+  /// 4. ultieme fallback: auth.uid (V7/V8-accounts zonder kring-doc)
   ///
-  /// De live-lookup dekt device-switch-scenario's: een ontvanger-apparaat
-  /// dat nooit door _ontvangerInloggenActie ging (1.1f-fix) heeft een
-  /// lege SharedPreferences-cache; zonder live-lookup zou de helper
-  /// terugvallen op auth.uid en de kring-doc-id mislopen → geen popups.
+  /// Null als niemand is ingelogd. Eigenaars volgen pad 1 of 2 — voor hen
+  /// verandert er niets t.o.v. 1.1h-fix. Stap 3 is nieuw en maakt gasten
+  /// (membership zonder eigen kring) ondersteund.
   static Future<String?> huidigeKringIdMetFallback() async {
     final cached = await krijgActieveKring();
     if (cached != null && cached.isNotEmpty) return cached;
@@ -210,6 +212,14 @@ class DeviceModusService {
         return kringId;
       }
     } catch (_) {}
+    // Geen eigen kring gevonden — probeer membership in een andere kring
+    // (gast-pad). Eerste resultaat uit mijnKringen wordt gecached.
+    final kringen = await KringService.mijnKringen(uid);
+    if (kringen.isNotEmpty) {
+      final kringId = kringen.first.id;
+      await zetActieveKring(kringId);
+      return kringId;
+    }
     return uid;
   }
 
