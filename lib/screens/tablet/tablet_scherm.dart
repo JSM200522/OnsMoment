@@ -5,9 +5,11 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 import '../../services/device_modus_service.dart';
+import '../../services/kring_service.dart';
 import '../../theme/kleuren.dart';
 import '../../data/geluiden.dart';
 import '../../data/debug_flags.dart';
+import '../../data/kring.dart';
 import '../../widgets/pulserend_hart.dart';
 import '../../widgets/video_speler.dart';
 
@@ -36,6 +38,11 @@ class _TabletSchermState extends State<TabletScherm>
   List<QueryDocumentSnapshot>? _eenmaligDocs;
   String? _mijnApparaatId;
   String? _kringId;
+  // V9 2.4-a-2: kring-doc als primaire bron; _gebruikerSub blijft als
+  // legacy-fallback zodat het popup-bel-geluid NOOIT stil kan worden.
+  StreamSubscription<Kring?>? _actieveKringSub;
+  String? _kringFoto;
+  String? _kringOntvangerNaam;
 
   @override
   void initState() {
@@ -74,6 +81,23 @@ class _TabletSchermState extends State<TabletScherm>
         _sluitPopup();
       }
     });
+    // V9 2.4-a-2: kring-doc is primaire bron voor geluid/foto/naam.
+    // OVERSCHRIJFT ALLEEN bij niet-lege waarden — _gebruikerSub blijft
+    // als legacy-fallback zodat _herkenningsgeluid nooit leeg wordt.
+    _actieveKringSub = KringService.actieveKringStream().listen((kring) {
+      if (!mounted || kring == null) return;
+      setState(() {
+        if (kring.herkenningsgeluid.isNotEmpty) {
+          _herkenningsgeluid = kring.herkenningsgeluid;
+        }
+        if (kring.foto != null && kring.foto!.isNotEmpty) {
+          _kringFoto = kring.foto;
+        }
+        if (kring.naam.isNotEmpty) {
+          _kringOntvangerNaam = kring.naam;
+        }
+      });
+    });
   }
 
   @override
@@ -83,6 +107,7 @@ class _TabletSchermState extends State<TabletScherm>
     _checkTimer?.cancel();
     _momentenListener?.cancel();
     _gebruikerSub?.cancel();
+    _actieveKringSub?.cancel();
     _dagelijkseSub?.cancel();
     _eenmaligSub?.cancel();
     _audioPlayer.dispose();
@@ -360,8 +385,15 @@ class _TabletSchermState extends State<TabletScherm>
           .doc(uid).snapshots(),
       builder: (ctx, userSnap) {
         final userData = userSnap.data?.data() as Map<String, dynamic>? ?? {};
-        final profielFotoUrl = userData['ontvangerFoto'] ?? '';
-        final ontvangerNaam = userData['ontvangerNaam'] ?? '';
+        // V9 2.4-a-2: kring-doc primaire bron; gebruikers/{uid} fallback
+        // voor V7/V8-accounts zonder kring-doc.
+        final profielFotoUrl = (_kringFoto != null && _kringFoto!.isNotEmpty)
+            ? _kringFoto!
+            : (userData['ontvangerFoto'] as String? ?? '');
+        final ontvangerNaam =
+            (_kringOntvangerNaam != null && _kringOntvangerNaam!.isNotEmpty)
+                ? _kringOntvangerNaam!
+                : (userData['ontvangerNaam'] as String? ?? '');
 
         return Scaffold(
           body: Stack(children: [
