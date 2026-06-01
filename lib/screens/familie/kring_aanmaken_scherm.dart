@@ -4,20 +4,25 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:just_audio/just_audio.dart';
 import '../../data/geluiden.dart';
 import '../../services/kring_service.dart';
 import '../../theme/kleuren.dart';
 
 /// Scherm waarmee een ingelogde gebruiker een EXTRA kring kan aanmaken
-/// vanuit Instellingen → "Nieuwe kring aanmaken" (V9 2.2a).
+/// vanuit Instellingen → "Nieuwe kring aanmaken" (V9 2.2a + 2.2a-fix).
 ///
-/// Schrijft de nieuwe kring + eigenaar-membership via
-/// [KringService.voegKringMetEigenaarToeAanBatch] — atomic, zelfde
-/// patroon als de signup-flow. Voegt ook 4 default dagelijkse momenten
-/// toe zodat de kring direct gevuld voelt.
+/// Layout is 1-op-1 overgenomen van de ontvanger-profiel-stap in
+/// setup_wizard (de stap "Vertel ons over je dierbare"), inclusief
+/// _sectieKop, _input, foto-picker, geluid-preview en spacing — zodat
+/// een tweede-keer-aanmaker exact dezelfde flow herkent als de signup.
 ///
-/// Na succesvolle aanmaak: snackbar + Navigator.pop(). De ACTIEVE kring
-/// blijft de huidige — switchen wordt pas in 2.2b geïmplementeerd.
+/// Schrijft kring + eigenaar-membership via
+/// [KringService.voegKringMetEigenaarToeAanBatch] in een atomic
+/// WriteBatch, samen met 4 default dagelijkse momenten.
+///
+/// Na succes: snackbar + Navigator.pop(). De ACTIEVE kring blijft de
+/// huidige — switchen komt in 2.2b.
 class KringAanmakenScherm extends StatefulWidget {
   const KringAanmakenScherm({super.key});
 
@@ -29,10 +34,14 @@ class _KringAanmakenSchermState extends State<KringAanmakenScherm> {
   final _naamCtrl = TextEditingController();
   final _lievelingsdingenCtrl = TextEditingController();
   final _woonplaatsCtrl = TextEditingController();
+  final _noodNaamCtrl = TextEditingController();
+  final _noodTelCtrl = TextEditingController();
 
   Uint8List? _profielFotoBytes;
   String _gekozenGeluid = 'twinkel';
   bool _bezig = false;
+
+  final _geluidPreviewPlayer = AudioPlayer();
 
   @override
   void initState() {
@@ -50,16 +59,29 @@ class _KringAanmakenSchermState extends State<KringAanmakenScherm> {
     _naamCtrl.dispose();
     _lievelingsdingenCtrl.dispose();
     _woonplaatsCtrl.dispose();
+    _noodNaamCtrl.dispose();
+    _noodTelCtrl.dispose();
+    _geluidPreviewPlayer.dispose();
     super.dispose();
   }
 
-  Future<void> _kiesFoto() async {
+  Future<void> _kiesProfielFoto() async {
     try {
-      final foto = await ImagePicker()
-          .pickImage(source: ImageSource.gallery, imageQuality: 80);
-      if (foto == null) return;
-      final bytes = await foto.readAsBytes();
-      if (mounted) setState(() => _profielFotoBytes = bytes);
+      final picker = ImagePicker();
+      final foto = await picker.pickImage(source: ImageSource.gallery,
+          maxWidth: 1200, imageQuality: 85);
+      if (foto != null) {
+        final bytes = await foto.readAsBytes();
+        if (mounted) setState(() => _profielFotoBytes = bytes);
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _speelGeluidPreview(String pad) async {
+    try {
+      await _geluidPreviewPlayer.stop();
+      await _geluidPreviewPlayer.setAsset(pad);
+      await _geluidPreviewPlayer.play();
     } catch (_) {}
   }
 
@@ -73,7 +95,6 @@ class _KringAanmakenSchermState extends State<KringAanmakenScherm> {
     }
     setState(() => _bezig = true);
     try {
-      // KringId vooraf genereren zodat we de foto eronder kunnen opslaan.
       final kringId = KringService.genereerKringId();
 
       String fotoUrl = '';
@@ -84,9 +105,7 @@ class _KringAanmakenSchermState extends State<KringAanmakenScherm> {
           await ref.putData(_profielFotoBytes!,
               SettableMetadata(contentType: 'image/jpeg'));
           fotoUrl = await ref.getDownloadURL();
-        } catch (_) {
-          // Foto-faal niet blokkerend — kring wordt nog steeds aangemaakt.
-        }
+        } catch (_) {}
       }
 
       final batch = FirebaseFirestore.instance.batch();
@@ -98,10 +117,11 @@ class _KringAanmakenSchermState extends State<KringAanmakenScherm> {
         foto: fotoUrl,
         lievelingsdingen: _lievelingsdingenCtrl.text.trim(),
         woonplaats: _woonplaatsCtrl.text.trim(),
+        noodcontactNaam: _noodNaamCtrl.text.trim(),
+        noodcontactTel: _noodTelCtrl.text.trim(),
         herkenningsgeluid: _gekozenGeluid,
       );
 
-      // 4 default dagelijkse momenten — zelfde lijst als de signup-flow.
       const defaults = [
         {'emoji': '☀️', 'label': 'Goedemorgen', 'uur': 8,  'minuut': 30},
         {'emoji': '☕', 'label': 'Tijd voor koffie', 'uur': 10, 'minuut': 0},
@@ -160,101 +180,110 @@ class _KringAanmakenSchermState extends State<KringAanmakenScherm> {
       body: SafeArea(child: Padding(
         padding: const EdgeInsets.all(20),
         child: ListView(children: [
-          const Text('Voor wie maak je deze kring?',
-              style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900,
-                  color: kBrown)),
-          const SizedBox(height: 6),
-          const Text('Bijvoorbeeld voor een andere ouder, oma of opa. Je '
-              'kunt later via "Wissel van kring" tussen kringen heen en weer.',
-              style: TextStyle(fontSize: 13, color: kTextMuted, height: 1.4)),
-          const SizedBox(height: 20),
-
-          _kop('📸 Foto (optioneel)'),
+          const Text('Vertel ons over je dierbare',
+              style: TextStyle(fontSize: 28, fontWeight: FontWeight.w900,
+                  color: kBrown, height: 1.2)),
           const SizedBox(height: 8),
-          Center(child: GestureDetector(
-            onTap: _kiesFoto,
-            child: Container(
-              width: 110, height: 110,
-              decoration: BoxDecoration(
-                color: kPeachPale,
-                shape: BoxShape.circle,
-                border: Border.all(color: kPeach, width: 3),
-                image: _profielFotoBytes != null
-                    ? DecorationImage(image: MemoryImage(_profielFotoBytes!),
-                        fit: BoxFit.cover)
-                    : null,
-              ),
-              child: _profielFotoBytes == null
-                  ? const Center(child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(Icons.add_a_photo_rounded,
-                            color: kPeach, size: 30),
-                        SizedBox(height: 4),
-                        Text('Kies foto',
-                            style: TextStyle(fontSize: 11,
-                                fontWeight: FontWeight.w800, color: kPeach)),
-                      ]))
-                  : null,
-            ),
-          )),
-          if (_profielFotoBytes != null)
-            Center(child: TextButton(
-              onPressed: () => setState(() => _profielFotoBytes = null),
-              child: const Text('Verwijderen',
-                  style: TextStyle(color: kTextMuted, fontSize: 12)))),
+          const Text('Hoe meer je vertelt, hoe persoonlijker de app voelt. '
+              'Alles is optioneel — je kunt altijd later aanpassen in '
+              'Instellingen.',
+              style: TextStyle(fontSize: 14, color: kTextMuted, height: 1.4)),
           const SizedBox(height: 24),
 
-          _kop('👵 Naam van je dierbare'),
-          const SizedBox(height: 8),
-          _input(_naamCtrl, 'Bijv. Oma, Opa, Mam, Pap...'),
-          const SizedBox(height: 20),
+          _sectieKop('📸 Achtergrondfoto',
+              'Kies een mooie foto van je dierbare. Deze foto wordt de '
+              'sfeervolle achtergrond op het home-scherm van het '
+              'ontvanger-apparaat.'),
+          const SizedBox(height: 12),
+          Center(child: GestureDetector(
+            onTap: _kiesProfielFoto,
+            child: Container(width: 120, height: 120,
+              decoration: BoxDecoration(
+                color: kPeachPale, shape: BoxShape.circle,
+                border: Border.all(color: kPeach, width: 3),
+                image: _profielFotoBytes != null ? DecorationImage(
+                  image: MemoryImage(_profielFotoBytes!),
+                  fit: BoxFit.cover) : null,
+                boxShadow: [BoxShadow(color: kPeach.withOpacity(0.2),
+                    blurRadius: 16, offset: const Offset(0, 4))]),
+              child: _profielFotoBytes == null
+                ? const Center(child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.add_a_photo_rounded, color: kPeach, size: 32),
+                    SizedBox(height: 4),
+                    Text('Kies foto', style: TextStyle(fontSize: 11,
+                        fontWeight: FontWeight.w800, color: kPeach)),
+                  ])) : null,
+            ),
+          )),
+          if (_profielFotoBytes != null) Center(child: TextButton(
+            onPressed: () => setState(() => _profielFotoBytes = null),
+            child: const Text('Verwijderen',
+                style: TextStyle(color: kTextMuted, fontSize: 12)))),
+          const SizedBox(height: 24),
 
-          _kop('💕 Lievelingsdingen (optioneel)'),
-          const SizedBox(height: 8),
-          _input(_lievelingsdingenCtrl, 'Bijv. tulpen, koffie, oude foto\'s'),
-          const SizedBox(height: 20),
-
-          _kop('🏠 Vroegere woonplaats (optioneel)'),
-          const SizedBox(height: 8),
-          _input(_woonplaatsCtrl, 'Bijv. Volendam'),
-          const SizedBox(height: 20),
-
-          _kop('🔔 Herkenningsgeluid'),
+          _sectieKop('👤 Naam en informatie',
+              'De naam staat op het home-scherm. Extra info helpt de kring '
+              'gerichte berichten te sturen.'),
+          const SizedBox(height: 12),
+          _input('👵', 'Naam van je dierbare',
+              'Bijv. Oma, Opa, Mam, Pap...',
+              _naamCtrl, false),
           const SizedBox(height: 6),
-          const Text('Klinkt elke keer als er iets nieuws aankomt.',
-              style: TextStyle(fontSize: 12, color: kTextMuted)),
+          const Text('Zo verschijnt zijn/haar naam in de app en bij berichten.',
+              style: TextStyle(fontSize: 12, color: kTextMuted, height: 1.4)),
           const SizedBox(height: 10),
+          _input('💕', 'Lievelingsdingen (optioneel)',
+              'Bijv. tulpen, koffie, oude foto\'s',
+              _lievelingsdingenCtrl, false),
+          const SizedBox(height: 10),
+          _input('🏠', 'Vroegere woonplaats (optioneel)',
+              'Bijv. Volendam', _woonplaatsCtrl, false),
+          const SizedBox(height: 10),
+          _input('🆘', 'Noodcontact naam (optioneel)',
+              'Bijv. Dochter Sara', _noodNaamCtrl, false),
+          const SizedBox(height: 10),
+          _input('☎️', 'Noodcontact telefoon (optioneel)',
+              '06...', _noodTelCtrl, false),
+          const SizedBox(height: 24),
+
+          _sectieKop('🔔 Herkenningsgeluid',
+              'Klinkt elke keer als er iets nieuws aankomt. Tik op een geluid '
+              'om het voor te beluisteren. Helpt je dierbare het te herkennen '
+              'als iets liefs.'),
+          const SizedBox(height: 12),
           ...kGeluiden.map((g) => Padding(
             padding: const EdgeInsets.only(bottom: 8),
             child: GestureDetector(
-              onTap: () => setState(() => _gekozenGeluid = g['id']!),
-              child: Container(
-                padding: const EdgeInsets.all(12),
+              onTap: () {
+                setState(() => _gekozenGeluid = g['id']!);
+                _speelGeluidPreview(g['asset']!);
+              },
+              child: Container(padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
                   color: _gekozenGeluid == g['id'] ? kPeach : kWhite,
                   borderRadius: BorderRadius.circular(12),
-                  border: Border.all(
-                      color: _gekozenGeluid == g['id'] ? kPeach : kPeachLight,
-                      width: 2)),
+                  border: Border.all(color: _gekozenGeluid == g['id']
+                      ? kPeach : kPeachLight, width: 2)),
                 child: Row(children: [
                   Text(g['emoji']!, style: const TextStyle(fontSize: 22)),
-                  const SizedBox(width: 12),
+                  const SizedBox(width: 10),
                   Expanded(child: Text(g['naam']!,
                       style: TextStyle(fontSize: 14,
                           fontWeight: FontWeight.w800,
                           color: _gekozenGeluid == g['id']
                               ? kWhite : kBrown))),
-                  if (_gekozenGeluid == g['id'])
-                    const Icon(Icons.check_rounded, color: kWhite),
+                  Icon(Icons.play_circle_outline_rounded,
+                      color: _gekozenGeluid == g['id'] ? kWhite : kPeach,
+                      size: 24),
                 ]),
               ),
             ),
           )),
           const SizedBox(height: 12),
 
-          Container(
-            padding: const EdgeInsets.all(12),
+          Container(padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(color: kPeachPale,
                 borderRadius: BorderRadius.circular(10)),
             child: const Text(
@@ -299,27 +328,34 @@ class _KringAanmakenSchermState extends State<KringAanmakenScherm> {
     );
   }
 
-  Widget _kop(String t) => Text(t,
-      style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w800,
-          color: kBrown));
+  /// 1-op-1 overgenomen uit setup_wizard._sectieKop (L501-508).
+  Widget _sectieKop(String titel, String uitleg) =>
+    Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Text(titel, style: const TextStyle(fontSize: 16,
+          fontWeight: FontWeight.w900, color: kBrown)),
+      const SizedBox(height: 4),
+      Text(uitleg, style: const TextStyle(fontSize: 12,
+          color: kTextMuted, height: 1.4)),
+    ]);
 
-  Widget _input(TextEditingController c, String hint) => TextField(
-        controller: c,
-        decoration: InputDecoration(
-          hintText: hint,
-          filled: true,
-          fillColor: kWhite,
-          border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: const BorderSide(color: kPeachLight, width: 1.5)),
-          enabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: const BorderSide(color: kPeachLight, width: 1.5)),
-          focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: const BorderSide(color: kPeach, width: 2)),
-          contentPadding: const EdgeInsets.symmetric(
-              horizontal: 14, vertical: 12),
-        ),
+  /// 1-op-1 overgenomen uit setup_wizard._input (L1007-1025).
+  Widget _input(String emoji, String label, String hint,
+      TextEditingController ctrl, bool verborgen) =>
+      Container(
+        decoration: BoxDecoration(color: kWhite,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: kPeachLight, width: 2)),
+        child: Row(children: [
+          Padding(padding: const EdgeInsets.only(left: 16),
+              child: Text(emoji, style: const TextStyle(fontSize: 20))),
+          Expanded(child: TextField(controller: ctrl, obscureText: verborgen,
+            style: const TextStyle(color: kBrown, fontWeight: FontWeight.w700),
+            decoration: InputDecoration(
+              hintText: hint, labelText: label,
+              labelStyle: const TextStyle(color: kTextMuted, fontSize: 12),
+              hintStyle: const TextStyle(color: kPeachLight),
+              contentPadding: const EdgeInsets.fromLTRB(12, 16, 16, 16),
+              border: InputBorder.none))),
+        ]),
       );
 }
