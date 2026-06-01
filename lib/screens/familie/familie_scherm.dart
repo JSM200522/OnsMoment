@@ -3580,6 +3580,10 @@ class _OntvangerInfoSchermState extends State<OntvangerInfoScherm> {
   String _gekozenGeluid = 'twinkel';
   final _geluidPreviewPlayer = AudioPlayer();
   bool _bezig = false;
+  // V9 2.4-a-4: kringId frozen op moment van _laad zodat een notifier-
+  // switch mid-edit niet per ongeluk een andere kring overschrijft.
+  String? _kringIdVoorOpslaan;
+  bool _kringDocBestaat = false;
 
   @override
   void initState() { super.initState(); _laad(); }
@@ -3590,21 +3594,55 @@ class _OntvangerInfoSchermState extends State<OntvangerInfoScherm> {
     super.dispose();
   }
 
+  /// Helper: kies kring-veld als niet-leeg, anders gebruikersdoc-veld,
+  /// anders fallback.
+  String _kies(Map<String, dynamic> kring, String kringVeld,
+      Map<String, dynamic> gebruiker, String gebruikersVeld,
+      {String fallback = ''}) {
+    final k = kring[kringVeld];
+    if (k is String && k.isNotEmpty) return k;
+    final g = gebruiker[gebruikersVeld];
+    if (g is String && g.isNotEmpty) return g;
+    return fallback;
+  }
+
   Future<void> _laad() async {
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null) return;
-    final doc = await FirebaseFirestore.instance
-        .collection('gebruikers').doc(uid).get();
+    final kringId = await DeviceModusService.huidigeKringIdMetFallback();
+
+    final futures = <Future<DocumentSnapshot>>[
+      FirebaseFirestore.instance.collection('gebruikers').doc(uid).get(),
+    ];
+    if (kringId != null && kringId.isNotEmpty) {
+      futures.add(FirebaseFirestore.instance
+          .collection('kringen').doc(kringId).get());
+    }
+    final docs = await Future.wait(futures);
     if (!mounted) return;
-    final d = doc.data() ?? {};
+
+    final gebruikersDoc = docs[0];
+    final kringDoc = docs.length > 1 ? docs[1] : null;
+    final g = (gebruikersDoc.data() as Map<String, dynamic>?) ?? {};
+    final kringExists = kringDoc?.exists == true;
+    final k = kringExists
+        ? ((kringDoc!.data() as Map<String, dynamic>?) ?? {})
+        : <String, dynamic>{};
+
     setState(() {
-      _naamCtrl.text = d['ontvangerNaam'] ?? '';
-      _lievelingsdingenCtrl.text = d['lievelingsdingen'] ?? '';
-      _woonplaatsCtrl.text = d['woonplaats'] ?? '';
-      _noodNaamCtrl.text = d['noodcontactNaam'] ?? '';
-      _noodTelCtrl.text = d['noodcontactTel'] ?? '';
-      _huidigeFotoUrl = d['ontvangerFoto'] ?? '';
-      _gekozenGeluid = d['herkenningsgeluid'] ?? 'twinkel';
+      _kringIdVoorOpslaan = kringId;
+      _kringDocBestaat = kringExists;
+      _naamCtrl.text = _kies(k, 'naam', g, 'ontvangerNaam');
+      _lievelingsdingenCtrl.text =
+          _kies(k, 'lievelingsdingen', g, 'lievelingsdingen');
+      _woonplaatsCtrl.text = _kies(k, 'woonplaats', g, 'woonplaats');
+      _noodNaamCtrl.text =
+          _kies(k, 'noodcontactNaam', g, 'noodcontactNaam');
+      _noodTelCtrl.text = _kies(k, 'noodcontactTel', g, 'noodcontactTel');
+      _huidigeFotoUrl = _kies(k, 'foto', g, 'ontvangerFoto');
+      _gekozenGeluid =
+          _kies(k, 'herkenningsgeluid', g, 'herkenningsgeluid',
+              fallback: 'twinkel');
     });
   }
 
@@ -3731,22 +3769,55 @@ class _OntvangerInfoSchermState extends State<OntvangerInfoScherm> {
     if (uid == null) return;
     setState(() => _bezig = true);
     try {
+      // V9 2.4-a-4: foto-pad per kring (apart bestand per kring-doc).
+      // V7/V8-fallback gebruikt nog steeds {uid}.jpg — oude gedrag intact.
+      final fotoNaam = (_kringDocBestaat && _kringIdVoorOpslaan != null)
+          ? _kringIdVoorOpslaan!
+          : uid;
       String fotoUrl = _huidigeFotoUrl;
       if (_fotoBytes != null) {
         final ref = FirebaseStorage.instance.ref()
-            .child('profielfotos').child('$uid.jpg');
-        await ref.putData(_fotoBytes!, SettableMetadata(contentType: 'image/jpeg'));
+            .child('profielfotos').child('$fotoNaam.jpg');
+        await ref.putData(_fotoBytes!,
+            SettableMetadata(contentType: 'image/jpeg'));
         fotoUrl = await ref.getDownloadURL();
       }
-      await FirebaseFirestore.instance.collection('gebruikers').doc(uid).update({
-        'ontvangerNaam': _naamCtrl.text.trim(),
-        'ontvangerFoto': fotoUrl,
-        'lievelingsdingen': _lievelingsdingenCtrl.text.trim(),
-        'woonplaats': _woonplaatsCtrl.text.trim(),
-        'noodcontactNaam': _noodNaamCtrl.text.trim(),
-        'noodcontactTel': _noodTelCtrl.text.trim(),
-        'herkenningsgeluid': _gekozenGeluid,
-      });
+
+      final batch = FirebaseFirestore.instance.batch();
+
+      // Legacy: blijf naar gebruikers/{uid} schrijven voor backwards-compat
+      // met oude leespaden die we mogelijk missen.
+      batch.update(
+        FirebaseFirestore.instance.collection('gebruikers').doc(uid), {
+          'ontvangerNaam': _naamCtrl.text.trim(),
+          'ontvangerFoto': fotoUrl,
+          'lievelingsdingen': _lievelingsdingenCtrl.text.trim(),
+          'woonplaats': _woonplaatsCtrl.text.trim(),
+          'noodcontactNaam': _noodNaamCtrl.text.trim(),
+          'noodcontactTel': _noodTelCtrl.text.trim(),
+          'herkenningsgeluid': _gekozenGeluid,
+        });
+
+      // V9: schrijf primair naar het ACTIEVE kring-doc. Gebruikt
+      // _kringIdVoorOpslaan (frozen bij _laad) zodat een tussentijdse
+      // notifier-switch niet de verkeerde kring overschrijft.
+      if (_kringDocBestaat && _kringIdVoorOpslaan != null) {
+        batch.update(
+          FirebaseFirestore.instance.collection('kringen')
+              .doc(_kringIdVoorOpslaan!), {
+            'naam': _naamCtrl.text.trim(),
+            'foto': fotoUrl,
+            'lievelingsdingen': _lievelingsdingenCtrl.text.trim(),
+            'woonplaats': _woonplaatsCtrl.text.trim(),
+            'noodcontactNaam': _noodNaamCtrl.text.trim(),
+            'noodcontactTel': _noodTelCtrl.text.trim(),
+            'herkenningsgeluid': _gekozenGeluid,
+            'laatsteUpdate': FieldValue.serverTimestamp(),
+          });
+      }
+
+      await batch.commit();
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
             content: Text('Opgeslagen ✓'), backgroundColor: kGreen));
