@@ -261,7 +261,7 @@ class _TabletSchermState extends State<TabletScherm>
   Future<void> _toonEenmaligPopup(
       String id, Map<String, dynamic> d) async {
     // Hergebruik 'dagelijks' popup-rendering + audio-flow: emoji + label,
-    // standaard bel of eigen audio. Identiek aan dagelijks moment.
+    // standaard geluid of eigen audio. Identiek aan dagelijks moment.
     final aangepasteAudio = d['aangepasteAudioUrl'] as String? ?? '';
     final synthetic = <String, dynamic>{
       'type': 'dagelijks',

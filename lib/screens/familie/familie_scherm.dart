@@ -281,7 +281,7 @@ class _FamilieSchermState extends State<FamilieScherm>
   Future<void> _toonEenmaligPopup(
       String id, Map<String, dynamic> d) async {
     // Hergebruik 'dagelijks' popup-rendering + audio-flow: emoji + label,
-    // standaard bel of eigen audio. Identiek aan dagelijks moment.
+    // standaard geluid of eigen audio. Identiek aan dagelijks moment.
     final aangepasteAudio = d['aangepasteAudioUrl'] as String? ?? '';
     final synthetic = <String, dynamic>{
       'type': 'dagelijks',
@@ -1647,7 +1647,7 @@ class _DagelijksItem extends StatelessWidget {
     final audioType = d['aangepasteAudioType'] as String? ?? '';
     final audioLabel = audioType == 'stem' ? '🎤 Eigen stem'
         : audioType == 'mp3' ? '🎵 Eigen MP3'
-        : '🔔 Standaard bel';
+        : '🔔 Standaard geluid';
     return Container(margin: const EdgeInsets.only(bottom: 8),
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(color: kWhite,
@@ -1691,7 +1691,7 @@ class _EenmaligItem extends StatelessWidget {
     final audioType = d['aangepasteAudioType'] as String? ?? '';
     final audioLabel = audioType == 'stem' ? '🎤 Eigen stem'
         : audioType == 'mp3' ? '🎵 Eigen MP3'
-        : '🔔 Standaard bel';
+        : '🔔 Standaard geluid';
     return Container(margin: const EdgeInsets.only(bottom: 8),
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(color: kWhite,
@@ -1949,7 +1949,7 @@ class _AudioInstelDialogState extends State<_AudioInstelDialog> {
     if (ok) {
       Navigator.pop(context);
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-        content: Text('✓ Terug naar standaard bel'),
+        content: Text('✓ Terug naar standaard geluid'),
         backgroundColor: kGreen));
     } else {
       _toonFout('Verwijderen mislukt — probeer opnieuw');
@@ -1966,7 +1966,7 @@ class _AudioInstelDialogState extends State<_AudioInstelDialog> {
     final heeftHuidig = (_huidigeUrl ?? '').isNotEmpty;
     final huidigLabel = _huidigType == 'stem' ? '🎤 Eigen stem'
         : _huidigType == 'mp3' ? '🎵 Eigen MP3'
-        : '🔔 Standaard bel';
+        : '🔔 Standaard geluid';
 
     return Dialog(backgroundColor: kCream,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
@@ -2103,7 +2103,7 @@ class _AudioInstelDialogState extends State<_AudioInstelDialog> {
                       borderRadius: BorderRadius.circular(12),
                       border: Border.all(color: kPeachLight, width: 1.5)),
                   child: const Center(child: Text(
-                      '🔔 Terug naar standaard bel',
+                      '🔔 Terug naar standaard geluid',
                       style: TextStyle(fontSize: 13,
                           fontWeight: FontWeight.w800, color: kBrown)))),
               ),
@@ -2764,7 +2764,7 @@ class MomentenBeherenScherm extends StatelessWidget {
                       d['aangepasteAudioType'] as String? ?? '';
                   final audioLabel = audioType == 'stem' ? '🎤 Eigen stem'
                       : audioType == 'mp3' ? '🎵 Eigen MP3'
-                      : '🔔 Standaard bel';
+                      : '🔔 Standaard geluid';
                   return GestureDetector(
                     onTap: () => _opnenDialog(context, uid, bestaand: doc),
                     child: Container(
@@ -2852,7 +2852,7 @@ class MomentenBeherenScherm extends StatelessWidget {
                       d['aangepasteAudioType'] as String? ?? '';
                   final audioLabel = audioType == 'stem' ? '🎤 Eigen stem'
                       : audioType == 'mp3' ? '🎵 Eigen MP3'
-                      : '🔔 Standaard bel';
+                      : '🔔 Standaard geluid';
                   return GestureDetector(
                     onTap: () =>
                         _opnenEenmaligDialog(context, uid, bestaand: doc),

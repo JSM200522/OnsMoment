@@ -36,7 +36,7 @@ class DagelijksAudioService {
     }
   }
 
-  /// Verwijdert audio uit Storage en reset de doc-velden naar standaard bel.
+  /// Verwijdert audio uit Storage en reset de doc-velden naar standaard geluid.
   static Future<bool> reset({
     required String kringId,
     required String momentId,
