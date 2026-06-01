@@ -2552,8 +2552,8 @@ class _InstellingenTabState extends State<InstellingenTab> {
           Navigator.push(context, MaterialPageRoute(
               builder: (c) => const OntvangerInfoScherm()));
         }),
-        _item('📥', 'Ontvangen berichten van $naam',
-            'Alle berichten die $naam heeft gestuurd', () {
+        _item('📥', 'Ontvangen berichten',
+            'Alle berichten die je hebt ontvangen', () {
           Navigator.push(context, MaterialPageRoute(
               builder: (c) => const OntvangenBerichtenScherm()));
         }),
@@ -4072,8 +4072,8 @@ class _OntvangenBerichtenSchermState extends State<OntvangenBerichtenScherm> {
       appBar: AppBar(
         backgroundColor: Colors.transparent, elevation: 0,
         iconTheme: const IconThemeData(color: kBrown),
-        title: Text('Ontvangen van $_toonNaam',
-            style: const TextStyle(color: kBrown,
+        title: const Text('Ontvangen berichten',
+            style: TextStyle(color: kBrown,
                 fontWeight: FontWeight.w900)),
       ),
       body: uid == null
@@ -4103,7 +4103,7 @@ class _OntvangenBerichtenSchermState extends State<OntvangenBerichtenScherm> {
                             return tb.compareTo(ta);
                           });
                         if (docs.isEmpty) {
-                          return _leeg('Nog geen berichten van $_toonNaam');
+                          return _leeg('Nog geen berichten ontvangen');
                         }
                         return ListView(
                           padding: const EdgeInsets.all(20),
