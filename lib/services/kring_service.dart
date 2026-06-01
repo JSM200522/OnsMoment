@@ -1,7 +1,9 @@
+import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 import '../data/kring.dart';
 import '../data/kring_membership.dart';
+import 'device_modus_service.dart';
 
 /// Service voor kring-aanmaken en kring-beheer (V9 fase 2).
 ///
@@ -78,6 +80,70 @@ class KringService {
         membership.toFirestoreMap(bijCreate: true));
 
     return id;
+  }
+
+  /// Levert een live stream van de actieve kring (V9 2.4-a-1).
+  ///
+  /// Vuurt opnieuw bij:
+  /// - elke wijziging van DeviceModusService.actieveKringNotifier
+  ///   (kring-switch via switcher of nieuwe-kring-aanmaak)
+  /// - elke wijziging van het kring-doc zelf in Firestore (bv. naam-edit
+  ///   via OntvangerInfoScherm)
+  ///
+  /// Emit Kring? — null als geen kring actief, kring-doc niet bestaat
+  /// (V7/V8 uid-fallback) of fromFirestore-parse faalt. Listeners
+  /// kunnen daarop een fallback-strategie toepassen (gebruikers/{uid}).
+  ///
+  /// Stream cancelt z'n interne Firestore-listener automatisch bij elke
+  /// notifier-wijziging en bij listener-cancel — geen leaks.
+  static Stream<Kring?> actieveKringStream() {
+    late StreamController<Kring?> controller;
+    StreamSubscription<DocumentSnapshot>? docSub;
+
+    Future<void> abonneer(String? kringId) async {
+      await docSub?.cancel();
+      docSub = null;
+      if (controller.isClosed) return;
+      if (kringId == null || kringId.isEmpty) {
+        controller.add(null);
+        return;
+      }
+      docSub = FirebaseFirestore.instance
+          .collection('kringen').doc(kringId)
+          .snapshots()
+          .listen((doc) {
+        if (controller.isClosed) return;
+        if (!doc.exists) {
+          controller.add(null);
+          return;
+        }
+        try {
+          controller.add(Kring.fromFirestore(doc));
+        } catch (e) {
+          debugPrint('🌀 [KringService] Kring.fromFirestore faalde: $e');
+          controller.add(null);
+        }
+      }, onError: (Object e) {
+        if (!controller.isClosed) controller.add(null);
+      });
+    }
+
+    void onNotifier() =>
+        abonneer(DeviceModusService.actieveKringNotifier.value);
+
+    controller = StreamController<Kring?>(
+      onListen: () {
+        DeviceModusService.actieveKringNotifier.addListener(onNotifier);
+        abonneer(DeviceModusService.actieveKringNotifier.value);
+      },
+      onCancel: () async {
+        DeviceModusService.actieveKringNotifier.removeListener(onNotifier);
+        await docSub?.cancel();
+        docSub = null;
+      },
+    );
+
+    return controller.stream;
   }
 
   /// Geeft alle kringen terug waar deze uid lid van is (eigenaar of gast).
