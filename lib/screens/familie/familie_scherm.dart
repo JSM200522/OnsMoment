@@ -19,6 +19,7 @@ import '../../widgets/pulserend_hart.dart';
 import '../../widgets/video_speler.dart';
 import '../../data/labels.dart';
 import 'kringleden_scherm.dart';
+import 'kring_aanmaken_scherm.dart';
 
 class FamilieScherm extends StatefulWidget {
   final bool alsOntvanger;
@@ -2361,6 +2362,15 @@ class _InstellingenTabState extends State<InstellingenTab> {
           Navigator.push(context, MaterialPageRoute(
               builder: (c) => const MomentenBeherenScherm()));
         }),
+        if (!widget.alsOntvanger) ...[
+          const SizedBox(height: 20),
+          _sectie('KRINGEN'),
+          _item('🪄', 'Nieuwe kring aanmaken',
+              'Voor een tweede dierbare bijvoorbeeld', () {
+            Navigator.push(context, MaterialPageRoute(
+                builder: (c) => const KringAanmakenScherm()));
+          }),
+        ],
         const SizedBox(height: 20),
         _sectie('ACCOUNT'),
         _item('👵', 'Ontvanger-profiel',
