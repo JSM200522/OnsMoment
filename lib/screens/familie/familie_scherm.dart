@@ -3601,9 +3601,24 @@ class _OntvangerInfoSchermState extends State<OntvangerInfoScherm> {
 
   /// Helper: kies kring-veld als niet-leeg, anders gebruikersdoc-veld,
   /// anders fallback.
+  ///
+  /// V9 2.4-a-5 fix: bij _kringDocBestaat == true wordt STRIKT uit het
+  /// kring-veld gelezen — geen fallback naar gebruikers/{uid}. Reden:
+  /// gebruikers/{uid} is een gedeelde bron en de dual-write overschrijft
+  /// 'm bij elke save in een willekeurige kring. Een null/lege waarde
+  /// in het kring-doc voor een optioneel veld is bewust leeg, niet
+  /// "kijk maar in gebruikers/{uid}". Lekkage tussen kringen voorkomen.
+  ///
+  /// Bij _kringDocBestaat == false (V7/V8 zonder kring-doc) blijft de
+  /// bestaande fallback-keten exact intact.
   String _kies(Map<String, dynamic> kring, String kringVeld,
       Map<String, dynamic> gebruiker, String gebruikersVeld,
       {String fallback = ''}) {
+    if (_kringDocBestaat) {
+      final k = kring[kringVeld];
+      if (k is String && k.isNotEmpty) return k;
+      return fallback;
+    }
     final k = kring[kringVeld];
     if (k is String && k.isNotEmpty) return k;
     final g = gebruiker[gebruikersVeld];
