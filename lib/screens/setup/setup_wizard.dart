@@ -10,6 +10,7 @@ import '../../services/device_modus_service.dart';
 import '../../services/kring_service.dart';
 import '../../theme/kleuren.dart';
 import '../../data/geluiden.dart';
+import '../../data/kring.dart';
 import 'accept_uitnodig_scherm.dart';
 
 class SetupWizard extends StatefulWidget {
@@ -37,6 +38,12 @@ class _SetupWizardState extends State<SetupWizard> {
   Uint8List? _profielFotoBytes;
   String _gekozenGeluid = 'twinkel';
   final _geluidPreviewPlayer = AudioPlayer();
+
+  /// V9 2.6-a-2: kringen waaruit de eigenaar mag kiezen bij ontvanger-
+  /// setup van een NIEUW apparaat. null = nog niet bezig met keuze (toon
+  /// account-velden of weergavemodus-stap). Niet-null = toon
+  /// _ontvangerKringKeuzeStap(). Alleen relevant bij _rol=='ontvanger'.
+  List<Kring>? _ontvangerKringen;
 
   final List<_DagelijksMoment> _momenten = [
     _DagelijksMoment('☀️', 'Goedemorgen', const TimeOfDay(hour: 8, minute: 30)),
@@ -74,7 +81,10 @@ class _SetupWizardState extends State<SetupWizard> {
             if (_stap > 0) _topBalk(),
             Expanded(child: SingleChildScrollView(child: _huidigeStap())),
             const SizedBox(height: 12),
-            if (_stap > 0 && !(_rol == 'ontvanger' && _stap == 2)) _knop(),
+            if (_stap > 0
+                && !(_rol == 'ontvanger' && _stap == 2)
+                && !(_rol == 'ontvanger' && _ontvangerKringen != null))
+              _knop(),
           ]),
         ),
       ),
@@ -116,6 +126,16 @@ class _SetupWizardState extends State<SetupWizard> {
   }
 
   void _terug() {
+    // V9 2.6-a-2: bij kring-keuze breekt 'terug' de keuze af. Loggen uit
+    // zodat ander account ingevuld kan worden — anders zit de eigenaar
+    // vast in z'n eigen sessie zonder kring-keuze gemaakt te hebben.
+    if (_rol == 'ontvanger' && _ontvangerKringen != null) {
+      FirebaseAuth.instance.signOut();
+      setState(() {
+        _ontvangerKringen = null;
+      });
+      return;
+    }
     if (_stap > 0) {
       setState(() {
         _stap--;
@@ -202,6 +222,9 @@ class _SetupWizardState extends State<SetupWizard> {
       if (_stap == 2 && _isInloggen) return _persoonsnaamStap();
     } else {
       // ontvanger
+      if (_stap == 1 && _ontvangerKringen != null) {
+        return _ontvangerKringKeuzeStap();
+      }
       if (_stap == 1) return _accountStap();
       if (_stap == 2) return _weergaveModusStap();
     }
@@ -836,12 +859,36 @@ class _SetupWizardState extends State<SetupWizard> {
         await DeviceModusService.zetWeergaveModus(wm);
         await DeviceModusService.zet(DeviceModusService.ONTVANGER);
       } else {
-        // V9 2.6-a-1: nieuw apparaat — gebruik nog steeds .limit(1) zodat
-        // _voltooiOntvanger straks een geldig kringId in het apparaat-doc
-        // kan schrijven. Multi-kring keuze-UI komt in 2.6-a-2.
-        await DeviceModusService.zetActieveKringVoorEigenaar(uid);
-        // Eerste keer op dit apparaat — keuze in stap 2
-        if (mounted) setState(() => _stap = 2);
+        // V9 2.6-a-2: nieuw apparaat — bepaal welke kring (welke
+        // dierbare) dit apparaat moet tonen. Alleen eigen kringen
+        // (eigenaarUid == uid): een gast-account kan geen ontvanger-
+        // tablet aan een andermans kring koppelen.
+        final alleKringen = await KringService.mijnKringen(uid);
+        final eigenKringen =
+            alleKringen.where((k) => k.eigenaarUid == uid).toList();
+        if (eigenKringen.isEmpty) {
+          // 0 kringen: typisch een gast die zich vergiste in de rol.
+          // Vriendelijke melding + uitloggen zodat de gebruiker niet
+          // ingelogd-zonder-modus vastloopt in RouterScherm.
+          _toonFout('Dit account heeft nog geen eigen kring. Maak '
+              'eerst een kring aan vanaf je eigen telefoon, en stel '
+              'daarna dit apparaat in.');
+          await FirebaseAuth.instance.signOut();
+          if (mounted) setState(() => _ontvangerKringen = null);
+        } else if (eigenKringen.length == 1) {
+          // 1 kring: automatisch, geen extra scherm. Identiek aan
+          // bestaand gedrag voor de meeste gebruikers.
+          await DeviceModusService
+              .zetActieveKring(eigenKringen.first.id);
+          if (mounted) setState(() => _stap = 2);
+        } else {
+          // 2+ kringen: laat de eigenaar kiezen vóór welke dierbare
+          // dit apparaat is. _kiesOntvangerKring zet de keuze en
+          // schuift door naar de weergavemodus-stap.
+          if (mounted) {
+            setState(() => _ontvangerKringen = eigenKringen);
+          }
+        }
       }
     } catch (e) {
       _toonFout('Inloggen mislukt. Klopt e-mail en wachtwoord?');
@@ -895,6 +942,76 @@ class _SetupWizardState extends State<SetupWizard> {
     } finally {
       if (mounted) setState(() => _bezig = false);
     }
+  }
+
+  // ───────────────────────────────────────────────────
+  // STAP 1b: KRING-KEUZE (route C — ontvanger, 2+ eigen kringen, V9 2.6-a-2)
+  // ───────────────────────────────────────────────────
+  Widget _ontvangerKringKeuzeStap() {
+    final kringen = _ontvangerKringen ?? const <Kring>[];
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      const Text('Voor welke dierbare is dit apparaat?',
+          style: TextStyle(fontSize: 24, fontWeight: FontWeight.w900,
+              color: kBrown, height: 1.2)),
+      const SizedBox(height: 8),
+      const Text('Je hebt meer dan één kring. Kies hieronder wie deze '
+          'tablet of telefoon gaat zien.',
+          style: TextStyle(fontSize: 14, color: kTextMuted, height: 1.4)),
+      const SizedBox(height: 20),
+      ...kringen.map((k) => Padding(
+        padding: const EdgeInsets.only(bottom: 12),
+        child: GestureDetector(
+          onTap: _bezig ? null : () => _kiesOntvangerKring(k),
+          child: Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(color: kWhite,
+                borderRadius: BorderRadius.circular(18),
+                border: Border.all(color: kPeachLight, width: 2),
+                boxShadow: [BoxShadow(color: kPeach.withOpacity(0.08),
+                    blurRadius: 12, offset: const Offset(0, 4))]),
+            child: Row(children: [
+              Container(width: 56, height: 56,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: kPeachPale,
+                  border: Border.all(color: kPeach, width: 2),
+                  image: (k.foto != null && k.foto!.isNotEmpty)
+                      ? DecorationImage(image: NetworkImage(k.foto!),
+                          fit: BoxFit.cover) : null),
+                child: (k.foto == null || k.foto!.isEmpty)
+                    ? const Center(child: Icon(Icons.person_rounded,
+                        color: kPeach, size: 28))
+                    : null),
+              const SizedBox(width: 14),
+              Expanded(child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text(k.naam.isNotEmpty ? k.naam : 'Onbenoemde kring',
+                      style: const TextStyle(fontSize: 16,
+                          fontWeight: FontWeight.w800, color: kBrown)),
+                  if (k.lievelingsdingen != null
+                      && k.lievelingsdingen!.isNotEmpty)
+                    Padding(padding: const EdgeInsets.only(top: 2),
+                      child: Text(k.lievelingsdingen!,
+                          style: const TextStyle(fontSize: 12,
+                              color: kTextMuted, height: 1.3),
+                          maxLines: 1, overflow: TextOverflow.ellipsis)),
+                ])),
+              const Icon(Icons.arrow_forward_ios_rounded,
+                  color: kPeach, size: 16),
+            ]),
+          ),
+        ),
+      )),
+    ]);
+  }
+
+  Future<void> _kiesOntvangerKring(Kring kring) async {
+    await DeviceModusService.zetActieveKring(kring.id);
+    if (!mounted) return;
+    setState(() {
+      _ontvangerKringen = null;
+      _stap = 2;
+    });
   }
 
   // ───────────────────────────────────────────────────
