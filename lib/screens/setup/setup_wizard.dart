@@ -285,16 +285,16 @@ class _SetupWizardState extends State<SetupWizard> {
         ]),
         SizedBox(height: 6),
         Text(
-          '1️⃣ Maak een account of word lid\n'
+          '1. Maak een account of word lid\n'
           '    Maak een nieuw account aan, of word lid van een '
           'bestaande kring met een uitnodig-code.\n\n'
-          '2️⃣ Vertel over je dierbare\n'
+          '2. Vertel over je dierbare\n'
           '    Wie krijgt de berichten? Vul een naam en foto in. '
           '(Doet de persoon die de kring aanmaakt.)\n\n'
-          '3️⃣ Stel het apparaat van je dierbare in\n'
+          '3. Stel het apparaat van je dierbare in\n'
           '    Pak de tablet of telefoon bij je dierbare, kies '
           '"Ontvanger" en log in met het account van de kring-eigenaar.\n\n'
-          '4️⃣ Stuur lieve momenten\n'
+          '4. Stuur lieve momenten\n'
           '    Foto\'s, stemberichten, video\'s en herinneringen '
           'vanaf je eigen telefoon.',
           style: TextStyle(fontSize: 12, color: kBrownLight, height: 1.6)),
