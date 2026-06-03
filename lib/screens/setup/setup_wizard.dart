@@ -275,29 +275,31 @@ class _SetupWizardState extends State<SetupWizard> {
       decoration: BoxDecoration(color: kPeachPale,
           borderRadius: BorderRadius.circular(12),
           border: Border.all(color: kPeachLight, width: 1.5)),
-      child: const Column(crossAxisAlignment: CrossAxisAlignment.start,
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-        Row(children: [
+        const Row(children: [
           Text('💡', style: TextStyle(fontSize: 16)),
           SizedBox(width: 8),
           Text('Hoe werkt het?', style: TextStyle(fontSize: 13,
               fontWeight: FontWeight.w800, color: kBrown)),
         ]),
-        SizedBox(height: 6),
-        Text(
-          '1. Maak een account of word lid\n'
-          '    Maak een nieuw account aan, of word lid van een '
-          'bestaande kring met een uitnodig-code.\n\n'
-          '2. Vertel over je dierbare\n'
-          '    Wie krijgt de berichten? Vul een naam en foto in. '
-          '(Doet de persoon die de kring aanmaakt.)\n\n'
-          '3. Stel het apparaat van je dierbare in\n'
-          '    Pak de tablet of telefoon bij je dierbare, kies '
-          '"Ontvanger" en log in met het account van de kring-eigenaar.\n\n'
-          '4. Stuur lieve momenten\n'
-          '    Foto\'s, stemberichten, video\'s en herinneringen '
-          'vanaf je eigen telefoon.',
-          style: TextStyle(fontSize: 12, color: kBrownLight, height: 1.6)),
+        const SizedBox(height: 10),
+        _hoeWerktStap(1, 'Maak een account of word lid',
+            'Maak een nieuw account aan, of word lid van een '
+            'bestaande kring met een uitnodig-code.'),
+        const SizedBox(height: 14),
+        _hoeWerktStap(2, 'Vertel over je dierbare',
+            'Wie krijgt de berichten? Vul een naam en foto in. '
+            '(Doet de persoon die de kring aanmaakt.)'),
+        const SizedBox(height: 14),
+        _hoeWerktStap(3, 'Stel het apparaat van je dierbare in',
+            'Pak de tablet of telefoon bij je dierbare, kies '
+            '"Ontvanger" en log in met het account van de '
+            'kring-eigenaar.'),
+        const SizedBox(height: 14),
+        _hoeWerktStap(4, 'Stuur lieve momenten',
+            'Foto\'s, stemberichten, video\'s en herinneringen '
+            'vanaf je eigen telefoon.'),
       ])),
     const SizedBox(height: 20),
     const Text('Hoe gebruik je dit apparaat?',
@@ -346,6 +348,30 @@ class _SetupWizardState extends State<SetupWizard> {
             color: kPeach, size: 16),
       ]),
     ));
+
+  /// Eén stap-rij in het 'Hoe werkt het?'-balkje: rond cijfer-bolletje
+  /// links + vette titel en zachte uitleg rechts. Helper i.p.v. één
+  /// tekstblok zodat titel en uitleg visueel uit elkaar liggen en de
+  /// kapotte keycap-emoji's (1️⃣ …) niet meer nodig zijn.
+  Widget _hoeWerktStap(int nummer, String titel, String uitleg) =>
+    Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Container(width: 26, height: 26,
+        decoration: const BoxDecoration(
+            shape: BoxShape.circle, color: kPeach),
+        child: Center(child: Text('$nummer',
+            style: const TextStyle(fontSize: 13,
+                fontWeight: FontWeight.w900, color: kWhite))),
+      ),
+      const SizedBox(width: 12),
+      Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(titel, style: const TextStyle(fontSize: 13,
+              fontWeight: FontWeight.w800, color: kBrown)),
+          const SizedBox(height: 2),
+          Text(uitleg, style: const TextStyle(fontSize: 12,
+              color: kBrownLight, height: 1.4)),
+        ])),
+    ]);
 
   // ───────────────────────────────────────────────────
   // STAP 1: ACCOUNT (registreren of inloggen)
