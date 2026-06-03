@@ -27,12 +27,18 @@ class ApparaatService {
 
   /// Schrijft of bijwerkt een apparaat-doc met set+merge.
   /// Faalt silent bij Firestore-errors (bv. ontbrekende rules).
+  ///
+  /// [kringId] (V9 2.6-a-1): bij ontvanger-apparaten geven we de gekozen
+  /// kring mee zodat een eigenaar met meerdere kringen na herstart of
+  /// cache-wipe de juiste kring terugkrijgt — i.p.v. .limit(1)-gok. Voor
+  /// familie-apparaten blijft dit null (geen wijziging in familie-flows).
   static Future<void> registreer({
     required String familieUid,
     required String apparaatId,
     required String persoonsNaam,
     required String modus,
     String? weergaveModus,
+    String? kringId,
   }) async {
     try {
       final label = await detecteerLabel();
@@ -44,6 +50,7 @@ class ApparaatService {
         'laatstActief': FieldValue.serverTimestamp(),
       };
       if (weergaveModus != null) data['weergaveModus'] = weergaveModus;
+      if (kringId != null && kringId.isNotEmpty) data['kringId'] = kringId;
       await FirebaseFirestore.instance
           .collection('gebruikers').doc(familieUid)
           .collection('apparaten').doc(apparaatId)

@@ -813,12 +813,21 @@ class _SetupWizardState extends State<SetupWizard> {
       await FirebaseAuth.instance.signInWithEmailAndPassword(
           email: _emailCtrl.text.trim(), password: _wachtwoordCtrl.text);
       final uid = FirebaseAuth.instance.currentUser!.uid;
-      await DeviceModusService.zetActieveKringVoorEigenaar(uid);
       final apparaatId = await DeviceModusService.krijgApparaatId();
       final doc = await FirebaseFirestore.instance
           .collection('gebruikers').doc(uid)
           .collection('apparaten').doc(apparaatId).get();
       if (doc.exists) {
+        // V9 2.6-a-1: bekend apparaat — als kringId in doc staat (gezet
+        // door _voltooiOntvanger op een vorige setup), gebruik die.
+        // Anders fallback naar .limit(1)-eigenaarskring (legacy
+        // gedrag, geen regressie).
+        final kringIdInDoc = doc.data()?['kringId'] as String?;
+        if (kringIdInDoc != null && kringIdInDoc.isNotEmpty) {
+          await DeviceModusService.zetActieveKring(kringIdInDoc);
+        } else {
+          await DeviceModusService.zetActieveKringVoorEigenaar(uid);
+        }
         // Bekend apparaat — lees opgeslagen weergaveModus, geen keuze nodig
         final wm = (doc.data()?['weergaveModus'] as String?)
                    ?? DeviceModusService.VERGRENDELD;
@@ -827,6 +836,10 @@ class _SetupWizardState extends State<SetupWizard> {
         await DeviceModusService.zetWeergaveModus(wm);
         await DeviceModusService.zet(DeviceModusService.ONTVANGER);
       } else {
+        // V9 2.6-a-1: nieuw apparaat — gebruik nog steeds .limit(1) zodat
+        // _voltooiOntvanger straks een geldig kringId in het apparaat-doc
+        // kan schrijven. Multi-kring keuze-UI komt in 2.6-a-2.
+        await DeviceModusService.zetActieveKringVoorEigenaar(uid);
         // Eerste keer op dit apparaat — keuze in stap 2
         if (mounted) setState(() => _stap = 2);
       }
@@ -981,6 +994,12 @@ class _SetupWizardState extends State<SetupWizard> {
     try {
       final uid = FirebaseAuth.instance.currentUser!.uid;
       final apparaatId = await DeviceModusService.krijgApparaatId();
+      // V9 2.6-a-1: actieve kring uit SharedPreferences (gezet door
+      // _ontvangerInloggenActie via zetActieveKringVoorEigenaar) meegeven
+      // zodat het apparaat-doc 'm vastlegt. Bij multi-kring is dit nu
+      // nog de eerstgevonden kring; vanaf 2.6-a-2 wordt dit de keuze
+      // van de eigenaar.
+      final kringId = await DeviceModusService.krijgActieveKring();
       // Voor ontvanger-apparaat gebruiken we ontvangerNaam als persoonsnaam.
       String naam = 'Ontvanger';
       try {
@@ -1003,6 +1022,7 @@ class _SetupWizardState extends State<SetupWizard> {
         persoonsNaam: naam,
         modus: 'ontvanger',
         weergaveModus: weergaveModus,
+        kringId: kringId,
       );
       await DeviceModusService.zetWeergaveModus(weergaveModus);
       await DeviceModusService.zet(DeviceModusService.ONTVANGER);
