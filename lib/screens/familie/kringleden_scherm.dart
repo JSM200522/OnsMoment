@@ -41,7 +41,23 @@ class _KringledenSchermState extends State<KringledenScherm> {
       body: uid == null ? const SizedBox()
         : Column(children: [
         Padding(padding: const EdgeInsets.fromLTRB(20, 16, 20, 4),
-          child: _uitnodigKnop()),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: kPeachPale,
+                  borderRadius: BorderRadius.circular(12)),
+                child: const Text(
+                  '💡 Deel de link of code met een familielid. Zij openen '
+                  'de app, tikken op "Heb je een uitnodig-code?" en doen '
+                  'meteen mee.',
+                  style: TextStyle(fontSize: 12,
+                      color: kBrownLight, height: 1.4)),
+              ),
+              const SizedBox(height: 12),
+              _uitnodigKnop(),
+            ])),
         Expanded(child: StreamBuilder<QuerySnapshot>(
           stream: FirebaseFirestore.instance.collection('gebruikers')
               .doc(uid).collection('apparaten').snapshots(),

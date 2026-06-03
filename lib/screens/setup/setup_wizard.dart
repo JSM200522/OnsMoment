@@ -283,14 +283,14 @@ class _SetupWizardState extends State<SetupWizard> {
     _rolKaart('👵 Ontvanger',
       'Dit apparaat is voor mijn dierbare — om berichten te zien en horen',
       () => _kiesRol('ontvanger')),
-    const SizedBox(height: 24),
+    const SizedBox(height: 28),
     Center(child: GestureDetector(
       onTap: () => Navigator.push(context, MaterialPageRoute(
           builder: (_) => const AcceptUitnodigScherm())),
       child: const Padding(
-        padding: EdgeInsets.symmetric(vertical: 8),
+        padding: EdgeInsets.symmetric(vertical: 12),
         child: Text('Heb je een uitnodig-code? Tik hier',
-            style: TextStyle(fontSize: 13,
+            style: TextStyle(fontSize: 15,
                 fontWeight: FontWeight.w800, color: kPeach,
                 decoration: TextDecoration.underline)),
       ),
