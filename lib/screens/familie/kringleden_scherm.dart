@@ -49,9 +49,9 @@ class _KringledenSchermState extends State<KringledenScherm> {
                   color: kPeachPale,
                   borderRadius: BorderRadius.circular(12)),
                 child: const Text(
-                  '💡 Deel de link of code met een familielid. Zij openen '
-                  'de app, tikken op "Heb je een uitnodig-code?" en doen '
-                  'meteen mee.',
+                  '💡 Deel de code met een familielid. Zij openen de app, '
+                  'tikken op "Heb je een uitnodig-code?" en doen meteen '
+                  'mee.',
                   style: TextStyle(fontSize: 12,
                       color: kBrownLight, height: 1.4)),
               ),
@@ -265,9 +265,6 @@ class _UitnodigLinkDialog extends StatelessWidget {
   final Uitnodiging uitnodiging;
   const _UitnodigLinkDialog({required this.uitnodiging});
 
-  String get _link =>
-      'https://jsm200522.github.io/OnsMoment/?uitnodiging=${uitnodiging.token}';
-
   Future<void> _kopieer(BuildContext context, String tekst,
       String bevestiging) async {
     await Clipboard.setData(ClipboardData(text: tekst));
@@ -319,40 +316,8 @@ class _UitnodigLinkDialog extends StatelessWidget {
             ),
             const SizedBox(height: 18),
 
-            // LINK
-            const Text('LINK',
-                style: TextStyle(fontSize: 11, color: kTextMuted,
-                    fontWeight: FontWeight.w800, letterSpacing: 0.8)),
-            const SizedBox(height: 6),
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(color: kPeachPale,
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: kPeachLight, width: 1.5)),
-              child: SelectableText(_link,
-                  style: const TextStyle(fontSize: 12,
-                      color: kBrown, fontFamily: 'monospace')),
-            ),
-            const SizedBox(height: 8),
-            SizedBox(width: double.infinity,
-              child: ElevatedButton.icon(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: kPeach,
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12)),
-                  padding: const EdgeInsets.symmetric(vertical: 12)),
-                onPressed: () => _kopieer(context, _link, 'Link gekopieerd'),
-                icon: const Icon(Icons.copy_rounded,
-                    color: kWhite, size: 18),
-                label: const Text('Kopieer link',
-                    style: TextStyle(color: kWhite,
-                        fontWeight: FontWeight.w800))),
-            ),
-            const SizedBox(height: 20),
-
             // CODE
-            const Text('OF CODE',
+            const Text('CODE',
                 style: TextStyle(fontSize: 11, color: kTextMuted,
                     fontWeight: FontWeight.w800, letterSpacing: 0.8)),
             const SizedBox(height: 6),
