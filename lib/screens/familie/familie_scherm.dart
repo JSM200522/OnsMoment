@@ -3881,11 +3881,13 @@ class _HulpDialog extends StatelessWidget {
         "Deze modus past bij iemand die nog zelf met het apparaat omgaat."),
     // ── Voor families ──
     _FAQ('Voor families', "Hoe voeg ik iemand toe aan de kring?",
-        "Open Instellingen en kies 'Kringleden beheren'. Je ziet daar wie er al "
-        "in de kring zit. Om een familielid, vriend of mantelzorger toe te "
-        "voegen, deel je het e-mailadres en wachtwoord van de kring met "
-        "diegene. Een kring telt maximaal acht of twintig kringleden, "
-        "afhankelijk van je abonnement."),
+        "Open Instellingen en kies 'Kringleden beheren'. Tik op 'Familie "
+        "uitnodigen' — je krijgt dan een uitnodig-code. Deel die code met "
+        "een familielid, vriend of mantelzorger. Diegene opent de app, "
+        "tikt op 'Heb je een uitnodig-code?' en maakt een eigen account "
+        "aan (of logt in met een bestaand account) om mee te doen. Een "
+        "kring telt maximaal acht of twintig kringleden, afhankelijk van "
+        "je abonnement."),
     _FAQ('Voor families', "Hoe stuur ik een bericht?",
         "Open het tabblad 'Sturen'. Kies wat je wilt versturen: een foto, een "
         "stem-bericht, een liedje of een tekst. Vul in voor wie het bedoeld is "
@@ -3907,14 +3909,17 @@ class _HulpDialog extends StatelessWidget {
         "voor losse momenten en voor terugkerende herinneringen."),
     _FAQ('Voor families', "Hoe wijzig ik mijn wachtwoord?",
         "Open Instellingen en kies 'Wachtwoord wijzigen'. Vul je huidige "
-        "wachtwoord in en kies een nieuw wachtwoord. Vergeet niet om het nieuwe "
-        "wachtwoord ook door te geven aan de andere kringleden — zij gebruiken "
-        "hetzelfde wachtwoord om in te loggen."),
+        "wachtwoord in en kies een nieuw wachtwoord. Iedereen in de kring "
+        "heeft een eigen wachtwoord, dus dit verandert alleen dat van "
+        "jou. Heb je het apparaat van je dierbare met jouw account "
+        "ingesteld? Dan moet je dat apparaat na een wachtwoordwijziging "
+        "opnieuw inloggen."),
     _FAQ('Voor families', "Kan ik iemand uit de kring verwijderen?",
-        "Ja. Ga naar Instellingen → Kringleden beheren en tik op de persoon die "
-        "je wilt verwijderen. De accountmaker kan iedereen verwijderen; andere "
-        "kringleden kunnen alleen zichzelf verwijderen. Het apparaat van de "
-        "verwijderde persoon logt automatisch uit."),
+        "Ja. Ga naar Instellingen → Kringleden beheren en tik op de "
+        "persoon die je wilt verwijderen. De eigenaar van de kring kan "
+        "iedereen verwijderen; andere kringleden kunnen alleen zichzelf "
+        "verwijderen. Het apparaat van de verwijderde persoon verliest "
+        "de toegang tot deze kring."),
     _FAQ('Voor families', "Wat gebeurt er als ik het apparaat weghaal?",
         "Als het apparaat van je dierbare uit staat of geen internet heeft, "
         "blijven verstuurde berichten klaarstaan. Zodra het apparaat weer "
@@ -3922,11 +3927,13 @@ class _HulpDialog extends StatelessWidget {
         "niets verloren."),
     // ── Abonnement ──
     _FAQ('Abonnement', "Wat kost Ons Moment?",
-        "Er zijn twee abonnementen: Klein (tot 8 kringleden) en Groot (tot 20 "
-        "kringleden). Je kunt kiezen voor maandelijks betalen of een "
-        "jaarabonnement met korting. Alle abonnementen starten met een gratis "
-        "proefperiode van 5 dagen — je hoeft geen betaalgegevens op te geven "
-        "om te beginnen."),
+        "Twee abonnementen:\n"
+        "- Familie Klein — 1 kring, 8 kringleden. €4,99 p/m of €35,99 "
+        "per jaar.\n"
+        "- Familie Groot — 3 kringen, 20 kringleden. €7,99 p/m of "
+        "€57,99 per jaar.\n"
+        "Met een jaarabonnement bespaar je zo'n 40%. Je begint altijd "
+        "met 5 dagen gratis — geen betaalgegevens nodig."),
     _FAQ('Abonnement', "Wie telt mee in mijn abonnement?",
         "Iedereen in de kring die berichten kan sturen telt mee — familieleden, "
         "vrienden en mantelzorgers. Je dierbare zelf telt niet mee."),

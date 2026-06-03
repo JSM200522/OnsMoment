@@ -180,18 +180,18 @@ class _SetupWizardState extends State<SetupWizard> {
           Text('⚠️', style: TextStyle(fontSize: 22)),
           SizedBox(width: 10),
           Expanded(child: Text(
-            'Is het kringaccount al aangemaakt?',
+            'Is de kring al aangemaakt?',
             style: TextStyle(fontSize: 18,
                 fontWeight: FontWeight.w900, color: kBrown))),
         ]),
         content: const Text(
-          'Dit apparaat wordt zo ingesteld voor je dierbare — het '
-          'ontvangt straks de berichten, foto\'s en stemberichten van '
-          'de kring.\n\n'
-          'Daarvoor moet eerst iemand van de kring een kringaccount '
-          'hebben aangemaakt op hun eigen telefoon. Dit apparaat logt '
-          'straks in met diezelfde gegevens.\n\n'
-          'Is het kringaccount al aangemaakt?',
+          'Dit apparaat wordt ingesteld voor je dierbare — het toont '
+          'straks de berichten, foto\'s en stemberichten van de '
+          'kring.\n\n'
+          'Daarvoor moet de eigenaar van de kring (degene die de '
+          'kring heeft aangemaakt) eerst een account hebben op de '
+          'eigen telefoon. Dit apparaat logt in met dat account.\n\n'
+          'Is de kring al aangemaakt?',
           style: TextStyle(fontSize: 14, color: kBrownLight, height: 1.5)),
         actions: [
           TextButton(
@@ -264,8 +264,9 @@ class _SetupWizardState extends State<SetupWizard> {
         ]),
         SizedBox(height: 8),
         Text(
-          'Maak EERST je account aan op je eigen telefoon.\n\n'
-          'Stel pas DAARNA het ontvanger-apparaat in.',
+          'Begin op je eigen telefoon. Maak eerst een account aan '
+          '(of word lid met een uitnodig-code). Het apparaat van je '
+          'dierbare stel je daarna in.',
           style: TextStyle(fontSize: 13,
               fontWeight: FontWeight.w700, color: kWhite, height: 1.4)),
       ])),
@@ -284,14 +285,18 @@ class _SetupWizardState extends State<SetupWizard> {
         ]),
         SizedBox(height: 6),
         Text(
-          '1️⃣ Maak een account aan op je eigen telefoon\n'
-          '    Vul je gegevens in en kies je rol.\n\n'
-          '2️⃣ Voeg een ontvanger toe\n'
-          '    Vertel ons over de persoon die berichten krijgt.\n\n'
-          '3️⃣ Stel het ontvanger-apparaat in\n'
-          '    Een aparte tablet of telefoon bij de ontvanger toont alles wat je stuurt.\n\n'
+          '1️⃣ Maak een account of word lid\n'
+          '    Maak een nieuw account aan, of word lid van een '
+          'bestaande kring met een uitnodig-code.\n\n'
+          '2️⃣ Vertel over je dierbare\n'
+          '    Wie krijgt de berichten? Vul een naam en foto in. '
+          '(Doet de persoon die de kring aanmaakt.)\n\n'
+          '3️⃣ Stel het apparaat van je dierbare in\n'
+          '    Pak de tablet of telefoon bij je dierbare, kies '
+          '"Ontvanger" en log in met het account van de kring-eigenaar.\n\n'
           '4️⃣ Stuur lieve momenten\n'
-          '    Foto\'s, stemberichten, video\'s en herinneringen vanaf je telefoon.',
+          '    Foto\'s, stemberichten, video\'s en herinneringen '
+          'vanaf je eigen telefoon.',
           style: TextStyle(fontSize: 12, color: kBrownLight, height: 1.6)),
       ])),
     const SizedBox(height: 20),
@@ -349,9 +354,11 @@ class _SetupWizardState extends State<SetupWizard> {
     final titel = _rol == 'ontvanger' ? 'Log in op dit apparaat'
         : (_isInloggen ? 'Welkom terug 👋' : 'Maak je account aan');
     final uitleg = _rol == 'ontvanger'
-        ? 'Vraag iemand uit de kring om de inloggegevens van het gezamenlijke account.'
+        ? 'Log in met het account van de eigenaar van de kring '
+            '(degene die de kring heeft aangemaakt).'
         : (_isInloggen ? 'Log in met je e-mail en wachtwoord'
-            : 'Eerst je gezamenlijke account. Daarna stel je samen met ons in voor wie je dit doet.');
+            : 'Maak je eigen account aan. Daarna stel je samen met ons '
+              'in voor wie je dit doet.');
 
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Text(titel, style: const TextStyle(fontSize: 28,
