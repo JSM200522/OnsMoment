@@ -72,6 +72,28 @@ class UitnodigingService {
         }
       }
 
+      // V9 2.5-a-3-a-fix: bouw preview-velden voor het nieuwe token-doc
+      // zodat valideer() ZONDER auth kan werken (preview vóór inlog).
+      // Echte limiet-check gebeurt in accepteer() onder strikte rules.
+      final kring = Kring.fromFirestore(kringSnap);
+
+      String? uitnodigerNaam;
+      try {
+        final gebruikerSnap = await FirebaseFirestore.instance
+            .collection('gebruikers').doc(uid).get();
+        final naam = gebruikerSnap.data()?['familieNaam'] as String?;
+        if (naam != null && naam.isNotEmpty) uitnodigerNaam = naam;
+      } catch (_) {}
+
+      int huidigeLeden = 0;
+      int maxLeden = 8;
+      try {
+        final ledenCount = await kringRef.collection('leden').count().get();
+        huidigeLeden = ledenCount.count ?? 0;
+        final tier = await ApparaatService.krijgTier(kring.eigenaarUid);
+        maxLeden = ApparaatService.limietPerTier(tier);
+      } catch (_) {}
+
       // Genereer nieuw token via random doc-id.
       final nieuwTokenRef = FirebaseFirestore.instance
           .collection('uitnodig_tokens').doc();
@@ -82,6 +104,13 @@ class UitnodigingService {
         'kringId': kringId,
         'aangemaaktDoor': uid,
         'aangemaaktOp': FieldValue.serverTimestamp(),
+        // V9 2.5-a-3-a-fix: preview-velden voor publieke valideer()
+        // (read-rule op uitnodig_tokens staat sinds deze fix op publiek).
+        'kringNaam': kring.naam,
+        'kringFoto': kring.foto,
+        'uitnodigerNaam': uitnodigerNaam,
+        'huidigeLedenCache': huidigeLeden,
+        'maxLedenCache': maxLeden,
       });
       batch.update(kringRef, {
         'uitnodigToken': nieuwToken,
@@ -99,6 +128,16 @@ class UitnodigingService {
   /// een Uitnodiging-object met preview-velden + ledental + maxLeden,
   /// of een foutreden.
   ///
+  /// V9 2.5-a-3-a-fix: alle preview-info komt UIT HET TOKEN-DOC ZELF
+  /// (gecached door zorgVoorToken bij creatie). Eén doc-read, werkt
+  /// zonder auth — preview vóór inlog mogelijk. Echte limiet-check
+  /// gebeurt in accepteer() onder strikte rules.
+  ///
+  /// Oude tokens zonder preview-velden (van vóór 2.5-a-3-a-fix) geven
+  /// leeg-preview terug. Geen migratie-code — bij eerste hergebruik
+  /// van Uitnodig-link-knop wordt het token-doc niet aangeraakt
+  /// (immutable update-rule), dus leeg-preview blijft voor oude tokens.
+  ///
   /// Doet zelf geen membership-write — caller roept [accepteer] aan.
   static Future<({Uitnodiging? uitnodiging, UitnodigingFout? fout})>
       valideer(String tokenInput) async {
@@ -112,49 +151,21 @@ class UitnodigingService {
       if (!tokenDoc.exists) {
         return (uitnodiging: null, fout: UitnodigingFout.notFound);
       }
-      final tokenData = tokenDoc.data() ?? const <String, dynamic>{};
-      final kringId = tokenData['kringId'] as String? ?? '';
-      final aangemaaktDoor = tokenData['aangemaaktDoor'] as String? ?? '';
+      final data = tokenDoc.data() ?? const <String, dynamic>{};
+      final kringId = data['kringId'] as String? ?? '';
       if (kringId.isEmpty) {
         return (uitnodiging: null, fout: UitnodigingFout.notFound);
       }
-
-      final kringSnap = await FirebaseFirestore.instance
-          .collection('kringen').doc(kringId).get();
-      if (!kringSnap.exists) {
-        return (uitnodiging: null, fout: UitnodigingFout.kringNotFound);
-      }
-      final kring = Kring.fromFirestore(kringSnap);
-
-      // Uitnodiger-naam (best-effort — null bij ontbrekend doc).
-      String? uitnodigerNaam;
-      if (aangemaaktDoor.isNotEmpty) {
-        try {
-          final gebruikerSnap = await FirebaseFirestore.instance
-              .collection('gebruikers').doc(aangemaaktDoor).get();
-          final naam = gebruikerSnap.data()?['familieNaam'] as String?;
-          if (naam != null && naam.isNotEmpty) uitnodigerNaam = naam;
-        } catch (_) {}
-      }
-
-      // Tellingen + tier-limiet.
-      final ledenCount = await FirebaseFirestore.instance
-          .collection('kringen').doc(kringId)
-          .collection('leden').count().get();
-      final huidigeLeden = ledenCount.count ?? 0;
-      final tier = await ApparaatService.krijgTier(kring.eigenaarUid);
-      final maxLeden = ApparaatService.limietPerTier(tier);
-
       return (
         uitnodiging: Uitnodiging(
           token: token,
           displayToken: formatTokenVoorDisplay(token),
           kringId: kringId,
-          kringNaam: kring.naam,
-          kringFoto: kring.foto,
-          uitnodigerNaam: uitnodigerNaam,
-          huidigeLeden: huidigeLeden,
-          maxLeden: maxLeden,
+          kringNaam: data['kringNaam'] as String? ?? '',
+          kringFoto: data['kringFoto'] as String?,
+          uitnodigerNaam: data['uitnodigerNaam'] as String?,
+          huidigeLeden: data['huidigeLedenCache'] as int? ?? 0,
+          maxLeden: data['maxLedenCache'] as int? ?? 8,
         ),
         fout: null,
       );
