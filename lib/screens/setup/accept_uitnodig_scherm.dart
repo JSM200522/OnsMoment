@@ -5,6 +5,7 @@ import '../../services/apparaat_service.dart';
 import '../../services/device_modus_service.dart';
 import '../../services/uitnodiging_service.dart';
 import '../../theme/kleuren.dart';
+import 'gast_signup_scherm.dart';
 
 /// Accept-flow voor een uitnodig-link of -code (V9 2.5-a-3-a).
 ///
@@ -172,13 +173,6 @@ class _AcceptUitnodigSchermState extends State<AcceptUitnodigScherm> {
       content: Text(m),
       backgroundColor: kRood,
       duration: const Duration(seconds: 5)));
-  }
-
-  void _toonInfo(String m) {
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      content: Text(m),
-      backgroundColor: kPeach,
-      duration: const Duration(seconds: 4)));
   }
 
   @override
@@ -374,8 +368,7 @@ class _AcceptUitnodigSchermState extends State<AcceptUitnodigScherm> {
     ),
     const SizedBox(height: 12),
     GestureDetector(
-      onTap: () => _toonInfo(
-          'Nieuw account aanmaken: komt eraan in de volgende update.'),
+      onTap: () => _naarGastSignup(),
       child: Container(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
@@ -388,6 +381,25 @@ class _AcceptUitnodigSchermState extends State<AcceptUitnodigScherm> {
       ),
     ),
   ];
+
+  Future<void> _naarGastSignup() async {
+    final u = _uitnodiging;
+    if (u == null) return;
+    final result = await Navigator.of(context).push<String?>(
+      MaterialPageRoute(builder: (_) => GastSignupScherm(uitnodiging: u)),
+    );
+    if (!mounted) return;
+    // Bij accept-fout NA succesvolle createUser (Optie B) komt de gast
+    // terug met 'reset' — laat 'm meteen een andere code proberen.
+    if (result == 'reset') {
+      setState(() {
+        _uitnodiging = null;
+        _validatieFout = null;
+        _toonInlogVelden = false;
+        _tokenCtrl.clear();
+      });
+    }
+  }
 
   // ─── 3. Inlog-velden ────────────────────────────────────────────────
 
