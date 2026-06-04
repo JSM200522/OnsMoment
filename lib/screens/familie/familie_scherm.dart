@@ -1570,8 +1570,14 @@ class _StuurTabState extends State<StuurTab> {
 
   Widget _adresKeuze() {
     final authUid = FirebaseAuth.instance.currentUser?.uid;
+    // V9 2.10-a-2-fix3: self-uitsluiting alleen aan de FAMILIE-kant.
+    // Aan de ontvanger-kant draait de tablet met het eigenaar-account
+    // (auth.uid == eigenaar.uid). Self-uitsluiten zou dan onterecht
+    // de eigenaar (= een familielid dat juist bereikbaar moet zijn)
+    // uit de kiezer weglaten. Het bestaande van==_mijnApparaatId-
+    // filter aan ontvankant voorkomt self-echo.
     final andereLeden = _leden
-        .where((m) => m.userUid != authUid)
+        .where((m) => widget.alsOntvanger || m.userUid != authUid)
         .toList();
     // V9 2.10-a-2-fix2: 'Voor je dierbare'-entry heeft geen betekenis
     // aan de ontvanger-kant — de dierbare zit dáár al; sturen 'naar
