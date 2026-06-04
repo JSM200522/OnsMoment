@@ -320,15 +320,34 @@ class _FamilieSchermState extends State<FamilieScherm>
     final voor24uur = nu.subtract(const Duration(hours: 24));
     for (final doc in snap.docs) {
       final d = doc.data() as Map<String, dynamic>;
-      // Niet voor mij bedoeld. Nieuwe sends gebruiken aanApparaatIds (lijst);
-      // oude docs het enkele aanApparaatId. Beide ondersteund.
-      final aanLijst = (d['aanApparaatIds'] as List?)?.cast<String>();
-      final aan = d['aanApparaatId'] as String?;
-      if (aanLijst != null && aanLijst.isNotEmpty) {
-        if (!aanLijst.contains(_mijnApparaatId)) continue;
-      } else if (aan != null && aan != _mijnApparaatId) {
-        continue;
+      // V9 2.10-a-1: 4-pad targeting-filter.
+      // 1. aanUserUids -> nieuwe lid-target (V9 membership-based,
+      //    werkt over alle apparaten van het lid).
+      // 2. aanApparaatIds -> ontvanger-target (V9 'voor je dierbare')
+      //    of oude lid-target (pre-2.10 backwards-compat).
+      // 3. aanApparaatId -> heel oude single-id docs.
+      // 4. allemaal null/leeg -> iedereen in de kring.
+      // De send-kant schrijft nog GEEN aanUserUids tot 2.10-a-2;
+      // pad 1 is voorbereiding zonder gedragswijziging.
+      final aanUserUidsLijst =
+          (d['aanUserUids'] as List?)?.cast<String>();
+      final aanApparaatIdsLijst =
+          (d['aanApparaatIds'] as List?)?.cast<String>();
+      final aanLegacy = d['aanApparaatId'] as String?;
+      bool voorMij;
+      if (aanUserUidsLijst != null && aanUserUidsLijst.isNotEmpty) {
+        final mijnUid = FirebaseAuth.instance.currentUser?.uid;
+        voorMij = mijnUid != null
+            && aanUserUidsLijst.contains(mijnUid);
+      } else if (aanApparaatIdsLijst != null
+          && aanApparaatIdsLijst.isNotEmpty) {
+        voorMij = aanApparaatIdsLijst.contains(_mijnApparaatId);
+      } else if (aanLegacy != null) {
+        voorMij = aanLegacy == _mijnApparaatId;
+      } else {
+        voorMij = true;
       }
+      if (!voorMij) continue;
       // Eigen bericht skip
       final van = d['vanApparaatId'] as String?;
       if (van != null && van == _mijnApparaatId) continue;
