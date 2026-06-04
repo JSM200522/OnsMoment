@@ -1157,15 +1157,10 @@ class _SetupWizardState extends State<SetupWizard> {
             .collection('gebruikers').doc(uid).get();
         naam = (doc.data()?['ontvangerNaam'] as String?) ?? 'Ontvanger';
       } catch (_) {}
-      final mag = await ApparaatService.kanNieuwePersoonToevoegen(
-          familieUid: uid, nieuweNaam: naam);
-      if (!mag) {
-        final limiet = ApparaatService.limietPerTier(
-            await ApparaatService.krijgTier(uid));
-        _toonFout('Deze kring zit vol ($limiet kringleden). Vraag de '
-            'beheerder om een ander kringlid te verwijderen.');
-        return;
-      }
+      // V9 2.7: GEEN kanNieuwePersoonToevoegen-check hier — een
+      // ontvanger-tablet koppelen voegt geen kringlid toe, dus de
+      // tier-limiet hoort niet van toepassing. De dierbare is geen
+      // membership-houder (FAQ-belofte).
       await ApparaatService.registreer(
         familieUid: uid,
         apparaatId: apparaatId,

@@ -188,7 +188,9 @@ class ApparaatService {
     }
   }
 
-  /// Aantal unieke personen (case-insensitief op persoonsNaam) in de kring.
+  /// Aantal unieke kringleden (case-insensitief op persoonsNaam) in de
+  /// kring. V9 2.7: ontvanger-apparaten worden geskipt — de dierbare
+  /// telt niet mee in de tier-limiet (consistent met FAQ).
   static Future<int> aantalUniekePersonenInKring(String familieUid) async {
     try {
       final snap = await FirebaseFirestore.instance
@@ -196,6 +198,7 @@ class ApparaatService {
           .collection('apparaten').get();
       final namen = <String>{};
       for (final doc in snap.docs) {
+        if ((doc.data()['modus'] as String?) == 'ontvanger') continue;
         final naam = (doc.data()['persoonsNaam'] as String? ?? '').trim();
         if (naam.isNotEmpty) namen.add(naam.toLowerCase());
       }
@@ -207,8 +210,9 @@ class ApparaatService {
 
   /// True als een persoon met deze naam mag worden toegevoegd. Een bestaande
   /// naam (extra apparaat) mag altijd; een nieuwe naam alleen onder de
-  /// tier-limiet. Fail-open: bij fouten toestaan om legitieme registratie
-  /// niet te blokkeren.
+  /// tier-limiet. V9 2.7: ontvanger-apparaten doen niet mee aan deze
+  /// telling — een dierbare is geen kringlid. Fail-open: bij fouten
+  /// toestaan om legitieme registratie niet te blokkeren.
   static Future<bool> kanNieuwePersoonToevoegen({
     required String familieUid,
     required String nieuweNaam,
@@ -219,6 +223,7 @@ class ApparaatService {
           .collection('apparaten').get();
       final namen = <String>{};
       for (final doc in snap.docs) {
+        if ((doc.data()['modus'] as String?) == 'ontvanger') continue;
         final naam = (doc.data()['persoonsNaam'] as String? ?? '').trim();
         if (naam.isNotEmpty) namen.add(naam.toLowerCase());
       }
