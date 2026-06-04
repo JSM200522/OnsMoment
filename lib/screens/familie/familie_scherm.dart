@@ -1573,10 +1573,19 @@ class _StuurTabState extends State<StuurTab> {
     final andereLeden = _leden
         .where((m) => m.userUid != authUid)
         .toList();
+    // V9 2.10-a-2-fix2: 'Voor je dierbare'-entry heeft geen betekenis
+    // aan de ontvanger-kant — de dierbare zit dáár al; sturen 'naar
+    // de dierbare' zou self-target zijn. Alleen tonen aan de
+    // familie-kant.
+    final toonDierbare = !widget.alsOntvanger;
     String? huidigeWaarde;
-    if (_dierbareTarget) {
+    if (_dierbareTarget && toonDierbare) {
       huidigeWaarde = _dierbareSentinel;
     } else {
+      // Defensief: als _dierbareTarget per ongeluk actief zou zijn
+      // aan de ontvanger-kant, val terug op de userUid (of null).
+      // Voorkomt dat de Dropdown een waarde toont die niet in z'n
+      // items-lijst staat.
       huidigeWaarde = _gekozenUserUid;
     }
     final dierbareLabel = (_kringNaam ?? '').isNotEmpty
@@ -1603,7 +1612,7 @@ class _StuurTabState extends State<StuurTab> {
                   style: TextStyle(color: kBrown,
                       fontWeight: FontWeight.w700)),
             ),
-            DropdownMenuItem<String?>(
+            if (toonDierbare) DropdownMenuItem<String?>(
               value: _dierbareSentinel,
               child: Text(dierbareLabel,
                   style: const TextStyle(color: kBrown,
