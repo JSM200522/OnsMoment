@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../data/uitnodiging.dart';
+import '../../data/kring.dart';
 import '../../data/kring_membership.dart';
 import '../../services/apparaat_service.dart';
 import '../../services/device_modus_service.dart';
