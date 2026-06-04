@@ -232,11 +232,23 @@ class UitnodigingService {
         return (success: false, fout: UitnodigingFout.kringVol);
       }
 
+      // V9 2.8-a-1: lees eigen familieNaam (eigen uid -> geen cross-user)
+      // om als weergaveNaam in de leden-doc te denormaliseren. Voorkomt
+      // dat de kringleden-lijst per lid een cross-user read moet doen.
+      String? weergaveNaam;
+      try {
+        final eigenDoc = await FirebaseFirestore.instance
+            .collection('gebruikers').doc(gebruikerUid).get();
+        final naam = eigenDoc.data()?['familieNaam'] as String?;
+        if (naam != null && naam.isNotEmpty) weergaveNaam = naam;
+      } catch (_) {}
+
       final membership = Membership(
         userUid: gebruikerUid,
         rol: AccountRol.gast,
         gejoindOp: DateTime.now(), // direct overschreven met serverTimestamp
         uitgenodigdDoor: aangemaaktDoor,
+        weergaveNaam: weergaveNaam,
       );
 
       final batch = FirebaseFirestore.instance.batch();

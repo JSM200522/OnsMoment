@@ -38,6 +38,7 @@ class KringService {
     String? noodcontactTel,
     String herkenningsgeluid = 'twinkel',
     String? kringId,
+    String eigenaarNaam = '',
   }) {
     final id = kringId ?? genereerKringId();
     final kringRef = FirebaseFirestore.instance.collection('kringen').doc(id);
@@ -74,12 +75,38 @@ class KringService {
       rol: AccountRol.eigenaar,
       gejoindOp: DateTime.now(),
       uitgenodigdDoor: null,
+      weergaveNaam: eigenaarNaam.isEmpty ? null : eigenaarNaam,
     );
     batch.set(
         kringRef.collection('leden').doc(eigenaarUid),
         membership.toFirestoreMap(bijCreate: true));
 
     return id;
+  }
+
+  /// V9 2.8-a-1: verwijdert een membership-doc uit een kring. Wordt
+  /// in 2.8-a-2 vanuit de UI aangeroepen (eigenaar verwijdert lid OF
+  /// gast self-leave). Doet GEEN force-logout — die zit op apparaat-
+  /// niveau via _KringWachter en is hier niet van toepassing.
+  ///
+  /// Permissies worden door Firestore-rules afgedwongen (handmatig in
+  /// Console te zetten vóór 2.8-a-2): alleen request.auth.uid == lidId
+  /// (self-leave) of de eigenaar van de kring mag deleten.
+  static Future<bool> verwijderLid({
+    required String kringId,
+    required String userUid,
+  }) async {
+    if (kringId.isEmpty || userUid.isEmpty) return false;
+    try {
+      await FirebaseFirestore.instance
+          .collection('kringen').doc(kringId)
+          .collection('leden').doc(userUid)
+          .delete();
+      return true;
+    } catch (e) {
+      debugPrint('🌀 [KringService] verwijderLid faalde: $e');
+      return false;
+    }
   }
 
   /// Levert een live stream van de actieve kring (V9 2.4-a-1).

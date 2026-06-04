@@ -800,7 +800,8 @@ class _SetupWizardState extends State<SetupWizard> {
 
       // V9 schema: kring + eigenaar-membership atomair in batch.
       // KringId wordt teruggegeven zodat dagelijkse_momenten hieronder
-      // hetzelfde id meekrijgen.
+      // hetzelfde id meekrijgen. eigenaarNaam (V9 2.8-a-1) belandt als
+      // weergaveNaam in de eigenaar-leden-doc voor de kringleden-lijst.
       final kringId = KringService.voegKringMetEigenaarToeAanBatch(
         batch: batch,
         eigenaarUid: uid,
@@ -811,6 +812,7 @@ class _SetupWizardState extends State<SetupWizard> {
         noodcontactNaam: _noodNaamCtrl.text.trim(),
         noodcontactTel: _noodTelCtrl.text.trim(),
         herkenningsgeluid: _gekozenGeluid,
+        eigenaarNaam: _naamCtrl.text.trim(),
       );
 
       for (final m in _momenten) {

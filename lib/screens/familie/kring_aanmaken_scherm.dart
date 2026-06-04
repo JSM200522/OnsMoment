@@ -109,6 +109,18 @@ class _KringAanmakenSchermState extends State<KringAanmakenScherm> {
         } catch (_) {}
       }
 
+      // V9 2.8-a-1: lees eigen familieNaam zodat eigenaar-leden-doc
+      // het weergaveNaam-veld krijgt (denormalisatie voor kringleden-
+      // lijst). Eigen uid -> geen cross-user issue. Fail-soft naar
+      // leeg bij rules- of netwerk-fout.
+      String eigenaarNaam = '';
+      try {
+        final eigenDoc = await FirebaseFirestore.instance
+            .collection('gebruikers').doc(uid).get();
+        final n = eigenDoc.data()?['familieNaam'] as String?;
+        if (n != null && n.isNotEmpty) eigenaarNaam = n;
+      } catch (_) {}
+
       final batch = FirebaseFirestore.instance.batch();
       KringService.voegKringMetEigenaarToeAanBatch(
         batch: batch,
@@ -121,6 +133,7 @@ class _KringAanmakenSchermState extends State<KringAanmakenScherm> {
         noodcontactNaam: _noodNaamCtrl.text.trim(),
         noodcontactTel: _noodTelCtrl.text.trim(),
         herkenningsgeluid: _gekozenGeluid,
+        eigenaarNaam: eigenaarNaam,
       );
 
       const defaults = [
