@@ -4082,6 +4082,26 @@ class _HulpDialog extends StatelessWidget {
         "In de meldingen-modus werkt het apparaat als gewoon: je dierbare kan "
         "andere apps gebruiken, en Ons Moment laat berichten zien als pop-up. "
         "Deze modus past bij iemand die nog zelf met het apparaat omgaat."),
+    _FAQ('Algemeen', "Wat is een kring?",
+        "Een kring is de groep mensen rondom één dierbare. In de kring zitten "
+        "de familieleden, vrienden en mantelzorgers die berichten kunnen "
+        "sturen, plus de dierbare zelf die ze ontvangt. Voor elke dierbare "
+        "maak je één kring. Zorg je voor meer dan één persoon? Dan kun je "
+        "meerdere kringen hebben (afhankelijk van je abonnement)."),
+    _FAQ('Algemeen', "Wat is het verschil tussen een eigenaar en een gast?",
+        "De eigenaar is degene die de kring heeft aangemaakt en het "
+        "abonnement beheert. De eigenaar kan kringleden toevoegen of "
+        "verwijderen en de gegevens van de dierbare aanpassen. Een gast is "
+        "iemand die is uitgenodigd met een code. Een gast kan berichten "
+        "sturen en zichzelf uit de kring halen, maar beheert de kring niet. "
+        "Zo houdt één persoon het overzicht, terwijl iedereen kan meedoen."),
+    _FAQ('Algemeen', "Wat ziet mijn dierbare op het scherm?",
+        "Je dierbare ziet een rustig, overzichtelijk scherm met de tijd, "
+        "een vriendelijke begroeting en de berichten die jullie sturen. "
+        "Komt er een nieuw bericht of een herinnering binnen, dan "
+        "verschijnt die vanzelf in beeld met een herkenningsgeluid. Er "
+        "staan geen ingewikkelde knoppen of menu's — alleen wat jullie "
+        "sturen."),
     // ── Voor families ──
     _FAQ('Voor families', "Hoe voeg ik iemand toe aan de kring?",
         "Open Instellingen en kies 'Kringleden beheren'. Tik op 'Familie "
@@ -4128,6 +4148,27 @@ class _HulpDialog extends StatelessWidget {
         "blijven verstuurde berichten klaarstaan. Zodra het apparaat weer "
         "aangaat en verbinding heeft, verschijnen de berichten alsnog. Er gaat "
         "niets verloren."),
+    _FAQ('Voor families', "Hoe koppel ik het apparaat van mijn dierbare?",
+        "Pak de tablet of telefoon die bij je dierbare komt te staan. Open "
+        "daarop Ons Moment en kies 'Apparaat van mijn dierbare instellen'. "
+        "Log in met jouw eigen account en kies de juiste kring. Daarna kies "
+        "je hoe het scherm eruitziet: een rustig scherm dat alleen Ons "
+        "Moment toont, of een gewoon scherm met meldingen. Het apparaat "
+        "blijft daarna vanzelf klaarstaan — je dierbare hoeft niets te doen."),
+    _FAQ('Voor families', "Heeft het apparaat van mijn dierbare internet nodig?",
+        "Ja. Het apparaat heeft wifi of internet nodig om jullie berichten "
+        "en herinneringen te ontvangen. Staat het apparaat even zonder "
+        "verbinding, dan komen de berichten alsnog binnen zodra er weer "
+        "internet is. Er gaat niets verloren."),
+    _FAQ('Voor families', "Hoe stuur ik een bericht naar één bepaald persoon?",
+        "Bij het versturen kies je bij 'Naar wie?' een specifiek kringlid "
+        "in plaats van 'Iedereen in de kring'. Het bericht komt dan alleen "
+        "bij die persoon aan. Zo kun je bijvoorbeeld iets persoonlijks "
+        "naar je dierbare sturen, of een berichtje naar één familielid."),
+    _FAQ('Voor families', "Hoe verlaat ik een kring waar ik gast ben?",
+        "Ga naar Instellingen, kies Kringleden beheren en kies bij jezelf "
+        "'Uit kring gaan'. Je hebt daarna geen toegang meer tot die kring. "
+        "De eigenaar en de andere kringleden blijven gewoon doorgaan."),
     // ── Abonnement ──
     _FAQ('Abonnement', "Wat kost Ons Moment?",
         "Twee abonnementen:\n"
@@ -4140,6 +4181,17 @@ class _HulpDialog extends StatelessWidget {
     _FAQ('Abonnement', "Wie telt mee in mijn abonnement?",
         "Iedereen in de kring die berichten kan sturen telt mee — familieleden, "
         "vrienden en mantelzorgers. Je dierbare zelf telt niet mee."),
+    _FAQ('Abonnement', "Wat gebeurt er na de 5 gratis dagen?",
+        "Je begint altijd met 5 dagen gratis, zonder dat je betaalgegevens "
+        "hoeft op te geven. Wil je daarna doorgaan, dan kies je een "
+        "abonnement. Doe je niets, dan stopt het vanzelf — je wordt nooit "
+        "zomaar iets in rekening gebracht."),
+    // ── Veiligheid en privacy ──
+    _FAQ('Veiligheid en privacy', "Wie kan mijn foto's en berichten zien?",
+        "Alleen de mensen in jouw kring en het gekoppelde apparaat van je "
+        "dierbare. Ons Moment is een besloten, veilige omgeving — er zijn "
+        "geen advertenties, geen vreemden en geen openbare profielen. Wat "
+        "je deelt, blijft binnen de kring."),
   ];
 
   @override
