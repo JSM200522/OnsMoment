@@ -2777,36 +2777,11 @@ class _InstellingenTabState extends State<InstellingenTab> {
     }
   }
 
-  /// V9 2.12-a-2: status-kaart voor de e-mailverificatie. Twee
-  /// varianten: bevestigd (rustige groen-getinte kaart) of
-  /// niet-bevestigd (peach kaart met uitleg + 2 knoppen).
+  /// V9 2.12-a-2-fix: alleen de niet-bevestigd-kaart. De bevestigd-
+  /// variant is weggehaald — bij _emailVerified == true verbergt de
+  /// build deze sectie helemaal. Een constante 'bevestigd'-banner zou
+  /// alleen ruis zijn voor gebruikers die het al hebben afgehandeld.
   Widget _emailStatusSectie(String email) {
-    if (_emailVerified) {
-      return Container(
-        margin: const EdgeInsets.only(bottom: 12),
-        padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(color: kWhite,
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: kPeachLight, width: 2)),
-        child: Row(children: [
-          const Text('✓',
-              style: TextStyle(fontSize: 22,
-                  fontWeight: FontWeight.w900, color: kGreen)),
-          const SizedBox(width: 12),
-          Expanded(child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start, children: [
-              const Text('E-mailadres bevestigd',
-                  style: TextStyle(fontSize: 14,
-                      fontWeight: FontWeight.w800, color: kBrown)),
-              if (email.isNotEmpty) ...[
-                const SizedBox(height: 2),
-                Text(email, maxLines: 1, overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(fontSize: 12, color: kTextMuted)),
-              ],
-            ])),
-        ]),
-      );
-    }
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(14),
@@ -2901,7 +2876,7 @@ class _InstellingenTabState extends State<InstellingenTab> {
         ],
         const SizedBox(height: 20),
         _sectie('ACCOUNT'),
-        if (!widget.alsOntvanger)
+        if (!widget.alsOntvanger && !_emailVerified)
           _emailStatusSectie(
               FirebaseAuth.instance.currentUser?.email ?? ''),
         _item('👵', 'Ontvanger-profiel',
