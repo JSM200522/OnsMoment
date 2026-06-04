@@ -45,6 +45,12 @@ class _SetupWizardState extends State<SetupWizard> {
   /// _ontvangerKringKeuzeStap(). Alleen relevant bij _rol=='ontvanger'.
   List<Kring>? _ontvangerKringen;
 
+  /// V9 2.9-perf: id van de kring-kaart die op dit moment wordt
+  /// verwerkt in _kiesOntvangerKring. Niet-null = toon spinner op die
+  /// kaart en blokkeer taps op andere kaarten. Analoog aan _bezigModus
+  /// in _modusKaart.
+  String? _bezigKringId;
+
   final List<_DagelijksMoment> _momenten = [
     _DagelijksMoment('☀️', 'Goedemorgen', const TimeOfDay(hour: 8, minute: 30)),
     _DagelijksMoment('☕', 'Tijd voor koffie', const TimeOfDay(hour: 10, minute: 0)),
@@ -872,10 +878,20 @@ class _SetupWizardState extends State<SetupWizard> {
           email: _emailCtrl.text.trim(), password: _wachtwoordCtrl.text);
       final uid = FirebaseAuth.instance.currentUser!.uid;
       final apparaatId = await DeviceModusService.krijgApparaatId();
-      final doc = await FirebaseFirestore.instance
+      // V9 2.9-perf: start apparaat-doc.get en mijnKringen parallel.
+      // Beide hangen alleen af van uid + apparaatId; geen onderlinge
+      // dependency. Bekend-tak gebruikt alleen doc en negeert
+      // mijneKringenFuture (.ignore). Nieuw-tak awaitet beide.
+      final docFuture = FirebaseFirestore.instance
           .collection('gebruikers').doc(uid)
           .collection('apparaten').doc(apparaatId).get();
+      final mijneKringenFuture = KringService.mijnKringen(uid);
+      final doc = await docFuture;
       if (doc.exists) {
+        // V9 2.9-perf: parallelle mijneKringenFuture is in deze tak
+        // niet meer nodig — fail-soft ignoren zodat een eventuele
+        // fout geen unhandled-exception wordt.
+        mijneKringenFuture.ignore();
         // V9 2.6-a-1: bekend apparaat — als kringId in doc staat (gezet
         // door _voltooiOntvanger op een vorige setup), gebruik die.
         // Anders fallback naar .limit(1)-eigenaarskring (legacy
@@ -897,8 +913,10 @@ class _SetupWizardState extends State<SetupWizard> {
         // V9 2.6-a-2: nieuw apparaat — bepaal welke kring (welke
         // dierbare) dit apparaat moet tonen. Alleen eigen kringen
         // (eigenaarUid == uid): een gast-account kan geen ontvanger-
-        // tablet aan een andermans kring koppelen.
-        final alleKringen = await KringService.mijnKringen(uid);
+        // tablet aan een andermans kring koppelen. V9 2.9-perf:
+        // gebruikt de mijneKringenFuture die parallel met doc.get is
+        // gestart, dus geen extra round-trip-wachttijd.
+        final alleKringen = await mijneKringenFuture;
         final eigenKringen =
             alleKringen.where((k) => k.eigenaarUid == uid).toList();
         if (eigenKringen.isEmpty) {
@@ -993,59 +1011,80 @@ class _SetupWizardState extends State<SetupWizard> {
           'tablet of telefoon gaat zien.',
           style: TextStyle(fontSize: 14, color: kTextMuted, height: 1.4)),
       const SizedBox(height: 20),
-      ...kringen.map((k) => Padding(
-        padding: const EdgeInsets.only(bottom: 12),
-        child: GestureDetector(
-          onTap: _bezig ? null : () => _kiesOntvangerKring(k),
-          child: Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(color: kWhite,
-                borderRadius: BorderRadius.circular(18),
-                border: Border.all(color: kPeachLight, width: 2),
-                boxShadow: [BoxShadow(color: kPeach.withOpacity(0.08),
-                    blurRadius: 12, offset: const Offset(0, 4))]),
-            child: Row(children: [
-              Container(width: 56, height: 56,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: kPeachPale,
-                  border: Border.all(color: kPeach, width: 2),
-                  image: (k.foto != null && k.foto!.isNotEmpty)
-                      ? DecorationImage(image: NetworkImage(k.foto!),
-                          fit: BoxFit.cover) : null),
-                child: (k.foto == null || k.foto!.isEmpty)
-                    ? const Center(child: Icon(Icons.person_rounded,
-                        color: kPeach, size: 28))
-                    : null),
-              const SizedBox(width: 14),
-              Expanded(child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Text(k.naam.isNotEmpty ? k.naam : 'Onbenoemde kring',
-                      style: const TextStyle(fontSize: 16,
-                          fontWeight: FontWeight.w800, color: kBrown)),
-                  if (k.lievelingsdingen != null
-                      && k.lievelingsdingen!.isNotEmpty)
-                    Padding(padding: const EdgeInsets.only(top: 2),
-                      child: Text(k.lievelingsdingen!,
-                          style: const TextStyle(fontSize: 12,
-                              color: kTextMuted, height: 1.3),
-                          maxLines: 1, overflow: TextOverflow.ellipsis)),
-                ])),
-              const Icon(Icons.arrow_forward_ios_rounded,
-                  color: kPeach, size: 16),
-            ]),
+      ...kringen.map((k) {
+        // V9 2.9-perf: dim niet-geklikte kaarten + spinner op de
+        // geklikte kaart zodra _bezigKringId gezet is.
+        final bezigDeze = _bezigKringId == k.id;
+        final bezigAndere = _bezigKringId != null && !bezigDeze;
+        return Padding(
+          padding: const EdgeInsets.only(bottom: 12),
+          child: Opacity(opacity: bezigAndere ? 0.4 : 1.0,
+            child: GestureDetector(
+              onTap: (_bezig || _bezigKringId != null)
+                  ? null : () => _kiesOntvangerKring(k),
+              child: Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(color: kWhite,
+                    borderRadius: BorderRadius.circular(18),
+                    border: Border.all(color: kPeachLight, width: 2),
+                    boxShadow: [BoxShadow(color: kPeach.withOpacity(0.08),
+                        blurRadius: 12, offset: const Offset(0, 4))]),
+                child: Row(children: [
+                  Container(width: 56, height: 56,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: kPeachPale,
+                      border: Border.all(color: kPeach, width: 2),
+                      image: (k.foto != null && k.foto!.isNotEmpty)
+                          ? DecorationImage(image: NetworkImage(k.foto!),
+                              fit: BoxFit.cover) : null),
+                    child: (k.foto == null || k.foto!.isEmpty)
+                        ? const Center(child: Icon(Icons.person_rounded,
+                            color: kPeach, size: 28))
+                        : null),
+                  const SizedBox(width: 14),
+                  Expanded(child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start, children: [
+                      Text(k.naam.isNotEmpty ? k.naam : 'Onbenoemde kring',
+                          style: const TextStyle(fontSize: 16,
+                              fontWeight: FontWeight.w800, color: kBrown)),
+                      if (k.lievelingsdingen != null
+                          && k.lievelingsdingen!.isNotEmpty)
+                        Padding(padding: const EdgeInsets.only(top: 2),
+                          child: Text(k.lievelingsdingen!,
+                              style: const TextStyle(fontSize: 12,
+                                  color: kTextMuted, height: 1.3),
+                              maxLines: 1, overflow: TextOverflow.ellipsis)),
+                    ])),
+                  if (bezigDeze)
+                    const SizedBox(width: 16, height: 16,
+                        child: CircularProgressIndicator(
+                            color: kPeach, strokeWidth: 2.5))
+                  else
+                    const Icon(Icons.arrow_forward_ios_rounded,
+                        color: kPeach, size: 16),
+                ]),
+              ),
+            ),
           ),
-        ),
-      )),
+        );
+      }),
     ]);
   }
 
   Future<void> _kiesOntvangerKring(Kring kring) async {
+    // V9 2.9-perf: directe visuele feedback (spinner op aangeklikte
+    // kaart, andere kaarten dimmen) zodat de tik niet "onresponsief"
+    // voelt. zetActieveKring is SharedPrefs en is in zichzelf snel,
+    // maar zonder feedback denken gebruikers dat hun tik niet
+    // geregistreerd is.
+    setState(() => _bezigKringId = kring.id);
     await DeviceModusService.zetActieveKring(kring.id);
     if (!mounted) return;
     setState(() {
       _ontvangerKringen = null;
       _stap = 2;
+      _bezigKringId = null;
     });
   }
 
@@ -1146,17 +1185,22 @@ class _SetupWizardState extends State<SetupWizard> {
     try {
       final uid = FirebaseAuth.instance.currentUser!.uid;
       final apparaatId = await DeviceModusService.krijgApparaatId();
+      // V9 2.9-perf: krijgActieveKring (SharedPrefs) en gebruikers-
+      // doc.get (Firestore) hangen beide alleen af van uid en zijn
+      // verder onafhankelijk — parallel starten halveert de wachttijd
+      // vóór registreer.
       // V9 2.6-a-1: actieve kring uit SharedPreferences (gezet door
       // _ontvangerInloggenActie via zetActieveKringVoorEigenaar) meegeven
       // zodat het apparaat-doc 'm vastlegt. Bij multi-kring is dit nu
-      // nog de eerstgevonden kring; vanaf 2.6-a-2 wordt dit de keuze
-      // van de eigenaar.
-      final kringId = await DeviceModusService.krijgActieveKring();
+      // de keuze van de eigenaar (2.6-a-2).
+      final kringIdFuture = DeviceModusService.krijgActieveKring();
+      final gebruikersDocFuture = FirebaseFirestore.instance
+          .collection('gebruikers').doc(uid).get();
+      final kringId = await kringIdFuture;
       // Voor ontvanger-apparaat gebruiken we ontvangerNaam als persoonsnaam.
       String naam = 'Ontvanger';
       try {
-        final doc = await FirebaseFirestore.instance
-            .collection('gebruikers').doc(uid).get();
+        final doc = await gebruikersDocFuture;
         naam = (doc.data()?['ontvangerNaam'] as String?) ?? 'Ontvanger';
       } catch (_) {}
       // V9 2.7: GEEN kanNieuwePersoonToevoegen-check hier — een
