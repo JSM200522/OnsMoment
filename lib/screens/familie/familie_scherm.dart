@@ -867,7 +867,7 @@ class _StuurTabState extends State<StuurTab> {
           .get();
       return snap.docs
           .where((d) =>
-              (d.data())['modus'] as String? == 'ontvanger')
+              ((d.data())['modus'] as String?) == 'ontvanger')
           .map((d) => d.id)
           .toList();
     } catch (_) {
