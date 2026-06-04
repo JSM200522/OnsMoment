@@ -43,6 +43,10 @@ class _TabletSchermState extends State<TabletScherm>
   StreamSubscription<Kring?>? _actieveKringSub;
   String? _kringFoto;
   String? _kringOntvangerNaam;
+  /// V9 2.9-perf-2: gecachte naam uit SharedPrefs voor de 'Hallo X'-
+  /// banner. Alleen-fallback: zodra _kringOntvangerNaam of het
+  /// gebruikers-doc een naam levert, neemt die het over.
+  String? _gecachteOntvangerNaam;
 
   @override
   void initState() {
@@ -67,6 +71,13 @@ class _TabletSchermState extends State<TabletScherm>
         _startDagelijksListener();
         _startEenmaligListener();
       }
+    });
+    // V9 2.9-perf-2: lees gecachte ontvangerNaam zodat de 'Hallo X'-
+    // banner direct kan renderen i.p.v. te wachten op de gebruikers-
+    // doc-snapshot of actieveKringStream.
+    DeviceModusService.krijgGecachteOntvangerNaam().then((naam) {
+      if (!mounted || naam == null || naam.isEmpty) return;
+      setState(() => _gecachteOntvangerNaam = naam);
     });
     _checkTimer = Timer.periodic(const Duration(seconds: 30), (_) {
       _checkGeplandeMomenten();
@@ -390,10 +401,16 @@ class _TabletSchermState extends State<TabletScherm>
         final profielFotoUrl = (_kringFoto != null && _kringFoto!.isNotEmpty)
             ? _kringFoto!
             : (userData['ontvangerFoto'] as String? ?? '');
+        // V9 2.9-perf-2: drielagige naam-resolutie. Kring-doc > gebruikers-
+        // doc > SharedPrefs-cache. Cache zorgt dat de banner direct
+        // verschijnt; bestaande live-bronnen overschrijven 'm zodra binnen.
+        final naamUitDoc = (userData['ontvangerNaam'] as String?) ?? '';
         final ontvangerNaam =
             (_kringOntvangerNaam != null && _kringOntvangerNaam!.isNotEmpty)
                 ? _kringOntvangerNaam!
-                : (userData['ontvangerNaam'] as String? ?? '');
+                : (naamUitDoc.isNotEmpty
+                    ? naamUitDoc
+                    : (_gecachteOntvangerNaam ?? ''));
 
         return Scaffold(
           body: Stack(children: [
@@ -511,8 +528,28 @@ class _TabletSchermState extends State<TabletScherm>
             // Wacht tot BEIDE streams hun eerste snapshot hebben geleverd,
             // anders rendert de kaart een dagelijks-only kandidaat terwijl
             // een eerder eenmalig moment nog op de eenmalig-stream wacht.
+            // V9 2.9-perf-2: laat tijdens dat wachten een placeholder-
+            // kaart staan i.p.v. SizedBox() — voorkomt het 'leeg gat'-
+            // gevoel direct na modus-keuze. Zelfde container-styling als
+            // de echte kaart zodat de layout niet jankt.
             if (!dagelijksSnap.hasData || !eenmaligSnap.hasData) {
-              return const SizedBox();
+              return Container(
+                padding: const EdgeInsets.all(18),
+                decoration: BoxDecoration(
+                  color: kWhite.withOpacity(0.94),
+                  borderRadius: BorderRadius.circular(20),
+                  boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.2),
+                      blurRadius: 20, offset: const Offset(0, 6))]),
+                child: const Row(mainAxisSize: MainAxisSize.min, children: [
+                  SizedBox(width: 24, height: 24,
+                    child: CircularProgressIndicator(
+                        color: kPeach, strokeWidth: 3)),
+                  SizedBox(width: 14),
+                  Text('Even klaarzetten...',
+                      style: TextStyle(fontSize: 18,
+                          fontWeight: FontWeight.w700, color: kBrown)),
+                ]),
+              );
             }
             final nu = DateTime.now();
             final kandidaten = <_VolgendeKandidaat>[];

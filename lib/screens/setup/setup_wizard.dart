@@ -1202,6 +1202,18 @@ class _SetupWizardState extends State<SetupWizard> {
       try {
         final doc = await gebruikersDocFuture;
         naam = (doc.data()?['ontvangerNaam'] as String?) ?? 'Ontvanger';
+        // V9 2.9-perf-2: schrijf naam-cache + precache foto zodat het
+        // ontvanger-scherm (TabletScherm) ze instant beschikbaar heeft.
+        // Allebei fire-and-forget — fail-soft, geen invloed op de
+        // hoofdflow als ze niet lukken.
+        if (naam.isNotEmpty && naam != 'Ontvanger') {
+          DeviceModusService.zetGecachteOntvangerNaam(naam);
+        }
+        final fotoUrl = doc.data()?['ontvangerFoto'] as String?;
+        if (fotoUrl != null && fotoUrl.isNotEmpty && mounted) {
+          precacheImage(NetworkImage(fotoUrl), context)
+              .catchError((Object _) {});
+        }
       } catch (_) {}
       // V9 2.7: GEEN kanNieuwePersoonToevoegen-check hier — een
       // ontvanger-tablet koppelen voegt geen kringlid toe, dus de

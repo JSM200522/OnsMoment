@@ -19,6 +19,8 @@ class DeviceModusService {
   static const String _apparaatIdKey = 'ons_moment_apparaat_id';
   static const String _geregistreerdKey = 'ons_moment_geregistreerd';
   static const String _actieveKringKey = 'ons_moment_actieve_kring_id';
+  static const String _gecachteOntvangerNaamKey =
+      'ons_moment_gecachte_ontvanger_naam';
   static const String FAMILIE = 'familie';
   static const String ONTVANGER = 'ontvanger';
   static const String VERGRENDELD = 'vergrendeld';
@@ -236,5 +238,30 @@ class DeviceModusService {
       await prefs.remove(_actieveKringKey);
       actieveKringNotifier.value = null;
     } catch (_) {}
+  }
+
+  /// V9 2.9-perf-2: cache van ontvangerNaam zodat TabletScherm (en in
+  /// de toekomst FamilieScherm-alsOntvanger) de 'Hallo X'-banner
+  /// direct kan tonen zonder op de gebruikers/{uid} snapshot of de
+  /// actieveKringStream te wachten. Wordt geschreven door
+  /// _voltooiOntvanger; bestaande Firestore-streams overschrijven 'm
+  /// zodra live data binnen is. Alleen-presentatie: geen gedrags-
+  /// wijziging, geen autoritatieve bron.
+  static Future<void> zetGecachteOntvangerNaam(String naam) async {
+    final trimmed = naam.trim();
+    if (trimmed.isEmpty) return;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_gecachteOntvangerNaamKey, trimmed);
+    } catch (_) {}
+  }
+
+  static Future<String?> krijgGecachteOntvangerNaam() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      return prefs.getString(_gecachteOntvangerNaamKey);
+    } catch (_) {
+      return null;
+    }
   }
 }
