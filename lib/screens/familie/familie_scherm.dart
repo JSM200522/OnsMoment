@@ -719,6 +719,12 @@ class _StuurTabState extends State<StuurTab> {
   String? _mijnApparaatId;
   String? _ontvangerNaam;       // legacy: uit gebruikers/{uid}
   String? _kringNaam;            // V9 2.4-a-3: uit actieve kring-doc
+  /// V9 2.11-a-3: eigen weergaveNaam uit het membership van de actieve
+  /// kring (kringen/{kringId}/leden/{auth.uid}.weergaveNaam, sinds
+  /// 2.8-a-1). Gebruikt als vanNaam bij send wanneer dit een familielid
+  /// is (widget.alsOntvanger == false). Vervangt de oude lookup via
+  /// kringLeden(uid) die account-breed was en lekt bij multi-kring.
+  String? _mijnWeergaveNaam;
   StreamSubscription<Kring?>? _actieveKringSub;
   Future<List<Map<String, dynamic>>>? _kringFuture;
   double? _uploadProgress;  // null = geen media-upload bezig
@@ -757,11 +763,43 @@ class _StuurTabState extends State<StuurTab> {
             ? kring.naam : null;
       });
     });
+    // V9 2.11-a-3: eerste load + listener voor kring-switch zodat
+    // _mijnWeergaveNaam meegaat bij wisselen tussen kringen waarvan
+    // jij in beide lid bent.
+    DeviceModusService.huidigeKringIdMetFallback()
+        .then(_laadMijnWeergaveNaam);
+    DeviceModusService.actieveKringNotifier
+        .addListener(_opActieveKringWissel);
+  }
+
+  void _opActieveKringWissel() {
+    final nw = DeviceModusService.actieveKringNotifier.value;
+    if (nw == null || nw.isEmpty) return;
+    _laadMijnWeergaveNaam(nw);
+  }
+
+  Future<void> _laadMijnWeergaveNaam(String? kringId) async {
+    if (kringId == null || kringId.isEmpty) return;
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return;
+    try {
+      final ledenDoc = await FirebaseFirestore.instance
+          .collection('kringen').doc(kringId)
+          .collection('leden').doc(uid).get();
+      final naam = ledenDoc.data()?['weergaveNaam'] as String?;
+      if (!mounted) return;
+      setState(() {
+        _mijnWeergaveNaam =
+            (naam != null && naam.isNotEmpty) ? naam : null;
+      });
+    } catch (_) {}
   }
 
   @override
   void dispose() {
     _actieveKringSub?.cancel();
+    DeviceModusService.actieveKringNotifier
+        .removeListener(_opActieveKringWissel);
     _recorder.dispose();
     _previewPlayer.dispose();
     _opnameTimer?.cancel();
@@ -1195,14 +1233,25 @@ class _StuurTabState extends State<StuurTab> {
         }
         return;
       }
+      // V9 2.11-a-3: vanNaam uit kring-context i.p.v. account-brede
+      // apparaten-lookup. Tablet (alsOntvanger) stuurt namens de
+      // dierbare (kring-naam); familielid stuurt namens zichzelf
+      // (weergaveNaam uit eigen membership).
+      final String vanNaam;
+      if (widget.alsOntvanger) {
+        vanNaam = (_kringNaam ?? '').isNotEmpty
+            ? _kringNaam!
+            : 'Je dierbare';
+      } else {
+        vanNaam = (_mijnWeergaveNaam ?? '').isNotEmpty
+            ? _mijnWeergaveNaam!
+            : 'Iemand uit je kring';
+      }
+
+      // Targeting (apparaat-id-lookup) blijft voorlopig zoals het was;
+      // de persoon-kiezer + targeting-omslag komt in 2.10-a-2.
       final leden = await (_kringFuture
           ?? Future.value(<Map<String, dynamic>>[]));
-      final mijnNaam = (leden.firstWhere(
-              (l) => l['apparaatId'] == _mijnApparaatId,
-              orElse: () => <String, dynamic>{})['persoonsNaam'] as String? ?? '')
-          .trim();
-      final vanNaam = mijnNaam.isNotEmpty ? mijnNaam : 'Iemand uit je kring';
-
       List<String>? aanApparaatIds;
       if (_gekozenPersoonsNaam != null) {
         aanApparaatIds = leden
@@ -1266,15 +1315,23 @@ class _StuurTabState extends State<StuurTab> {
         return;
       }
 
-      // Afzender = de echte persoon op DIT apparaat (persoonsNaam uit de
-      // kringlijst), niet de account-brede familieNaam.
+      // V9 2.11-a-3: vanNaam uit kring-context. Tablet (alsOntvanger)
+      // = dierbare-naam uit kring-doc; familielid = eigen weergaveNaam
+      // uit membership. _kringFuture (leden-lookup) blijft hieronder
+      // bestaan voor de targeting-opbouw — komt in 2.10-a-2 aan de
+      // beurt.
+      final String vanNaam;
+      if (widget.alsOntvanger) {
+        vanNaam = (_kringNaam ?? '').isNotEmpty
+            ? _kringNaam!
+            : 'Je dierbare';
+      } else {
+        vanNaam = (_mijnWeergaveNaam ?? '').isNotEmpty
+            ? _mijnWeergaveNaam!
+            : 'Iemand uit je kring';
+      }
       final leden = await (_kringFuture
           ?? Future.value(<Map<String, dynamic>>[]));
-      final mijnNaam = (leden.firstWhere(
-              (l) => l['apparaatId'] == _mijnApparaatId,
-              orElse: () => <String, dynamic>{})['persoonsNaam'] as String? ?? '')
-          .trim();
-      final vanNaam = mijnNaam.isNotEmpty ? mijnNaam : 'Iemand uit je kring';
 
       String mediaUrl = '';
       if (_type == 'stem' && _opnamePad != null) {
