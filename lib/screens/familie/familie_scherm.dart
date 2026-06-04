@@ -21,6 +21,7 @@ import '../../data/labels.dart';
 import 'kringleden_scherm.dart';
 import 'kring_aanmaken_scherm.dart';
 import '../../data/kring.dart';
+import '../../data/kring_membership.dart';
 import '../../services/kring_service.dart';
 
 class FamilieScherm extends StatefulWidget {
@@ -715,7 +716,7 @@ class _StuurTabState extends State<StuurTab> {
   int _opnameSeconden = 0;
   Timer? _opnameTimer;
 
-  String? _gekozenPersoonsNaam;  // null = iedereen in kring
+  String? _gekozenPersoonsNaam;  // legacy display + aanPersoonsNaam-historie
   String? _mijnApparaatId;
   String? _ontvangerNaam;       // legacy: uit gebruikers/{uid}
   String? _kringNaam;            // V9 2.4-a-3: uit actieve kring-doc
@@ -726,7 +727,19 @@ class _StuurTabState extends State<StuurTab> {
   /// kringLeden(uid) die account-breed was en lekt bij multi-kring.
   String? _mijnWeergaveNaam;
   StreamSubscription<Kring?>? _actieveKringSub;
-  Future<List<Map<String, dynamic>>>? _kringFuture;
+  /// V9 2.10-a-2: live leden-stream van de ACTIEVE kring.
+  /// Vervangt de oude _kringFuture (account-brede kringLeden(uid))
+  /// zodat gasten met eigen account zichtbaar zijn en geen oude
+  /// apparaat-namen meer lekken.
+  List<Membership> _leden = const [];
+  StreamSubscription<QuerySnapshot>? _ledenSub;
+  String? _actieveKringIdVoorLeden;
+  /// V9 2.10-a-2: targeting-keuze. _gekozenUserUid = lid-target via
+  /// aanUserUids; _dierbareTarget = 'voor je dierbare' via aanApparaatIds
+  /// (ontvanger-apparaten). Allebei null/false = iedereen in de kring.
+  /// _gekozenPersoonsNaam blijft als display/historie-veld.
+  String? _gekozenUserUid;
+  bool _dierbareTarget = false;
   double? _uploadProgress;  // null = geen media-upload bezig
   bool _uploadIndeterminate = false;  // web-fallback als progress 0->100 springt
 
@@ -746,7 +759,9 @@ class _StuurTabState extends State<StuurTab> {
     });
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid != null) {
-      _kringFuture = ApparaatService.kringLeden(uid);
+      // V9 2.10-a-2: account-brede kringLeden(uid)-init is verwijderd;
+      // de leden komen nu uit de actieve kring (zie _startLedenStream
+      // hieronder en _opActieveKringWissel voor switch-handling).
       FirebaseFirestore.instance.collection('gebruikers').doc(uid).get()
           .then((doc) {
         if (!mounted) return;
@@ -763,11 +778,13 @@ class _StuurTabState extends State<StuurTab> {
             ? kring.naam : null;
       });
     });
-    // V9 2.11-a-3: eerste load + listener voor kring-switch zodat
-    // _mijnWeergaveNaam meegaat bij wisselen tussen kringen waarvan
-    // jij in beide lid bent.
-    DeviceModusService.huidigeKringIdMetFallback()
-        .then(_laadMijnWeergaveNaam);
+    // V9 2.11-a-3 + 2.10-a-2: eerste load van eigen weergaveNaam en
+    // de leden-stream van de actieve kring. Notifier-listener vangt
+    // kring-switch op voor beide.
+    DeviceModusService.huidigeKringIdMetFallback().then((id) {
+      _laadMijnWeergaveNaam(id);
+      _startLedenStream(id);
+    });
     DeviceModusService.actieveKringNotifier
         .addListener(_opActieveKringWissel);
   }
@@ -776,6 +793,86 @@ class _StuurTabState extends State<StuurTab> {
     final nw = DeviceModusService.actieveKringNotifier.value;
     if (nw == null || nw.isEmpty) return;
     _laadMijnWeergaveNaam(nw);
+    _startLedenStream(nw);
+  }
+
+  /// V9 2.10-a-2: subscribe op kringen/{kringId}/leden zodat de
+  /// persoon-kiezer altijd de echte leden van de ACTIEVE kring toont
+  /// (gasten met eigen account zichtbaar). Detecteert een gekozen
+  /// lid dat tijdens opstellen uit de kring verdwijnt en reset +
+  /// snackbar in dat geval.
+  void _startLedenStream(String? kringId) {
+    if (kringId == _actieveKringIdVoorLeden) return;
+    _ledenSub?.cancel();
+    _actieveKringIdVoorLeden = kringId;
+    if (kringId == null || kringId.isEmpty) {
+      if (mounted) setState(() => _leden = const []);
+      return;
+    }
+    _ledenSub = FirebaseFirestore.instance
+        .collection('kringen').doc(kringId)
+        .collection('leden').snapshots()
+        .listen((snap) {
+      if (!mounted) return;
+      final leden = snap.docs.map(Membership.fromFirestore).toList();
+      leden.sort((a, b) {
+        if (a.rol == AccountRol.eigenaar
+            && b.rol != AccountRol.eigenaar) return -1;
+        if (b.rol == AccountRol.eigenaar
+            && a.rol != AccountRol.eigenaar) return 1;
+        return a.gejoindOp.compareTo(b.gejoindOp);
+      });
+      // Detecteer gekozen lid dat verdwenen is.
+      bool moetReset = false;
+      if (_gekozenUserUid != null
+          && !leden.any((m) => m.userUid == _gekozenUserUid)) {
+        moetReset = true;
+      }
+      setState(() {
+        _leden = leden;
+        if (moetReset) {
+          _gekozenUserUid = null;
+          _gekozenPersoonsNaam = null;
+        }
+      });
+      if (moetReset && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('De gekozen persoon is uit de kring gegaan.'),
+          backgroundColor: kRood));
+      }
+    });
+  }
+
+  /// V9 2.10-a-2: uid van de eigenaar uit de huidige leden-lijst.
+  /// Gebruikt om ontvanger-apparaten te vinden (die staan onder de
+  /// eigenaar's apparaten-subcollectie).
+  String? _eigenaarUid() {
+    for (final m in _leden) {
+      if (m.rol == AccountRol.eigenaar) return m.userUid;
+    }
+    return null;
+  }
+
+  /// V9 2.10-a-2: ontvanger-apparaat-IDs van de actieve kring voor
+  /// het 'Voor je dierbare'-target (Variant 2). Single-field where
+  /// op kringId (auto-indexed) + clientside filter op modus=='ontvanger'.
+  Future<List<String>> _ontvangerApparaatIds(String kringId) async {
+    final eigenaar = _eigenaarUid();
+    if (eigenaar == null) return const [];
+    try {
+      final snap = await FirebaseFirestore.instance
+          .collection('gebruikers').doc(eigenaar)
+          .collection('apparaten')
+          .where('kringId', isEqualTo: kringId)
+          .get();
+      return snap.docs
+          .where((d) =>
+              (d.data())['modus'] as String? == 'ontvanger')
+          .map((d) => d.id)
+          .toList();
+    } catch (_) {
+      return const [];
+    }
   }
 
   Future<void> _laadMijnWeergaveNaam(String? kringId) async {
@@ -798,6 +895,7 @@ class _StuurTabState extends State<StuurTab> {
   @override
   void dispose() {
     _actieveKringSub?.cancel();
+    _ledenSub?.cancel();
     DeviceModusService.actieveKringNotifier
         .removeListener(_opActieveKringWissel);
     _recorder.dispose();
@@ -1248,17 +1346,22 @@ class _StuurTabState extends State<StuurTab> {
             : 'Iemand uit je kring';
       }
 
-      // Targeting (apparaat-id-lookup) blijft voorlopig zoals het was;
-      // de persoon-kiezer + targeting-omslag komt in 2.10-a-2.
-      final leden = await (_kringFuture
-          ?? Future.value(<Map<String, dynamic>>[]));
+      // V9 2.10-a-2: drie target-modes — iedereen / lid (userUid) /
+      // dierbare (ontvanger-apparaten van deze kring).
       List<String>? aanApparaatIds;
-      if (_gekozenPersoonsNaam != null) {
-        aanApparaatIds = leden
-            .where((l) => (l['persoonsNaam'] as String? ?? '').toLowerCase()
-                == _gekozenPersoonsNaam!.toLowerCase())
-            .map((l) => l['apparaatId'] as String)
-            .toList();
+      List<String>? aanUserUids;
+      if (_dierbareTarget) {
+        aanApparaatIds = await _ontvangerApparaatIds(kringId);
+        if (aanApparaatIds.isEmpty) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+              content: Text('Nog geen apparaat ingesteld voor je dierbare.'),
+              backgroundColor: kRood));
+          }
+          return;
+        }
+      } else if (_gekozenUserUid != null) {
+        aanUserUids = [_gekozenUserUid!];
       }
 
       await FirebaseFirestore.instance.collection('momenten').add({
@@ -1268,6 +1371,7 @@ class _StuurTabState extends State<StuurTab> {
         'vanApparaatModus': DeviceModusService.notifier.value ?? 'familie',
         'aanApparaatId': null,
         'aanApparaatIds': aanApparaatIds,
+        'aanUserUids': aanUserUids,
         'aanPersoonsNaam': _gekozenPersoonsNaam,
         'type': 'hartje',
         'emoji': '💕',
@@ -1315,11 +1419,8 @@ class _StuurTabState extends State<StuurTab> {
         return;
       }
 
-      // V9 2.11-a-3: vanNaam uit kring-context. Tablet (alsOntvanger)
-      // = dierbare-naam uit kring-doc; familielid = eigen weergaveNaam
-      // uit membership. _kringFuture (leden-lookup) blijft hieronder
-      // bestaan voor de targeting-opbouw — komt in 2.10-a-2 aan de
-      // beurt.
+      // V9 2.11-a-3: vanNaam uit kring-context (tablet = dierbare,
+      // familielid = eigen weergaveNaam).
       final String vanNaam;
       if (widget.alsOntvanger) {
         vanNaam = (_kringNaam ?? '').isNotEmpty
@@ -1330,8 +1431,6 @@ class _StuurTabState extends State<StuurTab> {
             ? _mijnWeergaveNaam!
             : 'Iemand uit je kring';
       }
-      final leden = await (_kringFuture
-          ?? Future.value(<Map<String, dynamic>>[]));
 
       String mediaUrl = '';
       if (_type == 'stem' && _opnamePad != null) {
@@ -1363,15 +1462,23 @@ class _StuurTabState extends State<StuurTab> {
       final geplandTijd = _testModus ? DateTime.now() : DateTime(
           _datum.year, _datum.month, _datum.day, _tijd.hour, _tijd.minute);
 
-      // Persoon → alle apparaatIds van die persoon (case-insensitief).
-      // null = iedereen in de kring.
+      // V9 2.10-a-2: drie target-modes — iedereen / lid (userUid) /
+      // dierbare (ontvanger-apparaten van deze kring).
       List<String>? aanApparaatIds;
-      if (_gekozenPersoonsNaam != null) {
-        aanApparaatIds = leden
-            .where((l) => (l['persoonsNaam'] as String? ?? '').toLowerCase()
-                == _gekozenPersoonsNaam!.toLowerCase())
-            .map((l) => l['apparaatId'] as String)
-            .toList();
+      List<String>? aanUserUids;
+      if (_dierbareTarget) {
+        aanApparaatIds = await _ontvangerApparaatIds(kringId);
+        if (aanApparaatIds.isEmpty) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+              content: Text('Nog geen apparaat ingesteld voor je dierbare.'),
+              backgroundColor: kRood));
+            setState(() => _bezig = false);
+          }
+          return;
+        }
+      } else if (_gekozenUserUid != null) {
+        aanUserUids = [_gekozenUserUid!];
       }
 
       await FirebaseFirestore.instance.collection('momenten').add({
@@ -1381,7 +1488,8 @@ class _StuurTabState extends State<StuurTab> {
         'vanApparaatModus':
             DeviceModusService.notifier.value ?? 'familie',
         'aanApparaatId': null,                  // legacy-veld; nieuwe sends via lijst
-        'aanApparaatIds': aanApparaatIds,        // null = iedereen in kring
+        'aanApparaatIds': aanApparaatIds,        // null of ontvanger-target
+        'aanUserUids': aanUserUids,              // null of [lid.userUid]
         'aanPersoonsNaam': _gekozenPersoonsNaam, // voor historie/weergave
         'type': _type,
         'mediaUrl': mediaUrl,
@@ -1452,88 +1560,92 @@ class _StuurTabState extends State<StuurTab> {
   void _toonFout(String m) => ScaffoldMessenger.of(context)
       .showSnackBar(SnackBar(content: Text(m), backgroundColor: Colors.red));
 
-  Widget _adresKeuze() => FutureBuilder<List<Map<String, dynamic>>>(
-    future: _kringFuture,
-    builder: (ctx, snap) {
-      if (_mijnApparaatId == null || !snap.hasData) {
-        return Container(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
-          decoration: BoxDecoration(color: kWhite,
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: kPeachLight, width: 2)),
-          child: Row(children: const [
-            Text('👥', style: TextStyle(fontSize: 20)),
-            SizedBox(width: 10),
-            SizedBox(width: 16, height: 16,
-                child: CircularProgressIndicator(
-                    color: kPeach, strokeWidth: 2.5)),
-            SizedBox(width: 10),
-            Text('Even laden...',
-                style: TextStyle(fontSize: 13,
-                    fontWeight: FontWeight.w700, color: kTextMuted)),
-          ]),
-        );
-      }
-      // In alsOntvanger-modus: sluit álle ontvanger-apparaten uit, niet
-      // alleen het eigen apparaat (meerdere ontvanger-sessies kunnen
-      // dezelfde modus delen met andere apparaatIds).
-      final leden = snap.data!.where((l) {
-        if (l['apparaatId'] == _mijnApparaatId) return false;
-        if (widget.alsOntvanger && l['modus'] == 'ontvanger') return false;
-        return true;
-      }).toList();
-      // Groepeer op persoonsNaam (case-insensitief) — meerdere apparaten van
-      // dezelfde persoon geven één entry.
-      final gezien = <String>{};
-      final personen = <Map<String, dynamic>>[];
-      for (final l in leden) {
-        final naam = (l['persoonsNaam'] as String? ?? '').trim();
-        if (naam.isEmpty) continue;
-        final key = naam.toLowerCase();
-        if (gezien.contains(key)) continue;
-        gezien.add(key);
-        personen.add(l);
-      }
-      return Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
-        decoration: BoxDecoration(color: kWhite,
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: kPeachLight, width: 2)),
-        child: Row(children: [
-          const Text('👥', style: TextStyle(fontSize: 20)),
-          const SizedBox(width: 10),
-          Expanded(child: DropdownButton<String?>(
-            value: _gekozenPersoonsNaam,
-            isExpanded: true,
-            underline: const SizedBox(),
-            hint: const Text('Naar wie?',
-                style: TextStyle(color: kTextMuted)),
-            items: [
-              const DropdownMenuItem<String?>(
-                value: null,
-                child: Text('Iedereen in de kring',
-                    style: TextStyle(color: kBrown,
-                        fontWeight: FontWeight.w700)),
-              ),
-              ...personen.map((l) {
-                final naam = l['persoonsNaam'] as String;
-                final isOntv = l['modus'] == 'ontvanger';
-                final label = isOntv ? '$naam (ontvanger)' : naam;
-                return DropdownMenuItem<String?>(
-                  value: naam,
-                  child: Text(label, style: const TextStyle(
-                      color: kBrown, fontWeight: FontWeight.w700)),
-                );
-              }),
-            ],
-            onChanged: (val) => setState(() {
-              _gekozenPersoonsNaam = val;
+  /// V9 2.10-a-2: membership-based persoon-kiezer.
+  /// - Items: 'Iedereen in de kring' (null) + 'Voor je dierbare'
+  ///   (sentinel '__dierbare__') + leden uit _leden (value = userUid).
+  /// - Self-uitsluiting op auth.uid. Geen account-brede apparaat-bron
+  ///   meer; oude apparaat-namen + cross-kring lekken zijn weg.
+  /// - Naam uit Membership.weergaveNaam met fallback 'Kringlid'.
+  static const String _dierbareSentinel = '__dierbare__';
+
+  Widget _adresKeuze() {
+    final authUid = FirebaseAuth.instance.currentUser?.uid;
+    final andereLeden = _leden
+        .where((m) => m.userUid != authUid)
+        .toList();
+    String? huidigeWaarde;
+    if (_dierbareTarget) {
+      huidigeWaarde = _dierbareSentinel;
+    } else {
+      huidigeWaarde = _gekozenUserUid;
+    }
+    final dierbareLabel = (_kringNaam ?? '').isNotEmpty
+        ? 'Voor je dierbare (${_kringNaam!})'
+        : 'Voor je dierbare';
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+      decoration: BoxDecoration(color: kWhite,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: kPeachLight, width: 2)),
+      child: Row(children: [
+        const Text('👥', style: TextStyle(fontSize: 20)),
+        const SizedBox(width: 10),
+        Expanded(child: DropdownButton<String?>(
+          value: huidigeWaarde,
+          isExpanded: true,
+          underline: const SizedBox(),
+          hint: const Text('Naar wie?',
+              style: TextStyle(color: kTextMuted)),
+          items: [
+            const DropdownMenuItem<String?>(
+              value: null,
+              child: Text('Iedereen in de kring',
+                  style: TextStyle(color: kBrown,
+                      fontWeight: FontWeight.w700)),
+            ),
+            DropdownMenuItem<String?>(
+              value: _dierbareSentinel,
+              child: Text(dierbareLabel,
+                  style: const TextStyle(color: kBrown,
+                      fontWeight: FontWeight.w700)),
+            ),
+            ...andereLeden.map((m) {
+              final naam = (m.weergaveNaam ?? '').trim();
+              final label = naam.isEmpty ? 'Kringlid' : naam;
+              return DropdownMenuItem<String?>(
+                value: m.userUid,
+                child: Text(label, style: const TextStyle(
+                    color: kBrown, fontWeight: FontWeight.w700)),
+              );
             }),
-          )),
-        ]),
-      );
-    },
-  );
+          ],
+          onChanged: (val) => setState(() {
+            if (val == null) {
+              _gekozenUserUid = null;
+              _dierbareTarget = false;
+              _gekozenPersoonsNaam = null;
+            } else if (val == _dierbareSentinel) {
+              _gekozenUserUid = null;
+              _dierbareTarget = true;
+              _gekozenPersoonsNaam = (_kringNaam ?? '').isNotEmpty
+                  ? _kringNaam
+                  : 'Je dierbare';
+            } else {
+              _gekozenUserUid = val;
+              _dierbareTarget = false;
+              final lid = _leden.firstWhere(
+                  (m) => m.userUid == val,
+                  orElse: () => Membership(
+                      userUid: val, rol: AccountRol.gast,
+                      gejoindOp: DateTime.now()));
+              final naam = (lid.weergaveNaam ?? '').trim();
+              _gekozenPersoonsNaam = naam.isEmpty ? 'Kringlid' : naam;
+            }
+          }),
+        )),
+      ]),
+    );
+  }
 
   Widget _typeKnop(String emoji, String label, String waarde) =>
     Expanded(child: GestureDetector(
