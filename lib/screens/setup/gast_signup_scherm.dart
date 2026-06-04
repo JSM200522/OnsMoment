@@ -100,6 +100,10 @@ class _GastSignupSchermState extends State<GastSignupScherm> {
 
     final uid = cred.user!.uid;
 
+    // V9 2.12-a-2: verificatie-mail fire-and-forget. Account werkt
+    // direct ongeacht status; faalt silent bij netwerk-fout.
+    cred.user?.sendEmailVerification().catchError((Object _) {});
+
     // ─── 2. Minimaal gebruikers-doc (6 velden, géén ontvanger-velden).
     // Optie B: bij fail geen account-delete, gast kan opnieuw inloggen.
     try {

@@ -814,6 +814,11 @@ class _SetupWizardState extends State<SetupWizard> {
           email: _emailCtrl.text.trim(), password: _wachtwoordCtrl.text);
       final uid = cred.user!.uid;
 
+      // V9 2.12-a-2: stuur verificatie-mail fire-and-forget. Zachte
+      // variant: het account werkt direct, ongeacht of de mail wordt
+      // bevestigd. Faalt silent bij netwerk/quota — geen blokkering.
+      cred.user?.sendEmailVerification().catchError((Object _) {});
+
       // Profielfoto uploaden (geen exception bij fail; zie #22)
       String profielFotoUrl = '';
       bool fotoUploadFaalde = false;

@@ -2641,6 +2641,10 @@ class _InstellingenTabState extends State<InstellingenTab> {
   List<Kring>? _kringen;
   String? _huidigeKringId;
   StreamSubscription<Kring?>? _actieveKringSub;
+  // V9 2.12-a-2: e-mailverificatie-status (zacht — alleen tonen).
+  bool _emailVerified = false;
+  bool _bezigVerstuur = false;
+  bool _bezigVerifieer = false;
 
   /// V9 2.4-a-3: kring-doc primair, gebruikers/{uid} fallback,
   /// 'je dierbare' als ultieme default.
@@ -2653,6 +2657,10 @@ class _InstellingenTabState extends State<InstellingenTab> {
   @override
   void initState() {
     super.initState();
+    // V9 2.12-a-2: synchroon emailVerified-status uitlezen voor de
+    // banner; bij elke handmatige verversing herzet _controleerVerificatie.
+    _emailVerified =
+        FirebaseAuth.instance.currentUser?.emailVerified ?? false;
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null) return;
     FirebaseFirestore.instance.collection('gebruikers').doc(uid).get()
@@ -2720,6 +2728,149 @@ class _InstellingenTabState extends State<InstellingenTab> {
     // kringId-afhankelijke streams.
   }
 
+  /// V9 2.12-a-2: stuurt een verificatie-mail naar het huidige account.
+  /// Faalt silent bij netwerk/quota — toon snackbar met uitkomst.
+  Future<void> _verstuurVerificatieMail() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+    setState(() => _bezigVerstuur = true);
+    try {
+      await user.sendEmailVerification();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('Mail verstuurd. Kijk in je inbox (en spam).'),
+        backgroundColor: kPeach));
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('Versturen mislukt — probeer opnieuw.'),
+        backgroundColor: kRood));
+    } finally {
+      if (mounted) setState(() => _bezigVerstuur = false);
+    }
+  }
+
+  /// V9 2.12-a-2: vraagt Firebase om de huidige user-status opnieuw
+  /// op te halen (reload) en update de emailVerified-banner.
+  Future<void> _controleerVerificatie() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+    setState(() => _bezigVerifieer = true);
+    try {
+      await user.reload();
+      final geverifieerd =
+          FirebaseAuth.instance.currentUser?.emailVerified ?? false;
+      if (!mounted) return;
+      setState(() => _emailVerified = geverifieerd);
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(geverifieerd
+            ? 'Gelukt — je e-mailadres is bevestigd ✓'
+            : 'Nog niet bevestigd — klik eerst op de link in de e-mail.'),
+        backgroundColor: geverifieerd ? kGreen : kPeach));
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('Controle mislukt — probeer opnieuw.'),
+        backgroundColor: kRood));
+    } finally {
+      if (mounted) setState(() => _bezigVerifieer = false);
+    }
+  }
+
+  /// V9 2.12-a-2: status-kaart voor de e-mailverificatie. Twee
+  /// varianten: bevestigd (rustige groen-getinte kaart) of
+  /// niet-bevestigd (peach kaart met uitleg + 2 knoppen).
+  Widget _emailStatusSectie(String email) {
+    if (_emailVerified) {
+      return Container(
+        margin: const EdgeInsets.only(bottom: 12),
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(color: kWhite,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: kPeachLight, width: 2)),
+        child: Row(children: [
+          const Text('✓',
+              style: TextStyle(fontSize: 22,
+                  fontWeight: FontWeight.w900, color: kGreen)),
+          const SizedBox(width: 12),
+          Expanded(child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start, children: [
+              const Text('E-mailadres bevestigd',
+                  style: TextStyle(fontSize: 14,
+                      fontWeight: FontWeight.w800, color: kBrown)),
+              if (email.isNotEmpty) ...[
+                const SizedBox(height: 2),
+                Text(email, maxLines: 1, overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontSize: 12, color: kTextMuted)),
+              ],
+            ])),
+        ]),
+      );
+    }
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(color: kWhite,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: kPeach, width: 2)),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(children: [
+            const Text('⚠', style: TextStyle(fontSize: 22)),
+            const SizedBox(width: 12),
+            Expanded(child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start, children: [
+                const Text('Je e-mailadres is nog niet bevestigd',
+                    style: TextStyle(fontSize: 14,
+                        fontWeight: FontWeight.w800, color: kBrown)),
+                if (email.isNotEmpty) ...[
+                  const SizedBox(height: 2),
+                  Text(email, maxLines: 1, overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontSize: 12,
+                          color: kTextMuted)),
+                ],
+              ])),
+          ]),
+          const SizedBox(height: 10),
+          const Text(
+              'Kijk in je inbox (en spam) voor onze e-mail. Daarna kun '
+              'je hieronder bevestigen dat je geklikt hebt.',
+              style: TextStyle(fontSize: 12,
+                  color: kBrownLight, height: 1.4)),
+          const SizedBox(height: 12),
+          Row(children: [
+            Expanded(child: TextButton(
+              style: TextButton.styleFrom(
+                backgroundColor: kPeachPale,
+                foregroundColor: kBrown,
+                padding: const EdgeInsets.symmetric(vertical: 12)),
+              onPressed: _bezigVerstuur ? null : _verstuurVerificatieMail,
+              child: _bezigVerstuur
+                  ? const SizedBox(width: 16, height: 16,
+                      child: CircularProgressIndicator(
+                          color: kPeach, strokeWidth: 2.5))
+                  : const Text('Verstuur opnieuw',
+                      style: TextStyle(fontWeight: FontWeight.w800)),
+            )),
+            const SizedBox(width: 8),
+            Expanded(child: TextButton(
+              style: TextButton.styleFrom(
+                backgroundColor: kPeach,
+                foregroundColor: kWhite,
+                padding: const EdgeInsets.symmetric(vertical: 12)),
+              onPressed: _bezigVerifieer ? null : _controleerVerificatie,
+              child: _bezigVerifieer
+                  ? const SizedBox(width: 16, height: 16,
+                      child: CircularProgressIndicator(
+                          color: kWhite, strokeWidth: 2.5))
+                  : const Text("Ik heb 't bevestigd",
+                      style: TextStyle(fontWeight: FontWeight.w800)),
+            )),
+          ]),
+        ]),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final naam = _toonNaam;
@@ -2750,6 +2901,9 @@ class _InstellingenTabState extends State<InstellingenTab> {
         ],
         const SizedBox(height: 20),
         _sectie('ACCOUNT'),
+        if (!widget.alsOntvanger)
+          _emailStatusSectie(
+              FirebaseAuth.instance.currentUser?.email ?? ''),
         _item('👵', 'Ontvanger-profiel',
             'Naam, foto, lievelingsdingen en herkenningsgeluid', () {
           Navigator.push(context, MaterialPageRoute(
