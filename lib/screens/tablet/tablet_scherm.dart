@@ -63,21 +63,22 @@ class _TabletSchermState extends State<TabletScherm>
     // V9 1.1f/1.1g/1.1h: alle kringId-gefilterde listeners pas starten ná
     // resolve, anders null-filter en hoort de ontvanger geen popups/
     // herkenningsgeluiden meer.
-    DeviceModusService.huidigeKringIdMetFallback().then((id) {
+    DeviceModusService.huidigeKringIdMetFallback().then((id) async {
       if (!mounted) return;
       setState(() => _kringId = id);
       if (id != null) {
         _startMomentenListener();
         _startDagelijksListener();
         _startEenmaligListener();
+        // V9 2.11-a-1: lees de gecachte ontvangerNaam met de juiste
+        // kringId-tag zodat de 'Hallo X'-banner de naam van DEZE
+        // kring toont, niet de laatst-gecachte naam van een andere
+        // kring (was de bug uit 2.9-perf-2).
+        final naam = await DeviceModusService
+            .krijgGecachteOntvangerNaam(id);
+        if (!mounted || naam == null || naam.isEmpty) return;
+        setState(() => _gecachteOntvangerNaam = naam);
       }
-    });
-    // V9 2.9-perf-2: lees gecachte ontvangerNaam zodat de 'Hallo X'-
-    // banner direct kan renderen i.p.v. te wachten op de gebruikers-
-    // doc-snapshot of actieveKringStream.
-    DeviceModusService.krijgGecachteOntvangerNaam().then((naam) {
-      if (!mounted || naam == null || naam.isEmpty) return;
-      setState(() => _gecachteOntvangerNaam = naam);
     });
     _checkTimer = Timer.periodic(const Duration(seconds: 30), (_) {
       _checkGeplandeMomenten();

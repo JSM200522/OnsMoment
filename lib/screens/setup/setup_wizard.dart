@@ -1185,36 +1185,40 @@ class _SetupWizardState extends State<SetupWizard> {
     try {
       final uid = FirebaseAuth.instance.currentUser!.uid;
       final apparaatId = await DeviceModusService.krijgApparaatId();
-      // V9 2.9-perf: krijgActieveKring (SharedPrefs) en gebruikers-
-      // doc.get (Firestore) hangen beide alleen af van uid en zijn
-      // verder onafhankelijk — parallel starten halveert de wachttijd
-      // vóór registreer.
       // V9 2.6-a-1: actieve kring uit SharedPreferences (gezet door
-      // _ontvangerInloggenActie via zetActieveKringVoorEigenaar) meegeven
-      // zodat het apparaat-doc 'm vastlegt. Bij multi-kring is dit nu
-      // de keuze van de eigenaar (2.6-a-2).
-      final kringIdFuture = DeviceModusService.krijgActieveKring();
-      final gebruikersDocFuture = FirebaseFirestore.instance
-          .collection('gebruikers').doc(uid).get();
-      final kringId = await kringIdFuture;
-      // Voor ontvanger-apparaat gebruiken we ontvangerNaam als persoonsnaam.
+      // _ontvangerInloggenActie via zetActieveKringVoorEigenaar of door
+      // de multi-kring keuze in 2.6-a-2) meegeven zodat het apparaat-doc
+      // 'm vastlegt.
+      final kringId = await DeviceModusService.krijgActieveKring();
+      // V9 2.11-a-1: lees naam EN foto uit het kring-doc i.p.v. uit
+      // gebruikers/{uid}.ontvangerNaam / ontvangerFoto. Die laatste
+      // velden zijn account-breed en lekken bij multi-kring eigenaars
+      // de naam/foto van kring A in kring B. kringen/{kringId}.naam
+      // is per kring uniek (geschreven door
+      // KringService.voegKringMetEigenaarToeAanBatch).
       String naam = 'Ontvanger';
-      try {
-        final doc = await gebruikersDocFuture;
-        naam = (doc.data()?['ontvangerNaam'] as String?) ?? 'Ontvanger';
-        // V9 2.9-perf-2: schrijf naam-cache + precache foto zodat het
-        // ontvanger-scherm (TabletScherm) ze instant beschikbaar heeft.
-        // Allebei fire-and-forget — fail-soft, geen invloed op de
-        // hoofdflow als ze niet lukken.
-        if (naam.isNotEmpty && naam != 'Ontvanger') {
-          DeviceModusService.zetGecachteOntvangerNaam(naam);
-        }
-        final fotoUrl = doc.data()?['ontvangerFoto'] as String?;
-        if (fotoUrl != null && fotoUrl.isNotEmpty && mounted) {
-          precacheImage(NetworkImage(fotoUrl), context)
-              .catchError((Object _) {});
-        }
-      } catch (_) {}
+      if (kringId != null && kringId.isNotEmpty) {
+        try {
+          final kringDoc = await FirebaseFirestore.instance
+              .collection('kringen').doc(kringId).get();
+          final data = kringDoc.data();
+          final kringNaam = data?['naam'] as String?;
+          if (kringNaam != null && kringNaam.isNotEmpty) {
+            naam = kringNaam;
+          }
+          // Schrijf naam-cache + precache foto fire-and-forget zodat
+          // TabletScherm de banner instant kan tonen. kringId-tagged
+          // cache voorkomt cross-kring naam-lek.
+          if (naam.isNotEmpty && naam != 'Ontvanger') {
+            DeviceModusService.zetGecachteOntvangerNaam(kringId, naam);
+          }
+          final fotoUrl = data?['foto'] as String?;
+          if (fotoUrl != null && fotoUrl.isNotEmpty && mounted) {
+            precacheImage(NetworkImage(fotoUrl), context)
+                .catchError((Object _) {});
+          }
+        } catch (_) {}
+      }
       // V9 2.7: GEEN kanNieuwePersoonToevoegen-check hier — een
       // ontvanger-tablet koppelen voegt geen kringlid toe, dus de
       // tier-limiet hoort niet van toepassing. De dierbare is geen

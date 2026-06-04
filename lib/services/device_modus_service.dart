@@ -19,8 +19,13 @@ class DeviceModusService {
   static const String _apparaatIdKey = 'ons_moment_apparaat_id';
   static const String _geregistreerdKey = 'ons_moment_geregistreerd';
   static const String _actieveKringKey = 'ons_moment_actieve_kring_id';
-  static const String _gecachteOntvangerNaamKey =
-      'ons_moment_gecachte_ontvanger_naam';
+  /// V9 2.11-a-1: cache-prefix voor kringId-specifieke ontvanger-naam.
+  /// Volledige key wordt 'ons_moment_gecachte_ontvanger_naam_$kringId'.
+  /// Oude 2.9-perf-2 key 'ons_moment_gecachte_ontvanger_naam' (zonder
+  /// suffix) blijft eventueel in SharedPrefs staan maar wordt nooit
+  /// meer gelezen — ruimt op bij wis() / signOut.
+  static const String _gecachteOntvangerNaamPrefix =
+      'ons_moment_gecachte_ontvanger_naam_';
   static const String FAMILIE = 'familie';
   static const String ONTVANGER = 'ontvanger';
   static const String VERGRENDELD = 'vergrendeld';
@@ -240,26 +245,29 @@ class DeviceModusService {
     } catch (_) {}
   }
 
-  /// V9 2.9-perf-2: cache van ontvangerNaam zodat TabletScherm (en in
-  /// de toekomst FamilieScherm-alsOntvanger) de 'Hallo X'-banner
-  /// direct kan tonen zonder op de gebruikers/{uid} snapshot of de
-  /// actieveKringStream te wachten. Wordt geschreven door
-  /// _voltooiOntvanger; bestaande Firestore-streams overschrijven 'm
-  /// zodra live data binnen is. Alleen-presentatie: geen gedrags-
-  /// wijziging, geen autoritatieve bron.
-  static Future<void> zetGecachteOntvangerNaam(String naam) async {
+  /// V9 2.9-perf-2 (kringId-tagged sinds 2.11-a-1): cache van de
+  /// ontvanger-/dierbare-naam PER KRING zodat TabletScherm de
+  /// 'Hallo X'-banner direct kan tonen zonder op een Firestore-snapshot
+  /// te wachten. Bij multi-kring eigenaars voorkomt de kringId-suffix
+  /// dat de naam van kring A in kring B wordt getoond. Geschreven door
+  /// _voltooiOntvanger; bestaande live-streams overschrijven 'm zodra
+  /// data binnen is. Alleen-presentatie, geen autoritatieve bron.
+  static Future<void> zetGecachteOntvangerNaam(
+      String kringId, String naam) async {
+    if (kringId.isEmpty) return;
     final trimmed = naam.trim();
     if (trimmed.isEmpty) return;
     try {
       final prefs = await SharedPreferences.getInstance();
-      await prefs.setString(_gecachteOntvangerNaamKey, trimmed);
+      await prefs.setString('$_gecachteOntvangerNaamPrefix$kringId', trimmed);
     } catch (_) {}
   }
 
-  static Future<String?> krijgGecachteOntvangerNaam() async {
+  static Future<String?> krijgGecachteOntvangerNaam(String kringId) async {
+    if (kringId.isEmpty) return null;
     try {
       final prefs = await SharedPreferences.getInstance();
-      return prefs.getString(_gecachteOntvangerNaamKey);
+      return prefs.getString('$_gecachteOntvangerNaamPrefix$kringId');
     } catch (_) {
       return null;
     }
