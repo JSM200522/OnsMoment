@@ -401,6 +401,38 @@ class _AcceptUitnodigSchermState extends State<AcceptUitnodigScherm> {
     }
   }
 
+  /// V9 2.12-a-1: stuurt een wachtwoord-reset-mail via Firebase Auth.
+  /// Gebruikt het al ingevoerde e-mailadres uit _emailCtrl. Anti-
+  /// enumeratie: behalve bij invalid-email tonen we altijd dezelfde
+  /// generieke succes-melding (ook bij user-not-found of netwerk).
+  Future<void> _wachtwoordVergetenAanvragen() async {
+    final email = _emailCtrl.text.trim();
+    if (email.isEmpty
+        || !RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$').hasMatch(email)) {
+      _toonFout('Vul eerst je e-mailadres in');
+      return;
+    }
+    try {
+      await FirebaseAuth.instance.sendPasswordResetEmail(email: email);
+    } on FirebaseAuthException catch (e) {
+      if (e.code == 'invalid-email') {
+        _toonFout('E-mailadres lijkt niet te kloppen');
+        return;
+      }
+      // user-not-found en alle andere FirebaseAuth-fouten: door naar
+      // de generieke succes-melding (anti-enumeratie).
+    } catch (_) {
+      // Netwerk- of onbekende fout: ook generiek.
+    }
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+      content: Text('Als dit e-mailadres bij ons bekend is, sturen we '
+          'je een e-mail om je wachtwoord opnieuw in te stellen. Kijk '
+          'ook in je spam-map.'),
+      backgroundColor: kPeach,
+      duration: Duration(seconds: 6)));
+  }
+
   // ─── 3. Inlog-velden ────────────────────────────────────────────────
 
   List<Widget> _inlogSectie() => [
@@ -412,7 +444,17 @@ class _AcceptUitnodigSchermState extends State<AcceptUitnodigScherm> {
     _input('📧', 'E-mailadres', 'voorbeeld@email.nl', _emailCtrl, false),
     const SizedBox(height: 10),
     _input('🔒', 'Wachtwoord', 'Je wachtwoord', _wachtwoordCtrl, true),
-    const SizedBox(height: 16),
+    // V9 2.12-a-1: 'Wachtwoord vergeten?'-link voor gasten met
+    // bestaand account dat ze niet meer kunnen herinneren.
+    const SizedBox(height: 8),
+    Center(child: TextButton(
+      onPressed: _wachtwoordVergetenAanvragen,
+      child: const Text('Wachtwoord vergeten?',
+          style: TextStyle(fontSize: 13, color: kPeach,
+              fontWeight: FontWeight.w700,
+              decoration: TextDecoration.underline))),
+    ),
+    const SizedBox(height: 8),
 
     GestureDetector(
       onTap: _bezigInloggen ? null : _gastInloggen,
