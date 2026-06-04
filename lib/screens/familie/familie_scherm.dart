@@ -4055,17 +4055,17 @@ class OntvangenBerichtenScherm extends StatefulWidget {
 }
 
 class _OntvangenBerichtenSchermState extends State<OntvangenBerichtenScherm> {
-  String? _ontvangerNaam;  // legacy: uit gebruikers/{uid}
-  String? _kringNaam;       // V9 2.4-a-3: uit actieve kring-doc
+  /// V9 2.11-a-2: enige naam-bron is het kring-doc (kringen/{kringId}.naam).
+  /// Geen account-brede gebruikers/{uid}.ontvangerNaam-fallback meer want
+  /// dat veld lekt bij multi-kring eigenaars naar de verkeerde kring.
+  String? _kringNaam;
   List<String>? _ontvangerApparaatIds;
   String? _kringId;
   StreamSubscription<Kring?>? _actieveKringSub;
 
-  /// V9 2.4-a-3: kring-doc primair, gebruikers/{uid} fallback,
-  /// 'je dierbare' als ultieme default.
+  /// V9 2.11-a-2: kring-doc OF 'je dierbare'. Geen account-brede fallback.
   String get _toonNaam {
     if ((_kringNaam ?? '').isNotEmpty) return _kringNaam!;
-    if ((_ontvangerNaam ?? '').isNotEmpty) return _ontvangerNaam!;
     return 'je dierbare';
   }
 
@@ -4093,13 +4093,29 @@ class _OntvangenBerichtenSchermState extends State<OntvangenBerichtenScherm> {
     if (uid == null) return;
     try {
       final kringId = await DeviceModusService.huidigeKringIdMetFallback();
-      final naamDoc = await FirebaseFirestore.instance
-          .collection('gebruikers').doc(uid).get();
-      final leden = await ApparaatService.kringLeden(uid);
+      if (kringId == null) {
+        if (mounted) setState(() => _ontvangerApparaatIds = []);
+        return;
+      }
+      // V9 2.11-a-2: kring-doc + apparaten parallel zodat _kringNaam
+      // al gevuld is bij de eerste render — voorkomt de korte
+      // 'Ontvangen van je dierbare' -> 'Ontvangen van Opa' flash.
+      final results = await Future.wait([
+        FirebaseFirestore.instance.collection('kringen').doc(kringId).get(),
+        ApparaatService.kringLeden(uid),
+      ]);
+      final kringDoc = results[0] as DocumentSnapshot;
+      final leden = results[1] as List<Map<String, dynamic>>;
+      final kringData = kringDoc.data();
+      final kringNaam = (kringData is Map)
+          ? kringData['naam'] as String?
+          : null;
       if (!mounted) return;
       setState(() {
         _kringId = kringId;
-        _ontvangerNaam = naamDoc.data()?['ontvangerNaam'] as String?;
+        if (kringNaam != null && kringNaam.isNotEmpty) {
+          _kringNaam = kringNaam;
+        }
         _ontvangerApparaatIds = leden
             .where((l) => l['modus'] == 'ontvanger')
             .map((l) => l['apparaatId'] as String)
