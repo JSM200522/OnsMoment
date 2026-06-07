@@ -1,4 +1,4 @@
-package com.onsmoment.ons_moment
+package nl.onsmoment.app
 
 import io.flutter.embedding.android.FlutterActivity
 

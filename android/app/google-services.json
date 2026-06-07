@@ -1,0 +1,48 @@
+{
+  "project_info": {
+    "project_number": "1051901056201",
+    "project_id": "onsmonent",
+    "storage_bucket": "onsmonent.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1051901056201:android:a9bbc835d72d3e3e476918",
+        "android_client_info": {
+          "package_name": "com.onsmoment.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyA4ztEVLzWvbJ3zZLFqt6bwtOY5DEtlorg"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1051901056201:android:61a468a7881583e5476918",
+        "android_client_info": {
+          "package_name": "nl.onsmoment.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyA4ztEVLzWvbJ3zZLFqt6bwtOY5DEtlorg"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
