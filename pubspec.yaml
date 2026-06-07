@@ -28,6 +28,9 @@ dependencies:
   device_info_plus: ^10.1.0
   video_player: 2.9.2
 
+dependency_overrides:
+  record_android: 1.2.0
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
