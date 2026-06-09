@@ -4246,7 +4246,7 @@ class _HulpDialog extends StatelessWidget {
         "en wanneer het moet aankomen. Druk op versturen en het bericht "
         "verschijnt op het ingestelde moment bij je dierbare."),
     _FAQ('Voor families', "Hoe maak ik een dagelijkse herinnering?",
-        "Ga naar het tabblad 'Agenda' en kies 'Nieuwe herinnering'. Stel een "
+        "Ga naar 'Instellingen' en kies 'Momenten beheren'. Stel een "
         "tijd in en kies wat er moet verschijnen — bijvoorbeeld 'Tijd voor "
         "koffie' met een foto of geluid. De herinnering komt voortaan elke dag "
         "op die tijd in beeld bij je dierbare."),
