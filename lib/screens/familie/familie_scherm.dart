@@ -3782,9 +3782,9 @@ class _AccountWijzigDialogState extends State<_AccountWijzigDialog> {
       // Enumeration Protection (anders dan het deprecated updateEmail).
       await user.verifyBeforeUpdateEmail(nieuw);
       if (!mounted) return;
-      _toonSucces('✓ Verificatie-link is gestuurd naar $nieuw. Klik op de '
-          'link om te bevestigen. Daarna moeten alle kringleden inloggen '
-          'met het nieuwe email.');
+      _toonSucces('✓ Verificatie-link is gestuurd naar $nieuw. Open je '
+          'inbox en klik op de link om te bevestigen. Daarna log jij in '
+          'met je nieuwe e-mailadres.');
       _emailNieuwCtrl.clear();
       _emailWwCtrl.clear();
     } on FirebaseAuthException catch (e) {
@@ -3818,7 +3818,8 @@ class _AccountWijzigDialogState extends State<_AccountWijzigDialog> {
       await user.reauthenticateWithCredential(cred);
       await user.updatePassword(nieuw);
       if (!mounted) return;
-      _toonSucces('✓ Wachtwoord gewijzigd. Vertel je kringleden!');
+      _toonSucces('✓ Wachtwoord gewijzigd. Je blijft nu ingelogd; de '
+          'volgende keer heb je je nieuwe wachtwoord nodig.');
       _wwHuidigCtrl.clear();
       _wwNieuwCtrl.clear();
       _wwBevestigCtrl.clear();
@@ -3873,13 +3874,12 @@ class _AccountWijzigDialogState extends State<_AccountWijzigDialog> {
                     color: kBrown)),
             const SizedBox(height: 16),
             Container(padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(color: Colors.orange.shade100,
+              decoration: BoxDecoration(color: Colors.blue.shade50,
                   borderRadius: BorderRadius.circular(12)),
-              child: Text('⚠️ Let op: na wijziging moeten alle kringleden '
-                  'opnieuw inloggen met de nieuwe gegevens. Vertel ze de '
-                  'nieuwe gegevens!',
+              child: Text('💡 Dit wijzigt alleen jouw inloggegevens. Andere '
+                  'kringleden hebben hun eigen account en merken er niets van.',
                   style: TextStyle(fontSize: 12,
-                      color: Colors.orange.shade900, height: 1.4))),
+                      color: Colors.blue.shade900, height: 1.4))),
             const SizedBox(height: 20),
 
             _sectieKop('E-mail wijzigen'),
