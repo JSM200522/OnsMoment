@@ -2636,6 +2636,7 @@ class _InstellingenTabState extends State<InstellingenTab> {
   String? _ontvangerNaam;       // legacy: uit gebruikers/{uid}
   String? _kringNaam;            // V9 2.4-a-3: uit actieve kring-doc
   bool _isAccountMaker = false;
+  bool _benIkEigenaar = false;   // V9 eigenaar-check: kring.eigenaarUid == authUid
   String? _huidigeOntvangerModus;
   // V9 2.3a: kring-switcher state
   List<Kring>? _kringen;
@@ -2686,12 +2687,29 @@ class _InstellingenTabState extends State<InstellingenTab> {
       DeviceModusService.actieveKringNotifier.addListener(_opKringSwitch);
     }
     // V9 2.4-a-3: naam uit actieve kring-doc (wisselt mee bij switch).
-    _actieveKringSub = KringService.actieveKringStream().listen((kring) {
+    // V9 eigenaar-gating: óók eigenaarschap evalueren en — bij eigenaar —
+    // de huidige ontvanger-weergaveModus herladen, zodat de "(huidig)"-
+    // label in de modus-dialog meeschuift bij kring-switch. Geen extra
+    // Firestore-read voor eigenaarschap: kring.eigenaarUid zit al in
+    // het gestreamde object.
+    _actieveKringSub = KringService.actieveKringStream().listen((kring) async {
       if (!mounted) return;
+      final mijnUid = FirebaseAuth.instance.currentUser?.uid;
+      final eigenaar = kring != null
+          && mijnUid != null
+          && mijnUid.isNotEmpty
+          && kring.eigenaarUid == mijnUid;
       setState(() {
         _kringNaam = (kring != null && kring.naam.isNotEmpty)
             ? kring.naam : null;
+        _benIkEigenaar = eigenaar;
+        if (!eigenaar) _huidigeOntvangerModus = null;
       });
+      if (eigenaar) {
+        final huidig = await ApparaatService
+            .krijgWeergaveModusVoorOntvangers(mijnUid!);
+        if (mounted) setState(() => _huidigeOntvangerModus = huidig);
+      }
     });
   }
 
@@ -2900,11 +2918,11 @@ class _InstellingenTabState extends State<InstellingenTab> {
             Navigator.push(context, MaterialPageRoute(
                 builder: (c) => const KringledenScherm()));
           }),
-        if (_isAccountMaker && !widget.alsOntvanger)
+        if (_benIkEigenaar && !widget.alsOntvanger)
           _item('🔄', 'Wijzig modus van $naam',
               'Vergrendeld of meldings — op afstand',
               () => _toonModusDialog(context, naam)),
-        if (_isAccountMaker && !widget.alsOntvanger)
+        if (_benIkEigenaar && !widget.alsOntvanger)
           _item('✉️', 'Email of wachtwoord wijzigen',
               'Voor jou en je kringleden',
               () => showDialog(context: context,
