@@ -113,13 +113,20 @@ class ApparaatService {
 
   /// Geeft de huidige weergaveModus van het eerste ontvanger-apparaat in
   /// deze kring. Gebruikt voor visuele indicatie in de modus-dialog.
+  ///
+  /// V9 multi-kring fix: strikt op [kringId] filteren — geen fallback naar
+  /// een willekeurige ontvanger in een andere kring. Lege [kringId] →
+  /// null (geen actieve kring = geen modus om te tonen).
   static Future<String?> krijgWeergaveModusVoorOntvangers(
-      String familieUid) async {
+      String familieUid, String kringId) async {
+    if (kringId.isEmpty) return null;
     try {
       final snap = await FirebaseFirestore.instance
           .collection('gebruikers').doc(familieUid)
           .collection('apparaten')
-          .where('modus', isEqualTo: 'ontvanger').limit(1).get();
+          .where('modus', isEqualTo: 'ontvanger')
+          .where('kringId', isEqualTo: kringId)
+          .limit(1).get();
       if (snap.docs.isEmpty) return null;
       return snap.docs.first.data()['weergaveModus'] as String?;
     } catch (_) {
@@ -129,10 +136,16 @@ class ApparaatService {
 
   /// Batch-update weergaveModus voor alle ontvanger-apparaten in een kring.
   /// Triggert remote modus-wissel via Firestore listener op ontvanger-kant.
+  ///
+  /// V9 multi-kring fix: strikt op [kringId] filteren — een eigenaar met
+  /// meerdere kringen mag NOOIT per ongeluk de ontvangers van een andere
+  /// kring meeschakelen. Lege [kringId] → false (geen actieve kring).
   static Future<bool> zetWeergaveModusVoorOntvangers({
     required String familieUid,
+    required String kringId,
     required String nieuweModus,
   }) async {
+    if (kringId.isEmpty) return false;
     if (nieuweModus != 'vergrendeld' && nieuweModus != 'meldingen') {
       return false;
     }
@@ -140,7 +153,10 @@ class ApparaatService {
       final snap = await FirebaseFirestore.instance
           .collection('gebruikers').doc(familieUid)
           .collection('apparaten')
-          .where('modus', isEqualTo: 'ontvanger').get();
+          .where('modus', isEqualTo: 'ontvanger')
+          .where('kringId', isEqualTo: kringId)
+          .get();
+      if (snap.docs.isEmpty) return false;
       final batch = FirebaseFirestore.instance.batch();
       for (final doc in snap.docs) {
         batch.update(doc.reference, {'weergaveModus': nieuweModus});

@@ -2678,8 +2678,13 @@ class _InstellingenTabState extends State<InstellingenTab> {
         if (!mounted) return;
         setState(() => _isAccountMaker = ok);
         if (ok) {
+          // V9 multi-kring fix: kringId is verplicht in de service. We
+          // pakken hier de notifier-waarde (synchroon, geen race met
+          // _laadKringen). Bij ontbrekende kring → service geeft null
+          // → _huidigeOntvangerModus blijft null (geen "(huidig)"-label).
+          final kringId = DeviceModusService.actieveKringNotifier.value ?? '';
           final huidig = await ApparaatService
-              .krijgWeergaveModusVoorOntvangers(uid);
+              .krijgWeergaveModusVoorOntvangers(uid, kringId);
           if (mounted) setState(() => _huidigeOntvangerModus = huidig);
         }
       });
@@ -2706,8 +2711,10 @@ class _InstellingenTabState extends State<InstellingenTab> {
         if (!eigenaar) _huidigeOntvangerModus = null;
       });
       if (eigenaar) {
+        // V9 multi-kring fix: kring en mijnUid zijn hier gepromoot naar
+        // non-null door de eigenaar-check hierboven.
         final huidig = await ApparaatService
-            .krijgWeergaveModusVoorOntvangers(mijnUid!);
+            .krijgWeergaveModusVoorOntvangers(mijnUid, kring.id);
         if (mounted) setState(() => _huidigeOntvangerModus = huidig);
       }
     });
@@ -3035,15 +3042,28 @@ class _InstellingenTabState extends State<InstellingenTab> {
     Navigator.pop(ctx);
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null) return;
+    // V9 multi-kring fix: kringId is verplicht in de service. Zonder
+    // actieve kring is er geen tablet om te schakelen — toon een nette
+    // melding en stop voordat we Firestore raken.
+    final kringId = DeviceModusService.actieveKringNotifier.value;
+    if (kringId == null || kringId.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('Geen actieve kring gekozen — open eerst een kring.'),
+        backgroundColor: Colors.red,
+        duration: Duration(seconds: 4),
+      ));
+      return;
+    }
     final ok = await ApparaatService.zetWeergaveModusVoorOntvangers(
-        familieUid: uid, nieuweModus: nieuweModus);
+        familieUid: uid, kringId: kringId, nieuweModus: nieuweModus);
     if (!mounted) return;
     if (ok) setState(() => _huidigeOntvangerModus = nieuweModus);
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
       content: Text(ok
           ? '✓ Modus van $naam gewijzigd. '
               'Het apparaat van $naam herlaadt automatisch.'
-          : 'Wijzigen mislukt — probeer opnieuw'),
+          : 'Wijzigen mislukt — geen tablet gevonden in deze kring. '
+              'Mogelijk moet de tablet opnieuw gekoppeld worden.'),
       backgroundColor: ok ? Colors.green : Colors.red,
       duration: const Duration(seconds: 4),
     ));
