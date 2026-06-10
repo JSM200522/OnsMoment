@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -19,6 +20,11 @@ final GlobalKey<ScaffoldMessengerState> scaffoldMessengerKey =
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp();
+  // V9 API 35-compliance: vraag edge-to-edge expliciet aan zodat het gedrag
+  // deterministisch is over alle Android-versies (op API 35 wordt het toch
+  // afgedwongen). Schermen zijn al voorbereid met SafeArea op de juiste
+  // plekken — zie tablet_scherm.dart en familie_scherm.dart.
+  SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
   runApp(const OnsMomentApp());
 }
 
