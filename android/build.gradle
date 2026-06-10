@@ -23,6 +23,32 @@ subprojects {
     project.evaluationDependsOn(':app')
 }
 
+// AGP 8+ vereist dat elke library-module een namespace heeft. Oude Flutter-
+// plugins (zoals record_android 1.2.0) declareren alleen package="..." in
+// hun AndroidManifest.xml en hebben geen namespace in build.gradle. Onder
+// AGP 8 faalt zo'n module met "Namespace not specified". Onderstaand block
+// detecteert die plugins en injecteert de package-naam als namespace.
+//
+// Veilig: raakt alleen modules die de Android-library/application plugin
+// hebben EN waarvan namespace null is. Modules die zelf al een namespace
+// hebben (alle moderne plugins) worden niet aangeraakt.
+subprojects {
+    afterEvaluate { project ->
+        if (project.plugins.hasPlugin("com.android.library")
+            || project.plugins.hasPlugin("com.android.application")) {
+            project.android {
+                if (namespace == null) {
+                    def manifestFile = project.file("src/main/AndroidManifest.xml")
+                    if (manifestFile.exists()) {
+                        def manifestXml = new XmlSlurper().parse(manifestFile)
+                        namespace = manifestXml.@package.text()
+                    }
+                }
+            }
+        }
+    }
+}
+
 tasks.register("clean", Delete) {
     delete rootProject.buildDir
 }
