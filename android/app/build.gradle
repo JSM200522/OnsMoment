@@ -22,6 +22,14 @@ if (flutterVersionName == null) {
     flutterVersionName = '1.0'
 }
 
+// V9 release signing: lokale fallback via android/key.properties (gitignored).
+// Op Codemagic worden de CM_*-env-vars gebruikt — zie signingConfigs.release.
+def keystoreProperties = new Properties()
+def keystorePropertiesFile = rootProject.file('key.properties')
+if (keystorePropertiesFile.exists()) {
+    keystoreProperties.load(new FileInputStream(keystorePropertiesFile))
+}
+
 android {
     namespace "nl.onsmoment.app"
     compileSdk flutter.compileSdkVersion
@@ -52,11 +60,34 @@ android {
         multiDexEnabled true
     }
 
+    // V9 release signing: dual-mode. Op Codemagic (CI=true) lezen we de
+    // door Codemagic geïnjecteerde keystore-env-vars; lokaal vallen we
+    // terug op android/key.properties (gitignored). Voorkomt dat de
+    // release-AAB wordt ondertekend met de gedeelde Android-debug-key,
+    // die door Google Play wordt geweigerd.
+    signingConfigs {
+        release {
+            if (System.getenv()["CI"]) {
+                storeFile file(System.getenv()["CM_KEYSTORE_PATH"])
+                storePassword System.getenv()["CM_KEYSTORE_PASSWORD"]
+                keyAlias System.getenv()["CM_KEY_ALIAS"]
+                keyPassword System.getenv()["CM_KEY_PASSWORD"]
+            } else {
+                keyAlias keystoreProperties['keyAlias']
+                keyPassword keystoreProperties['keyPassword']
+                storeFile keystoreProperties['storeFile']
+                    ? file(keystoreProperties['storeFile']) : null
+                storePassword keystoreProperties['storePassword']
+            }
+        }
+    }
+
     buildTypes {
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
-            signingConfig signingConfigs.debug
+            signingConfig signingConfigs.release
+            debuggable false
+            minifyEnabled false
+            shrinkResources false
         }
     }
 }
