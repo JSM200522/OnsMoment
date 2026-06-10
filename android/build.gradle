@@ -19,10 +19,6 @@ rootProject.buildDir = '../build'
 subprojects {
     project.buildDir = "${rootProject.buildDir}/${project.name}"
 }
-subprojects {
-    project.evaluationDependsOn(':app')
-}
-
 // AGP 8+ vereist dat elke library-module een namespace heeft. Oude Flutter-
 // plugins (zoals record_android 1.2.0) declareren alleen package="..." in
 // hun AndroidManifest.xml en hebben geen namespace in build.gradle. Onder
@@ -32,6 +28,11 @@ subprojects {
 // Veilig: raakt alleen modules die de Android-library/application plugin
 // hebben EN waarvan namespace null is. Modules die zelf al een namespace
 // hebben (alle moderne plugins) worden niet aangeraakt.
+//
+// MOET vóór `subprojects { evaluationDependsOn(':app') }` staan: anders is
+// :app al geëvalueerd tegen de tijd dat onze afterEvaluate-hook geregistreerd
+// wordt → Gradle gooit "Cannot run Project.afterEvaluate when the project
+// is already evaluated."
 subprojects {
     afterEvaluate { project ->
         if (project.plugins.hasPlugin("com.android.library")
@@ -47,6 +48,10 @@ subprojects {
             }
         }
     }
+}
+
+subprojects {
+    project.evaluationDependsOn(':app')
 }
 
 tasks.register("clean", Delete) {
