@@ -389,8 +389,7 @@ class _SetupWizardState extends State<SetupWizard> {
         ? 'Log in met het account van de eigenaar van de kring '
             '(degene die de kring heeft aangemaakt).'
         : (_isInloggen ? 'Log in met je e-mail en wachtwoord'
-            : 'Maak je eigen account aan. Daarna stel je samen met ons '
-              'in voor wie je dit doet.');
+            : 'Daarna richt je samen met ons alles in voor je dierbare.');
 
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Text(titel, style: const TextStyle(fontSize: 28,
