@@ -62,6 +62,10 @@ Firestore collecties: gebruikers, dagelijkse_momenten, momenten, notities. Alle 
 - Privacy policy + terms of service verplicht
 - GDPR/AVG compliance
 
+## Nog te doen bij launch / betaalsysteem
+
+- Limieten definitief vastgesteld als PER KRING (niet totaal): Family Klein = 1 kring, max 8 personen per kring. Family Groot = max 3 kringen, max 20 personen per kring. De personen-limiet (8/20 per kring) zit al correct in de code. Nog te bouwen bij het betaalsysteem: de kring-aantal-limiet (1 vs 3), het tier-upgradepad (klein -> groot), en server-side afdwinging via Firestore rules. Controleer bij de launch ook of alle in-app teksten/FAQ "per kring" vermelden en nergens nog "totaal" staat.
+
 ## Over Joshua
 
 - Geen technische achtergrond
