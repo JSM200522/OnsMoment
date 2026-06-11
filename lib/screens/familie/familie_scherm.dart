@@ -4339,15 +4339,17 @@ class _HulpDialog extends StatelessWidget {
     // ── Abonnement ──
     _FAQ('Abonnement', "Wat kost Ons Moment?",
         "Twee abonnementen:\n"
-        "- Familie Klein — 1 kring, 8 kringleden. €4,99 p/m of €35,99 "
-        "per jaar.\n"
-        "- Familie Groot — 3 kringen, 20 kringleden. €7,99 p/m of "
-        "€57,99 per jaar.\n"
+        "- Familie Klein — 1 kring, max 8 kringleden per kring. "
+        "€4,99 p/m of €35,99 per jaar.\n"
+        "- Familie Groot — max 3 kringen, max 20 kringleden per kring. "
+        "€7,99 p/m of €57,99 per jaar.\n"
         "Met een jaarabonnement bespaar je zo'n 40%. Je begint altijd "
         "met 5 dagen gratis — geen betaalgegevens nodig."),
     _FAQ('Abonnement', "Wie telt mee in mijn abonnement?",
-        "Iedereen in de kring die berichten kan sturen telt mee — familieleden, "
-        "vrienden en mantelzorgers. Je dierbare zelf telt niet mee."),
+        "Iedereen in een kring die berichten kan sturen telt mee voor die "
+        "kring — familieleden, vrienden en mantelzorgers. Je dierbare zelf "
+        "telt niet mee. Heb je meerdere kringen (Familie Groot), dan heeft "
+        "elke kring zijn eigen telling."),
     _FAQ('Abonnement', "Wat gebeurt er na de 5 gratis dagen?",
         "Je begint altijd met 5 dagen gratis, zonder dat je betaalgegevens "
         "hoeft op te geven. Wil je daarna doorgaan, dan kies je een "
