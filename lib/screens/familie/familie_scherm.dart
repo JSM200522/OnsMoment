@@ -9,6 +9,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:record/record.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:http/http.dart' as http;
+import 'package:url_launcher/url_launcher.dart';
 import '../../services/apparaat_service.dart';
 import '../../services/device_modus_service.dart';
 import '../../services/dagelijks_audio_service.dart';
@@ -4419,6 +4420,42 @@ class _HulpDialog extends StatelessWidget {
                         ]))),
                 ]);
             })),
+          Container(
+            padding: const EdgeInsets.fromLTRB(20, 14, 20, 18),
+            decoration: const BoxDecoration(color: kCream,
+                border: Border(top: BorderSide(color: kPeachLight, width: 1))),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                const Padding(
+                  padding: EdgeInsets.only(bottom: 10),
+                  child: Text('Staat je vraag er niet bij?',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(fontSize: 13, color: kBrownLight))),
+                ElevatedButton(
+                  style: ElevatedButton.styleFrom(backgroundColor: kPeach,
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12))),
+                  onPressed: () async {
+                    final messenger = ScaffoldMessenger.of(ctx);
+                    // CONTACT-ADRES — later vervangen door zakelijk adres
+                    final uri = Uri(scheme: 'mailto',
+                        path: 'joshuapanna@gmail.com',
+                        query: 'subject=Vraag of feedback over Ons Moment');
+                    try {
+                      final ok = await launchUrl(uri);
+                      if (!ok) {
+                        messenger.showSnackBar(const SnackBar(
+                            content: Text('Kon mail-app niet openen')));
+                      }
+                    } catch (_) {
+                      messenger.showSnackBar(const SnackBar(
+                          content: Text('Kon mail-app niet openen')));
+                    }
+                  },
+                  child: const Text('Stuur ons een mail',
+                    style: TextStyle(color: kWhite, fontWeight: FontWeight.w800))),
+              ])),
         ]),
       ),
     );
