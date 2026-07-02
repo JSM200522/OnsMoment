@@ -2063,11 +2063,20 @@ class _AudioInstelDialogState extends State<_AudioInstelDialog> {
     try {
       if (!await _recorder.hasPermission()) {
         _toonFout('Geen toegang tot microfoon. '
-            'Sta toe in browser-instellingen.');
+            'Sta toe in de app-instellingen.');
         return;
       }
-      await _recorder.start(
-          const RecordConfig(encoder: AudioEncoder.opus), path: '');
+
+      String pad = '';
+      if (!kIsWeb) {
+        final dir = await getTemporaryDirectory();
+        pad = '${dir.path}/dagelijks_opname_${DateTime.now().millisecondsSinceEpoch}.m4a';
+      }
+
+      const encoder = kIsWeb ? AudioEncoder.opus : AudioEncoder.aacLc;
+      await _recorder.start(const RecordConfig(encoder: encoder), path: pad);
+
+      if (!mounted) return;
       setState(() {
         _isOpnemen = true;
         _opnameSeconden = 0;
@@ -2086,30 +2095,55 @@ class _AudioInstelDialogState extends State<_AudioInstelDialog> {
   }
 
   Future<void> _stopOpname() async {
+    _opnameTimer?.cancel();
+    String? pad;
     try {
-      final pad = await _recorder.stop();
-      _opnameTimer?.cancel();
-      if (pad == null) {
-        setState(() => _isOpnemen = false);
-        return;
-      }
-      final response = await http.get(Uri.parse(pad));
-      if (response.statusCode != 200 || response.bodyBytes.isEmpty) {
-        _toonFout('Opname kon niet worden gelezen');
-        setState(() => _isOpnemen = false);
-        return;
-      }
-      try {
-        await _previewPlayer.setUrl(pad);
-      } catch (_) {}
-      setState(() {
-        _isOpnemen = false;
-        _opnamePad = pad;
-        _opnameBytes = response.bodyBytes;
-      });
+      pad = await _recorder.stop();
     } catch (e) {
       _toonFout('Opname stoppen mislukt: $e');
     }
+    if (!mounted) return;
+    if (pad == null) {
+      setState(() => _isOpnemen = false);
+      return;
+    }
+
+    Uint8List? bytes;
+    try {
+      if (kIsWeb) {
+        final response = await http.get(Uri.parse(pad));
+        if (response.statusCode == 200 && response.bodyBytes.isNotEmpty) {
+          bytes = response.bodyBytes;
+        }
+      } else {
+        final file = File(pad);
+        if (await file.exists()) {
+          final raw = await file.readAsBytes();
+          if (raw.isNotEmpty) bytes = raw;
+        }
+      }
+    } catch (_) {}
+
+    if (!mounted) return;
+    if (bytes == null) {
+      _toonFout('Opname kon niet worden gelezen');
+      setState(() => _isOpnemen = false);
+      return;
+    }
+
+    try {
+      if (kIsWeb) {
+        await _previewPlayer.setUrl(pad);
+      } else {
+        await _previewPlayer.setFilePath(pad);
+      }
+    } catch (_) {}
+
+    setState(() {
+      _isOpnemen = false;
+      _opnamePad = pad;
+      _opnameBytes = bytes;
+    });
   }
 
   Future<void> _kiesMp3() async {
@@ -2160,7 +2194,15 @@ class _AudioInstelDialogState extends State<_AudioInstelDialog> {
         }
         _huidigeBytes = resp.bodyBytes;
       }
-      final mime = _huidigType == 'mp3' ? 'audio/mpeg' : 'audio/webm';
+      final url = _huidigeUrl ?? '';
+      final String mime;
+      if (_huidigType == 'mp3') {
+        mime = 'audio/mpeg';
+      } else if (url.toLowerCase().contains('.m4a')) {
+        mime = 'audio/mp4';
+      } else {
+        mime = 'audio/webm';
+      }
       await _previewPlayer.setAudioSource(
           _BytesAudioSource(_huidigeBytes!, mime));
       await _previewPlayer.play();

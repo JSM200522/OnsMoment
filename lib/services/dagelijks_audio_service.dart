@@ -1,9 +1,10 @@
 import 'dart:typed_data';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 
 /// Upload/verwijder-helpers voor de aangepaste audio per dagelijks moment.
-/// Storage-pad: dagelijkse_audio/{kringId}/{momentId}.{webm|mp3}
+/// Storage-pad: dagelijkse_audio/{kringId}/{momentId}.{webm|m4a|mp3}
 class DagelijksAudioService {
   /// Upload bytes naar Storage en zet aangepasteAudioUrl/Type in het
   /// moment-doc. Probeert oude file met andere extensie eerst weg te halen.
@@ -16,8 +17,15 @@ class DagelijksAudioService {
   }) async {
     if (type != 'stem' && type != 'mp3') return false;
     try {
-      final ext = type == 'stem' ? 'webm' : 'mp3';
-      final mime = type == 'stem' ? 'audio/webm' : 'audio/mpeg';
+      final String ext;
+      final String mime;
+      if (type == 'stem') {
+        ext = kIsWeb ? 'webm' : 'm4a';
+        mime = kIsWeb ? 'audio/webm' : 'audio/mp4';
+      } else {
+        ext = 'mp3';
+        mime = 'audio/mpeg';
+      }
       await _verwijderBestaand(kringId, momentId);
       final ref = FirebaseStorage.instance.ref()
           .child('dagelijkse_audio')
@@ -58,7 +66,7 @@ class DagelijksAudioService {
 
   static Future<void> _verwijderBestaand(
       String kringId, String momentId) async {
-    for (final ext in ['webm', 'mp3']) {
+    for (final ext in ['webm', 'm4a', 'mp3']) {
       try {
         await FirebaseStorage.instance.ref()
             .child('dagelijkse_audio')
