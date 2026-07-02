@@ -1,5 +1,7 @@
 import 'dart:typed_data';
 import 'dart:async';
+import 'dart:io';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -10,6 +12,7 @@ import 'package:record/record.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:http/http.dart' as http;
 import 'package:url_launcher/url_launcher.dart';
+import 'package:path_provider/path_provider.dart';
 import '../../services/apparaat_service.dart';
 import '../../services/device_modus_service.dart';
 import '../../services/dagelijks_audio_service.dart';
@@ -1126,40 +1129,59 @@ class _StuurTabState extends State<StuurTab> {
 
   Future<void> _startOpname() async {
     try {
-      if (await _recorder.hasPermission()) {
-        await _recorder.start(const RecordConfig(encoder: AudioEncoder.opus),
-            path: '');
-        setState(() {
-          _isOpnemen = true;
-          _opnameSeconden = 0;
-          _hebOpname = false;
-          _mediaBytes = null;
-        });
-        _opnameTimer?.cancel();
-        _opnameTimer = Timer.periodic(const Duration(seconds: 1),
-            (_) => setState(() => _opnameSeconden++));
-      } else {
-        _toonFout('Geen toegang tot microfoon. Sta toe in browser-instellingen.');
+      if (!await _recorder.hasPermission()) {
+        _toonFout('Geen toegang tot microfoon. Sta toe in de app-instellingen.');
+        return;
       }
+
+      String pad = '';
+      if (!kIsWeb) {
+        final dir = await getTemporaryDirectory();
+        pad = '${dir.path}/opname_${DateTime.now().millisecondsSinceEpoch}.m4a';
+      }
+
+      const encoder = kIsWeb ? AudioEncoder.opus : AudioEncoder.aacLc;
+      await _recorder.start(const RecordConfig(encoder: encoder), path: pad);
+
+      if (!mounted) return;
+      setState(() {
+        _isOpnemen = true;
+        _opnameSeconden = 0;
+        _hebOpname = false;
+        _mediaBytes = null;
+      });
+      _opnameTimer?.cancel();
+      _opnameTimer = Timer.periodic(const Duration(seconds: 1),
+          (_) => setState(() => _opnameSeconden++));
     } catch (e) {
       _toonFout('Opname starten mislukt: $e');
     }
   }
 
   Future<void> _stopOpname() async {
+    _opnameTimer?.cancel();
+    String? pad;
     try {
-      final pad = await _recorder.stop();
-      _opnameTimer?.cancel();
-      if (pad != null) {
-        try { await _previewPlayer.setUrl(pad); } catch (_) {}
-        _opnamePad = pad;
-        setState(() {
-          _isOpnemen = false;
-          _hebOpname = true;
-        });
-      }
+      pad = await _recorder.stop();
     } catch (e) {
       _toonFout('Opname stoppen mislukt: $e');
+    }
+    if (!mounted) return;
+    if (pad != null) {
+      _opnamePad = pad;
+      try {
+        if (kIsWeb) {
+          await _previewPlayer.setUrl(pad);
+        } else {
+          await _previewPlayer.setFilePath(pad);
+        }
+      } catch (_) {}
+      setState(() {
+        _isOpnemen = false;
+        _hebOpname = true;
+      });
+    } else {
+      setState(() => _isOpnemen = false);
     }
   }
 
@@ -1435,15 +1457,29 @@ class _StuurTabState extends State<StuurTab> {
 
       String mediaUrl = '';
       if (_type == 'stem' && _opnamePad != null) {
-        final response = await http.get(Uri.parse(_opnamePad!));
-        if (response.statusCode != 200 || response.bodyBytes.isEmpty) {
-          throw Exception('Opname kon niet worden gelezen');
+        Uint8List bytes;
+        if (kIsWeb) {
+          final response = await http.get(Uri.parse(_opnamePad!));
+          if (response.statusCode != 200 || response.bodyBytes.isEmpty) {
+            throw Exception('Opname kon niet worden gelezen');
+          }
+          bytes = response.bodyBytes;
+        } else {
+          final file = File(_opnamePad!);
+          if (!await file.exists()) {
+            throw Exception('Opname-bestand niet gevonden');
+          }
+          bytes = await file.readAsBytes();
+          if (bytes.isEmpty) {
+            throw Exception('Opname-bestand is leeg');
+          }
         }
+        const ext = kIsWeb ? 'webm' : 'm4a';
+        const contentType = kIsWeb ? 'audio/webm' : 'audio/mp4';
         final ref = FirebaseStorage.instance.ref()
             .child('momenten')
-            .child('${DateTime.now().millisecondsSinceEpoch}.webm');
-        await ref.putData(response.bodyBytes,
-            SettableMetadata(contentType: 'audio/webm'));
+            .child('${DateTime.now().millisecondsSinceEpoch}.$ext');
+        await ref.putData(bytes, SettableMetadata(contentType: contentType));
         mediaUrl = await ref.getDownloadURL();
       } else if (_type == 'video' && _mediaBytes != null) {
         final ref = FirebaseStorage.instance.ref()
