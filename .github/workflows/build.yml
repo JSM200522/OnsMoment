@@ -10,6 +10,14 @@ permissions:
   pages: write
   id-token: write
 
+# Serialiseer Pages-deploys: nooit twee runs tegelijk richting de github-pages
+# environment, en een lopende deploy nooit halverwege cancelen — anders krijg
+# je "Error: Deployment cancelled" bij deploy-pages@v4 (root-cause van de
+# rode runs op 2 juli 2026).
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
 jobs:
   build_web:
     runs-on: ubuntu-latest
