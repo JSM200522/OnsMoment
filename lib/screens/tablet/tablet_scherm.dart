@@ -67,6 +67,21 @@ class _TabletSchermState extends State<TabletScherm>
       if (!mounted) return;
       setState(() => _kringId = id);
       if (id != null) {
+        // V9 2.13-a: wacht op _mijnApparaatId voordat de momenten-listener
+        // attacht. Chain A (regel 58-62) laadt hetzelfde ID uit dezelfde
+        // cache; is die nog niet klaar, dan halen we het hier direct op.
+        // Voorkomt dat de initial snapshot van _startMomentenListener docs
+        // met aanApparaatIds/aanApparaatId-targeting foutief als 'niet voor
+        // mij' filtert — symptoom: 'eerste bericht komt pas bij een tweede'.
+        if (_mijnApparaatId == null) {
+          _debugLog('⏳ Wacht op apparaatId voor momenten-listener');
+          final apparaatId = await DeviceModusService.krijgApparaatId();
+          if (!mounted) return;
+          if (_mijnApparaatId == null) {
+            setState(() => _mijnApparaatId = apparaatId);
+          }
+        }
+
         _startMomentenListener();
         _startDagelijksListener();
         _startEenmaligListener();
