@@ -47,6 +47,7 @@ class _FamilieSchermState extends State<FamilieScherm>
   // _gebruikerSub blijft als legacy-fallback.
   StreamSubscription<Kring?>? _actieveKringSub;
   String? _kringFoto;
+  String? _kringNaam;  // V9 2.13-b: live kring-naam voor 'Je dierbare'-swap in popup
   Map<String, dynamic>? _huidigPopup;
   String? _huidigPopupId;
   String _herkenningsgeluid = 'twinkel';
@@ -107,6 +108,9 @@ class _FamilieSchermState extends State<FamilieScherm>
         }
         if (kring.herkenningsgeluid.isNotEmpty) {
           _herkenningsgeluid = kring.herkenningsgeluid;
+        }
+        if (kring.naam.isNotEmpty) {
+          _kringNaam = kring.naam;
         }
       });
     });
@@ -439,7 +443,20 @@ class _FamilieSchermState extends State<FamilieScherm>
     final d = _huidigPopup!;
     final type = d['type'] ?? '';
     final vanRaw = (d['vanNaam'] as String?)?.trim() ?? '';
-    final vanNaam = vanRaw.isNotEmpty ? vanRaw : 'Iemand uit je kring';
+    // V9 2.13-b: als de send-kant 'Je dierbare' als fallback wegschreef
+    // (bijv. kring-naam nog niet geladen op moment van versturen), swap
+    // hier met de live kring-naam. Faalt netjes terug op 'Je dierbare' als
+    // _kringNaam nog niet geladen is of ook leeg blijft. Andere waardes
+    // (echte namen, 'Iemand uit je kring') blijven ongemoeid.
+    final vanFromKring = (_kringNaam ?? '').trim();
+    final String vanNaam;
+    if (vanRaw.isEmpty) {
+      vanNaam = 'Iemand uit je kring';
+    } else if (vanRaw.toLowerCase() == 'je dierbare' && vanFromKring.isNotEmpty) {
+      vanNaam = vanFromKring;
+    } else {
+      vanNaam = vanRaw;
+    }
     final geplandOp = (d['geplandOp'] as Timestamp?)?.toDate();
     return Container(color: kBrown.withOpacity(0.94),
       child: SafeArea(child: Padding(
@@ -1358,11 +1375,19 @@ class _StuurTabState extends State<StuurTab> {
       // apparaten-lookup. Tablet (alsOntvanger) stuurt namens de
       // dierbare (kring-naam); familielid stuurt namens zichzelf
       // (weergaveNaam uit eigen membership).
+      // V9 2.13-b: legacy _ontvangerNaam als extra fallback vóór de
+      // 'Je dierbare'-generieke tekst — voorkomt dat 'Je dierbare' in
+      // Firestore terechtkomt wanneer een kring-naam is uitgezet of nog
+      // niet is geladen, maar er wel een oud gebruikers-doc met naam is.
       final String vanNaam;
       if (widget.alsOntvanger) {
-        vanNaam = (_kringNaam ?? '').isNotEmpty
-            ? _kringNaam!
-            : 'Je dierbare';
+        if ((_kringNaam ?? '').isNotEmpty) {
+          vanNaam = _kringNaam!;
+        } else if ((_ontvangerNaam ?? '').isNotEmpty) {
+          vanNaam = _ontvangerNaam!;
+        } else {
+          vanNaam = 'Je dierbare';
+        }
       } else {
         vanNaam = (_mijnWeergaveNaam ?? '').isNotEmpty
             ? _mijnWeergaveNaam!
@@ -1444,11 +1469,17 @@ class _StuurTabState extends State<StuurTab> {
 
       // V9 2.11-a-3: vanNaam uit kring-context (tablet = dierbare,
       // familielid = eigen weergaveNaam).
+      // V9 2.13-b: legacy _ontvangerNaam als extra fallback vóór de
+      // 'Je dierbare'-generieke tekst — zelfde patroon als direct-versturen.
       final String vanNaam;
       if (widget.alsOntvanger) {
-        vanNaam = (_kringNaam ?? '').isNotEmpty
-            ? _kringNaam!
-            : 'Je dierbare';
+        if ((_kringNaam ?? '').isNotEmpty) {
+          vanNaam = _kringNaam!;
+        } else if ((_ontvangerNaam ?? '').isNotEmpty) {
+          vanNaam = _ontvangerNaam!;
+        } else {
+          vanNaam = 'Je dierbare';
+        }
       } else {
         vanNaam = (_mijnWeergaveNaam ?? '').isNotEmpty
             ? _mijnWeergaveNaam!
