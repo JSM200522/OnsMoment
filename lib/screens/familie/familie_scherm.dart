@@ -3024,10 +3024,11 @@ class _InstellingenTabState extends State<InstellingenTab> {
                 ? 'Ontvangen berichten'
                 : 'Ontvangen berichten van $naam',
             widget.alsOntvanger
-                ? 'Alle berichten die je hebt gestuurd'
+                ? 'Alle berichten die je hebt ontvangen'
                 : 'Alle berichten die $naam heeft gestuurd', () {
           Navigator.push(context, MaterialPageRoute(
-              builder: (c) => const OntvangenBerichtenScherm()));
+              builder: (c) => OntvangenBerichtenScherm(
+                  alsOntvanger: widget.alsOntvanger)));
         }),
         if (!widget.alsOntvanger)
           _item('👥', 'Kringleden beheren',
@@ -4599,7 +4600,10 @@ class _BytesAudioSource extends StreamAudioSource {
 // ONTVANGEN BERICHTEN SCHERM
 // ════════════════════════════════════════════════════════════
 class OntvangenBerichtenScherm extends StatefulWidget {
-  const OntvangenBerichtenScherm({super.key});
+  /// V9 2.15: perspectief waarmee dit scherm werd geopend. Default false
+  /// (= familie-kant) behoudt bestaand gedrag voor callers zonder param.
+  final bool alsOntvanger;
+  const OntvangenBerichtenScherm({super.key, this.alsOntvanger = false});
   @override
   State<OntvangenBerichtenScherm> createState() =>
       _OntvangenBerichtenSchermState();
@@ -4611,7 +4615,12 @@ class _OntvangenBerichtenSchermState extends State<OntvangenBerichtenScherm> {
   /// dat veld lekt bij multi-kring eigenaars naar de verkeerde kring.
   String? _kringNaam;
   List<String>? _ontvangerApparaatIds;
+  /// V9 2.15: familie-apparaten in de kring (modus != 'ontvanger').
+  /// Nodig voor de ontvanger-perspectief-query.
+  List<String>? _familieApparaatIds;
   String? _kringId;
+  /// V9 2.15: eigen apparaat-id voor client-side targeting-filter.
+  String? _mijnApparaatId;
   StreamSubscription<Kring?>? _actieveKringSub;
 
   /// V9 2.11-a-2: kring-doc OF 'je dierbare'. Geen account-brede fallback.
@@ -4651,12 +4660,16 @@ class _OntvangenBerichtenSchermState extends State<OntvangenBerichtenScherm> {
       // V9 2.11-a-2: kring-doc + apparaten parallel zodat _kringNaam
       // al gevuld is bij de eerste render — voorkomt de korte
       // 'Ontvangen van je dierbare' -> 'Ontvangen van Opa' flash.
+      // V9 2.15: apparaat-id meeladen voor client-side targeting-filter
+      // op ontvanger-kant.
       final results = await Future.wait([
         FirebaseFirestore.instance.collection('kringen').doc(kringId).get(),
         ApparaatService.kringLeden(uid),
+        DeviceModusService.krijgApparaatId(),
       ]);
       final kringDoc = results[0] as DocumentSnapshot;
       final leden = results[1] as List<Map<String, dynamic>>;
+      final apparaatId = results[2] as String?;
       final kringData = kringDoc.data();
       final kringNaam = (kringData is Map)
           ? kringData['naam'] as String?
@@ -4664,11 +4677,16 @@ class _OntvangenBerichtenSchermState extends State<OntvangenBerichtenScherm> {
       if (!mounted) return;
       setState(() {
         _kringId = kringId;
+        _mijnApparaatId = apparaatId;
         if (kringNaam != null && kringNaam.isNotEmpty) {
           _kringNaam = kringNaam;
         }
         _ontvangerApparaatIds = leden
             .where((l) => l['modus'] == 'ontvanger')
+            .map((l) => l['apparaatId'] as String)
+            .toList();
+        _familieApparaatIds = leden
+            .where((l) => l['modus'] != 'ontvanger')
             .map((l) => l['apparaatId'] as String)
             .toList();
       });
@@ -4677,50 +4695,98 @@ class _OntvangenBerichtenSchermState extends State<OntvangenBerichtenScherm> {
     }
   }
 
+  /// V9 2.15: identiek targeting-patroon aan tablet_scherm.dart regel 232-243.
+  /// Bepaalt of een moment voor de ontvanger (dit apparaat) bedoeld was.
+  /// Voorkomt dat berichten die specifiek voor een ander familielid waren
+  /// (aanUserUids/aanApparaatIds) in de ontvanger-lijst verschijnen.
+  bool _isVoorOntvanger(QueryDocumentSnapshot doc) {
+    final d = doc.data() as Map<String, dynamic>;
+    final aanUserUids = (d['aanUserUids'] as List?)?.cast<String>();
+    final aanApparaatIds = (d['aanApparaatIds'] as List?)?.cast<String>();
+    final aanLegacy = d['aanApparaatId'] as String?;
+    if (aanUserUids != null && aanUserUids.isNotEmpty) {
+      final mijnUid = FirebaseAuth.instance.currentUser?.uid;
+      return mijnUid != null && aanUserUids.contains(mijnUid);
+    }
+    if (aanApparaatIds != null && aanApparaatIds.isNotEmpty) {
+      return aanApparaatIds.contains(_mijnApparaatId);
+    }
+    if (aanLegacy != null) {
+      return aanLegacy == _mijnApparaatId;
+    }
+    return true;  // geen targeting = voor iedereen in de kring
+  }
+
+  /// V9 2.15: veilige afzender-naam voor lijst-items op ontvanger-kant.
+  String _afzenderNaam(Map<String, dynamic> d) {
+    final raw = (d['vanNaam'] as String?)?.trim() ?? '';
+    return raw.isNotEmpty ? raw : 'Iemand uit je kring';
+  }
+
   @override
   Widget build(BuildContext context) {
     final uid = FirebaseAuth.instance.currentUser?.uid;
+    // V9 2.15: perspectief-afhankelijke bron-lijst en teksten.
+    // Familie-kant: berichten van de ontvanger-apparaten (huidige gedrag).
+    // Ontvanger-kant: berichten van de familie-apparaten (bugfix).
+    final relevanteApparaatIds = widget.alsOntvanger
+        ? _familieApparaatIds
+        : _ontvangerApparaatIds;
+    final titelTekst = widget.alsOntvanger
+        ? 'Ontvangen berichten'
+        : 'Ontvangen van $_toonNaam';
+    final leegApparaatTekst = widget.alsOntvanger
+        ? 'Er zijn nog geen familie-apparaten in deze kring'
+        : 'Er is nog geen ontvanger-apparaat in deze kring';
+    final leegLijstTekst = widget.alsOntvanger
+        ? 'Nog geen berichten van je familie'
+        : 'Nog geen berichten van $_toonNaam';
     return Scaffold(
       backgroundColor: kCream,
       appBar: AppBar(
         backgroundColor: Colors.transparent, elevation: 0,
         iconTheme: const IconThemeData(color: kBrown),
-        title: Text('Ontvangen van $_toonNaam',
+        title: Text(titelTekst,
             style: const TextStyle(color: kBrown,
                 fontWeight: FontWeight.w900)),
       ),
       body: uid == null
           ? const SizedBox()
-          : (_kringId == null || _ontvangerApparaatIds == null
+          : (_kringId == null || relevanteApparaatIds == null
               ? const Center(child: CircularProgressIndicator(color: kPeach))
-              : (_ontvangerApparaatIds!.isEmpty
-                  ? _leeg('Er is nog geen ontvanger-apparaat in deze kring')
+              : (relevanteApparaatIds.isEmpty
+                  ? _leeg(leegApparaatTekst)
                   : StreamBuilder<QuerySnapshot>(
                       stream: FirebaseFirestore.instance.collection('momenten')
                           .where('kringId', isEqualTo: _kringId)
                           .where('vanApparaatId',
-                              whereIn: _ontvangerApparaatIds!.take(10).toList())
+                              whereIn: relevanteApparaatIds.take(10).toList())
                           .snapshots(),
                       builder: (ctx, snap) {
                         if (!snap.hasData) {
                           return const Center(
                               child: CircularProgressIndicator(color: kPeach));
                         }
-                        final docs = snap.data!.docs.toList()
-                          ..sort((a, b) {
-                            final ta = (a.data() as Map)['verstuurdOp']
-                                as Timestamp?;
-                            final tb = (b.data() as Map)['verstuurdOp']
-                                as Timestamp?;
-                            if (ta == null || tb == null) return 0;
-                            return tb.compareTo(ta);
-                          });
-                        if (docs.isEmpty) {
-                          return _leeg('Nog geen berichten van $_toonNaam');
-                        }
+                        // V9 2.15: op ontvanger-kant client-side targeting-
+                        // filter zodat berichten die specifiek voor een
+                        // familielid bedoeld waren niet in de lijst verschijnen.
+                        // Familie-kant filtert niks (identiek aan huidige gedrag).
+                        final alleDocs = snap.data!.docs;
+                        final gefiltered = widget.alsOntvanger
+                            ? alleDocs.where(_isVoorOntvanger).toList()
+                            : alleDocs.toList();
+                        gefiltered.sort((a, b) {
+                          final ta = (a.data() as Map)['verstuurdOp']
+                              as Timestamp?;
+                          final tb = (b.data() as Map)['verstuurdOp']
+                              as Timestamp?;
+                          if (ta == null || tb == null) return 0;
+                          return tb.compareTo(ta);
+                        });
+                        if (gefiltered.isEmpty) return _leeg(leegLijstTekst);
                         return ListView(
                           padding: const EdgeInsets.all(20),
-                          children: docs.map((doc) => _bouwItem(
+                          children: gefiltered.map((doc) => _bouwItem(
                               context, doc.id, doc.data() as Map<String, dynamic>))
                               .toList(),
                         );
@@ -4753,6 +4819,14 @@ class _OntvangenBerichtenSchermState extends State<OntvangenBerichtenScherm> {
           const SizedBox(width: 12),
           Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              if (widget.alsOntvanger) ...[
+                // V9 2.15: op ontvanger-kant per item wie het stuurde. Veilige
+                // terugval bij ontbrekende naam matcht popup-fallback.
+                Text(_afzenderNaam(d),
+                    style: const TextStyle(fontSize: 12,
+                        fontWeight: FontWeight.w700, color: kBrown)),
+                const SizedBox(height: 2),
+              ],
               Text(_label(type), style: const TextStyle(
                   fontSize: 14, fontWeight: FontWeight.w800, color: kBrown)),
               if (tekst.isNotEmpty) Padding(
