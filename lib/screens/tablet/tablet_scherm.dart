@@ -750,7 +750,8 @@ class _TabletSchermState extends State<TabletScherm>
                 borderRadius: BorderRadius.circular(40),
                 boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.3),
                     blurRadius: 40)]),
-            child: Padding(padding: const EdgeInsets.all(40),
+            child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 40),
               child: Column(mainAxisSize: MainAxisSize.min, children: [
                 if (type != 'hartje') ...[
                   Text(_emojiVoorType(type),
@@ -796,7 +797,7 @@ class _TabletSchermState extends State<TabletScherm>
     switch (type) {
       case 'foto':
         final fotoHoogte =
-            (MediaQuery.of(context).size.height * 0.50).clamp(240.0, 600.0);
+            (MediaQuery.of(context).size.height * 0.75).clamp(320.0, 900.0);
         return Column(mainAxisSize: MainAxisSize.min, children: [
           if (url.isNotEmpty) ClipRRect(
             borderRadius: BorderRadius.circular(24),
@@ -842,15 +843,21 @@ class _TabletSchermState extends State<TabletScherm>
           ],
         ]);
       case 'tekst':
-        return Container(
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
-          decoration: BoxDecoration(
-              color: kPeachPale,
-              borderRadius: BorderRadius.circular(24)),
-          child: Text(bericht.isEmpty ? 'Een lief bericht voor jou' : bericht,
-              textAlign: TextAlign.center,
-              style: const TextStyle(fontSize: 40, color: kBrown,
-                  height: 1.5, fontWeight: FontWeight.w600)),
+        // V9 2.14-b: horizontale wrapper compenseert de reductie van de
+        // kaart-padding (24 → 12) zodat de tekst-kaart visueel dezelfde
+        // breedte houdt als vóór de foto/video-vergroting.
+        return Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
+            decoration: BoxDecoration(
+                color: kPeachPale,
+                borderRadius: BorderRadius.circular(24)),
+            child: Text(bericht.isEmpty ? 'Een lief bericht voor jou' : bericht,
+                textAlign: TextAlign.center,
+                style: const TextStyle(fontSize: 40, color: kBrown,
+                    height: 1.5, fontWeight: FontWeight.w600)),
+          ),
         );
       case 'dagelijks':
         final dagelijksEmojiSize =
