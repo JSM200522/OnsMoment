@@ -2068,6 +2068,11 @@ class _AudioInstelDialogState extends State<_AudioInstelDialog> {
   String? _huidigType;
   Uint8List? _huidigeBytes;
 
+  /// V9 2.19: guard tegen dubbel-klikken op de preview-knoppen. Wordt in
+  /// de play-methoden gezet naar true bij binnenkomst en via try/finally
+  /// altijd weer teruggezet naar false — kan dus nooit blijven hangen.
+  bool _laadt = false;
+
   @override
   void initState() {
     super.initState();
@@ -2220,7 +2225,13 @@ class _AudioInstelDialogState extends State<_AudioInstelDialog> {
   }
 
   Future<void> _speelOpnamePreview() async {
+    if (_laadt) return;
+    _laadt = true;
     try {
+      // V9 2.19: eerst stoppen — anders botst de nieuwe setUrl/setFilePath
+      // met een eventuele pre-warm uit _stopOpname of een vorige preview-
+      // klik → AbortError op web, subtiele glitches op native.
+      await _previewPlayer.stop();
       if (kIsWeb) {
         if (_opnameBytes == null) {
           _toonFout('Geen opname beschikbaar om af te spelen');
@@ -2246,12 +2257,21 @@ class _AudioInstelDialogState extends State<_AudioInstelDialog> {
       await _previewPlayer.play();
     } catch (e) {
       _toonFout('Afspelen mislukt: $e');
+    } finally {
+      _laadt = false;
     }
   }
 
   Future<void> _speelHuidigePreview() async {
+    if (_laadt) return;
     if ((_huidigeUrl ?? '').isEmpty) return;
+    _laadt = true;
     try {
+      // V9 2.19: eerst stoppen — voorkomt AbortError op web wanneer de
+      // player nog een vorige source aan het laden was (bijv. pre-warm
+      // uit _stopOpname of een vorige preview-klik). Op native is dit
+      // een safe no-op op idle-state.
+      await _previewPlayer.stop();
       if (kIsWeb) {
         // WEB-pad: bytes preloaden (behoudt CORS-workaround uit V8.6) en
         // omzetten naar data-URI zodat afspelen ook op iOS Safari werkt.
@@ -2283,6 +2303,8 @@ class _AudioInstelDialogState extends State<_AudioInstelDialog> {
       await _previewPlayer.play();
     } catch (e) {
       _toonFout('Audio kan niet worden afgespeeld: $e');
+    } finally {
+      _laadt = false;
     }
   }
 
