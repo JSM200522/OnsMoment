@@ -154,6 +154,33 @@ class _TabletSchermState extends State<TabletScherm>
     ));
   }
 
+  /// V9 2.16: wacht tot _geluidPlayer klaar is met afspelen, met een harde
+  /// max-wachttijd als vangnet. Gebruikt vóór het mounten van de VideoSpeler
+  /// zodat het herkenningsgeluid niet afgekapt wordt door de audio-focus-
+  /// claim van video_player op Android. Timeout garandeert dat de popup
+  /// nooit langer dan [maxWacht] blokkeert — zelfs bij een defecte player.
+  Future<void> _wachtOpBelKlaar(Duration maxWacht) async {
+    // Al klaar? Direct terug — geen listener overhead.
+    if (_geluidPlayer.playerState.processingState
+        == ProcessingState.completed) {
+      return;
+    }
+    final completer = Completer<void>();
+    StreamSubscription<PlayerState>? sub;
+    Timer? timeout;
+    void afronden() {
+      if (completer.isCompleted) return;
+      sub?.cancel();
+      timeout?.cancel();
+      completer.complete();
+    }
+    sub = _geluidPlayer.playerStateStream.listen((s) {
+      if (s.processingState == ProcessingState.completed) afronden();
+    });
+    timeout = Timer(maxWacht, afronden);
+    await completer.future;
+  }
+
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) _herscanMomenten();
@@ -358,9 +385,17 @@ class _TabletSchermState extends State<TabletScherm>
           .doc(id).update({'gezien': true});
     } catch (_) {}
 
-    // Speel herkenningsgeluid - wacht alleen 1200ms als afspelen daadwerkelijk lukte.
-    // Skip de bel bij dagelijks-popups met aangepaste audio — eigen audio
-    // wordt anders door de bel overstemd.
+    // V9 2.16: type-lookup naar voren gehaald zodat de bel-branch kan
+    // differentiëren tussen video en de rest.
+    final type = d['type'];
+
+    // Speel herkenningsgeluid.
+    // - Bij VIDEO: wacht op echte completion van de bel (max 3000ms vangnet),
+    //   want Android's video_player-plugin claimt audio-focus bij initialize
+    //   en zou de bel anders abrupt afkappen zodra de VideoSpeler mount.
+    // - Bij andere types: vaste 1200ms delay (bestaand gedrag, niet aanraken).
+    // - Skip de bel bij dagelijks/eenmalig-popups met aangepaste audio —
+    //   eigen audio wordt anders door de bel overstemd (bestaand gedrag).
     final skipBel = d['heeftAangepasteAudio'] == true;
     final geluidAsset = kGeluidAssets[_herkenningsgeluid];
     if (!skipBel && geluidAsset != null) {
@@ -374,7 +409,11 @@ class _TabletSchermState extends State<TabletScherm>
         _debugLog('❌ Bel-fout: $e');
       }
       if (geluidGespeeld) {
-        await Future.delayed(const Duration(milliseconds: 1200));
+        if (type == 'video') {
+          await _wachtOpBelKlaar(const Duration(milliseconds: 3000));
+        } else {
+          await Future.delayed(const Duration(milliseconds: 1200));
+        }
       }
     }
 
@@ -386,7 +425,6 @@ class _TabletSchermState extends State<TabletScherm>
       _huidigPopup = d;
     });
 
-    final type = d['type'];
     if (type == 'stem' || type == 'lied' || type == 'dagelijks') {
       final url = d['mediaUrl'] ?? '';
       if (url.isNotEmpty) {
