@@ -467,59 +467,75 @@ class _FamilieSchermState extends State<FamilieScherm>
     return Container(color: kBrown.withOpacity(0.94),
       child: SafeArea(child: Padding(
         padding: const EdgeInsets.all(20),
-        child: Center(child: ConstrainedBox(
-          constraints: BoxConstraints(maxWidth: kaartBreedte),
-          child: SingleChildScrollView(child: Container(
-            decoration: BoxDecoration(color: kCream,
-                borderRadius: BorderRadius.circular(40),
-                boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.3),
-                    blurRadius: 40)]),
-            child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 40),
-              child: Column(mainAxisSize: MainAxisSize.min, children: [
-                if (type != 'hartje') ...[
-                  Text(_emojiVoorType(type),
-                      style: const TextStyle(fontSize: 96)),
-                  const SizedBox(height: 12),
-                ],
-                Text(type == 'dagelijks'
-                    ? 'Het is tijd voor:'
-                    : type == 'hartje'
-                        ? '$vanNaam denkt aan je 💕'
-                        : '$vanNaam stuurt je een bericht',
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(fontSize: 30,
-                        fontWeight: FontWeight.w800,
-                        color: kBrown,
-                        height: 1.2)),
-                const SizedBox(height: 28),
-                _popupInhoud(d),
-                if (geplandOp != null) ...[
-                  const SizedBox(height: 20),
-                  Text(_formatPopupTijd(geplandOp),
-                      style: const TextStyle(fontSize: 16,
-                          color: kTextMuted, fontStyle: FontStyle.italic)),
-                ],
-                const SizedBox(height: 24),
-                Text(type == 'stem' || type == 'lied' || type == 'dagelijks'
-                    ? 'Sluit automatisch wanneer klaar'
-                    : 'Tik om te sluiten',
-                    style: const TextStyle(fontSize: 14, color: kTextMuted)),
-              ])),
-          ))),
-        )),
-      ),
+        child: LayoutBuilder(builder: (ctx, constraints) {
+          // V9 2.21: bereken de daadwerkelijk beschikbare foto-hoogte.
+          // LayoutBuilder krijgt hier constraints.maxHeight = resterende
+          // verticale ruimte na SafeArea + outer padding — automatisch
+          // inclusief bottom-nav-aftrek op scaffolds die er één hebben
+          // (familie) en zonder aftrek op scaffolds zonder bottom-nav
+          // (tablet). Trek de vaste card-chrome af (padding V:40+40,
+          // emoji 96, spacings 12+28+20+24, naam-tekst 30pt, tijd 16pt,
+          // hint 14pt) — ± 380 px totaal. Clamp 280-900 als vangnet.
+          const chromeInCard = 380.0;
+          final fotoRuimte = constraints.maxHeight - chromeInCard;
+          final fotoHoogte = fotoRuimte.clamp(280.0, 900.0);
+          return Center(child: ConstrainedBox(
+            constraints: BoxConstraints(maxWidth: kaartBreedte),
+            child: SingleChildScrollView(child: Container(
+              decoration: BoxDecoration(color: kCream,
+                  borderRadius: BorderRadius.circular(40),
+                  boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.3),
+                      blurRadius: 40)]),
+              child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 40),
+                child: Column(mainAxisSize: MainAxisSize.min, children: [
+                  if (type != 'hartje') ...[
+                    Text(_emojiVoorType(type),
+                        style: const TextStyle(fontSize: 96)),
+                    const SizedBox(height: 12),
+                  ],
+                  Text(type == 'dagelijks'
+                      ? 'Het is tijd voor:'
+                      : type == 'hartje'
+                          ? '$vanNaam denkt aan je 💕'
+                          : '$vanNaam stuurt je een bericht',
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(fontSize: 30,
+                          fontWeight: FontWeight.w800,
+                          color: kBrown,
+                          height: 1.2)),
+                  const SizedBox(height: 28),
+                  _popupInhoud(d, fotoMaxHoogte: fotoHoogte),
+                  if (geplandOp != null) ...[
+                    const SizedBox(height: 20),
+                    Text(_formatPopupTijd(geplandOp),
+                        style: const TextStyle(fontSize: 16,
+                            color: kTextMuted, fontStyle: FontStyle.italic)),
+                  ],
+                  const SizedBox(height: 24),
+                  Text(type == 'stem' || type == 'lied' || type == 'dagelijks'
+                      ? 'Sluit automatisch wanneer klaar'
+                      : 'Tik om te sluiten',
+                      style: const TextStyle(fontSize: 14, color: kTextMuted)),
+                ])),
+            ))),
+          );
+        }),
+      )),
     );
   }
 
-  Widget _popupInhoud(Map<String, dynamic> d) {
+  Widget _popupInhoud(Map<String, dynamic> d, {double? fotoMaxHoogte}) {
     final type = d['type'] ?? '';
     final bericht = d['bericht'] ?? '';
     final url = d['mediaUrl'] ?? '';
     switch (type) {
       case 'foto':
-        final fotoHoogte =
-            (MediaQuery.of(context).size.height * 0.75).clamp(320.0, 900.0);
+        // V9 2.21: gebruik de door LayoutBuilder berekende max-hoogte.
+        // Fallback (voor eventuele call-paths zonder LayoutBuilder-context):
+        // conservatieve 55% van scherm met clamp 280-600.
+        final fotoHoogte = fotoMaxHoogte ??
+            (MediaQuery.of(context).size.height * 0.55).clamp(280.0, 600.0);
         return Column(mainAxisSize: MainAxisSize.min, children: [
           if (url.isNotEmpty) ClipRRect(
             borderRadius: BorderRadius.circular(24),
