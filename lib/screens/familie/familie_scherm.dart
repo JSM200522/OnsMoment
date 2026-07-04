@@ -2206,9 +2206,42 @@ class _AudioInstelDialogState extends State<_AudioInstelDialog> {
     }
   }
 
+  /// V9 2.18: robuuste mime-bepaling voor huidige aangepasteAudio.
+  /// Alleen op web gebruikt (native leidt formaat af uit de HTTP Content-
+  /// Type-header). Uri.decodeFull zorgt dat URL-encoded paden ook goed
+  /// worden gecheckt; fallback audio/mp4 sluit aan bij recente uploads
+  /// (aacLc via V8-fix van juli 2026).
+  String _bepaalMime(String url, String? type) {
+    if (type == 'mp3') return 'audio/mpeg';
+    final decoded = Uri.decodeFull(url).toLowerCase();
+    if (decoded.contains('.m4a')) return 'audio/mp4';
+    if (decoded.contains('.webm')) return 'audio/webm';
+    return 'audio/mp4';
+  }
+
   Future<void> _speelOpnamePreview() async {
-    if (_opnamePad == null) return;
     try {
+      if (kIsWeb) {
+        if (_opnameBytes == null) {
+          _toonFout('Geen opname beschikbaar om af te spelen');
+          return;
+        }
+        // Web: data-URI i.p.v. blob-URL uit _stopOpname zodat afspelen
+        // ook op iOS Safari betrouwbaar werkt. Web-opnames zijn opus in
+        // webm-container (zie _startOpname bij kIsWeb).
+        final dataUri = Uri.dataFromBytes(
+            _opnameBytes!, mimeType: 'audio/webm').toString();
+        await _previewPlayer.setUrl(dataUri);
+      } else {
+        if (_opnamePad == null) {
+          _toonFout('Geen opname beschikbaar om af te spelen');
+          return;
+        }
+        // Native: opnames zijn aacLc in m4a-container. setFilePath opnieuw
+        // aanroepen zodat de player altijd een geldig source heeft, ook
+        // als de pre-warm in _stopOpname ooit faalde.
+        await _previewPlayer.setFilePath(_opnamePad!);
+      }
       await _previewPlayer.seek(Duration.zero);
       await _previewPlayer.play();
     } catch (e) {
@@ -2219,33 +2252,37 @@ class _AudioInstelDialogState extends State<_AudioInstelDialog> {
   Future<void> _speelHuidigePreview() async {
     if ((_huidigeUrl ?? '').isEmpty) return;
     try {
-      // Speel uit lokale bytes (bij dialog-open gepreload) — vermijdt
-      // iOS Safari CORS/range-issues én gesture-verlies door netwerk-fetch
-      // vóór play(). Dat liet de knop op iPhone stil falen.
-      if (_huidigeBytes == null) {
-        final resp = await http.get(Uri.parse(_huidigeUrl!));
-        if (resp.statusCode != 200 || resp.bodyBytes.isEmpty) {
-          _toonFout('Audio kon niet worden geladen (${resp.statusCode})');
-          return;
+      if (kIsWeb) {
+        // WEB-pad: bytes preloaden (behoudt CORS-workaround uit V8.6) en
+        // omzetten naar data-URI zodat afspelen ook op iOS Safari werkt.
+        // Vervangt het oude _BytesAudioSource-pad dat browsers niet
+        // ondersteunen (HTMLAudioElement accepteert geen byte-streams).
+        if (_huidigeBytes == null) {
+          final resp = await http.get(Uri.parse(_huidigeUrl!));
+          if (resp.statusCode != 200 || resp.bodyBytes.isEmpty) {
+            _toonFout('Audio kon niet worden geladen (${resp.statusCode})');
+            return;
+          }
+          _huidigeBytes = resp.bodyBytes;
         }
-        _huidigeBytes = resp.bodyBytes;
-      }
-      final url = _huidigeUrl ?? '';
-      final String mime;
-      if (_huidigType == 'mp3') {
-        mime = 'audio/mpeg';
-      } else if (url.toLowerCase().contains('.m4a')) {
-        mime = 'audio/mp4';
+        final mime = _bepaalMime(_huidigeUrl ?? '', _huidigType);
+        final dataUri = Uri.dataFromBytes(
+            _huidigeBytes!, mimeType: mime).toString();
+        await _previewPlayer.setUrl(dataUri);
       } else {
-        mime = 'audio/webm';
+        // NATIVE-pad: setUrl direct met de Firebase Storage-URL. Just_audio
+        // streamt via ExoPlayer/AVFoundation en gebruikt de HTTP Content-
+        // Type-header van Storage (die we bij upload correct hebben gezet
+        // in DagelijksAudioService — audio/mp4 voor m4a, audio/mpeg voor
+        // mp3, audio/webm voor web-uploads). Geen mime-guess-work uit
+        // URL-strings meer, geen bytes-omweg — de HTTP-header is
+        // autoritatief. Zelfde flow als tablet_scherm._toonPopup gebruikt
+        // voor stem/lied-berichten (bewezen betrouwbaar op native).
+        await _previewPlayer.setUrl(_huidigeUrl!);
       }
-      await _previewPlayer.setAudioSource(
-          _BytesAudioSource(_huidigeBytes!, mime));
       await _previewPlayer.play();
     } catch (e) {
-      // V8.6: native iOS heeft geen CORS-restricties — daar werkt dit wel.
-      _toonFout('Audio kan niet worden afgespeeld op deze iPhone-browser. '
-          'In de Ons Moment app werkt dit straks wel.');
+      _toonFout('Audio kan niet worden afgespeeld: $e');
     }
   }
 
