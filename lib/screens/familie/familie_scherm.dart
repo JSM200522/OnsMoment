@@ -458,22 +458,29 @@ class _FamilieSchermState extends State<FamilieScherm>
       vanNaam = vanRaw;
     }
     final geplandOp = (d['geplandOp'] as Timestamp?)?.toDate();
+    // V9 2.20: mirror van tablet_scherm _popupOverlay-upgrade (V9 2.14-a).
+    // Popup schaalt mee met schermgrootte (85% breedte, cap 1100 voor
+    // desktop) i.p.v. de vaste 600 px. Op tablet ± 75-85% zichtbaar,
+    // op telefoon comfortabel binnen de rand met de bestaande 20 px marge.
+    final schermBreedte = MediaQuery.of(context).size.width;
+    final kaartBreedte = (schermBreedte * 0.85).clamp(320.0, 1100.0);
     return Container(color: kBrown.withOpacity(0.94),
       child: SafeArea(child: Padding(
         padding: const EdgeInsets.all(20),
         child: Center(child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 600),
+          constraints: BoxConstraints(maxWidth: kaartBreedte),
           child: SingleChildScrollView(child: Container(
             decoration: BoxDecoration(color: kCream,
-                borderRadius: BorderRadius.circular(28),
+                borderRadius: BorderRadius.circular(40),
                 boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.3),
                     blurRadius: 40)]),
-            child: Padding(padding: const EdgeInsets.all(28),
+            child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 40),
               child: Column(mainAxisSize: MainAxisSize.min, children: [
                 if (type != 'hartje') ...[
                   Text(_emojiVoorType(type),
-                      style: const TextStyle(fontSize: 48)),
-                  const SizedBox(height: 8),
+                      style: const TextStyle(fontSize: 96)),
+                  const SizedBox(height: 12),
                 ],
                 Text(type == 'dagelijks'
                     ? 'Het is tijd voor:'
@@ -481,21 +488,23 @@ class _FamilieSchermState extends State<FamilieScherm>
                         ? '$vanNaam denkt aan je 💕'
                         : '$vanNaam stuurt je een bericht',
                     textAlign: TextAlign.center,
-                    style: const TextStyle(fontSize: 18,
-                        fontWeight: FontWeight.w800, color: kBrown)),
-                const SizedBox(height: 20),
+                    style: const TextStyle(fontSize: 30,
+                        fontWeight: FontWeight.w800,
+                        color: kBrown,
+                        height: 1.2)),
+                const SizedBox(height: 28),
                 _popupInhoud(d),
                 if (geplandOp != null) ...[
-                  const SizedBox(height: 16),
+                  const SizedBox(height: 20),
                   Text(_formatPopupTijd(geplandOp),
-                      style: const TextStyle(fontSize: 12,
+                      style: const TextStyle(fontSize: 16,
                           color: kTextMuted, fontStyle: FontStyle.italic)),
                 ],
-                const SizedBox(height: 16),
+                const SizedBox(height: 24),
                 Text(type == 'stem' || type == 'lied' || type == 'dagelijks'
                     ? 'Sluit automatisch wanneer klaar'
                     : 'Tik om te sluiten',
-                    style: const TextStyle(fontSize: 11, color: kTextMuted)),
+                    style: const TextStyle(fontSize: 14, color: kTextMuted)),
               ])),
           ))),
         )),
@@ -509,64 +518,88 @@ class _FamilieSchermState extends State<FamilieScherm>
     final url = d['mediaUrl'] ?? '';
     switch (type) {
       case 'foto':
+        final fotoHoogte =
+            (MediaQuery.of(context).size.height * 0.75).clamp(320.0, 900.0);
         return Column(mainAxisSize: MainAxisSize.min, children: [
           if (url.isNotEmpty) ClipRRect(
-            borderRadius: BorderRadius.circular(16),
+            borderRadius: BorderRadius.circular(24),
             child: Image.network(url,
-              height: 280, fit: BoxFit.cover,
+              height: fotoHoogte, fit: BoxFit.cover,
               loadingBuilder: (c, child, prog) {
                 if (prog == null) return child;
-                return Container(height: 280, color: kPeachPale,
+                return Container(height: fotoHoogte, color: kPeachPale,
                   child: const Center(
                       child: CircularProgressIndicator(color: kPeach)));
               },
               errorBuilder: (c, e, s) => Container(
-                height: 280, color: kPeachPale,
+                height: fotoHoogte, color: kPeachPale,
                 child: const Center(child: Icon(Icons.broken_image,
-                    size: 80, color: kPeach))))),
+                    size: 120, color: kPeach))))),
           if (bericht.isNotEmpty) ...[
-            const SizedBox(height: 16),
+            const SizedBox(height: 24),
             Text(bericht, textAlign: TextAlign.center,
-                style: const TextStyle(fontSize: 18,
+                style: const TextStyle(fontSize: 24,
                     color: kBrown, height: 1.4)),
           ],
         ]);
       case 'stem':
       case 'lied':
         return Column(mainAxisSize: MainAxisSize.min, children: [
-          Container(padding: const EdgeInsets.all(20),
-            decoration: const BoxDecoration(color: kPeachPale,
-                shape: BoxShape.circle),
+          Container(padding: const EdgeInsets.all(36),
+            decoration: BoxDecoration(
+                color: kPeachPale,
+                shape: BoxShape.circle,
+                boxShadow: [BoxShadow(
+                    color: kPeach.withOpacity(0.25),
+                    blurRadius: 32, spreadRadius: 4)]),
             child: const Icon(Icons.volume_up_rounded,
-                color: kPeach, size: 72)),
-          const SizedBox(height: 12),
+                color: kPeach, size: 140)),
+          const SizedBox(height: 20),
           Text(type == 'stem' ? '🎙️ Stembericht' : '🎵 Liedje',
-              style: const TextStyle(fontSize: 16,
+              style: const TextStyle(fontSize: 26,
                   fontWeight: FontWeight.w800, color: kBrown)),
           if (bericht.isNotEmpty) ...[
-            const SizedBox(height: 12),
+            const SizedBox(height: 16),
             Text(bericht, textAlign: TextAlign.center,
-                style: const TextStyle(fontSize: 16,
+                style: const TextStyle(fontSize: 22,
                     color: kBrownLight, height: 1.4)),
           ],
         ]);
       case 'tekst':
-        return Text(bericht.isEmpty ? 'Een lief bericht voor jou' : bericht,
-            textAlign: TextAlign.center,
-            style: const TextStyle(fontSize: 22, color: kBrown,
-                height: 1.5, fontWeight: FontWeight.w600));
+        // V9 2.20: horizontale wrapper compenseert de reductie van de
+        // kaart-padding (24 → 12) zodat de tekst-kaart visueel dezelfde
+        // breedte houdt als vóór de foto/video-vergroting.
+        return Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
+            decoration: BoxDecoration(
+                color: kPeachPale,
+                borderRadius: BorderRadius.circular(24)),
+            child: Text(bericht.isEmpty ? 'Een lief bericht voor jou' : bericht,
+                textAlign: TextAlign.center,
+                style: const TextStyle(fontSize: 40, color: kBrown,
+                    height: 1.5, fontWeight: FontWeight.w600)),
+          ),
+        );
       case 'dagelijks':
+        final dagelijksEmojiSize =
+            (MediaQuery.of(context).size.shortestSide * 0.28)
+                .clamp(140.0, 220.0);
         return Column(mainAxisSize: MainAxisSize.min, children: [
           Text(d['emoji'] as String? ?? '⭐',
-              style: const TextStyle(fontSize: 96)),
-          const SizedBox(height: 16),
+              style: TextStyle(fontSize: dagelijksEmojiSize)),
+          const SizedBox(height: 24),
           Text(d['label'] as String? ?? '',
               textAlign: TextAlign.center,
-              style: const TextStyle(fontSize: 28,
-                  fontWeight: FontWeight.w800, color: kBrown)),
+              style: const TextStyle(fontSize: 44,
+                  fontWeight: FontWeight.w800, color: kBrown, height: 1.2)),
         ]);
       case 'hartje':
-        return const Center(child: PulserendHart(grootte: 130));
+        final hartjeSize =
+            (MediaQuery.of(context).size.shortestSide * 0.55)
+                .clamp(220.0, 380.0);
+        return Center(child: PulserendHart(grootte: hartjeSize));
       case 'video':
         return VideoSpeler(url: url);
       default:
