@@ -678,14 +678,14 @@ class _FamilieSchermState extends State<FamilieScherm>
     if (widget.alsOntvanger) {
       switch (_tab) {
         case 0: return StuurTab(alsOntvanger: widget.alsOntvanger);
-        case 1: return const AgendaTab();
+        case 1: return AgendaTab(alsOntvanger: widget.alsOntvanger);
         case 2: return InstellingenTab(alsOntvanger: widget.alsOntvanger);
         default: return const SizedBox();
       }
     }
     switch (_tab) {
       case 0: return StuurTab(alsOntvanger: widget.alsOntvanger);
-      case 1: return const AgendaTab();
+      case 1: return AgendaTab(alsOntvanger: widget.alsOntvanger);
       case 2: return const NotitiesTab();
       case 3: return const InstellingenTab();
       default: return const SizedBox();
@@ -1799,7 +1799,12 @@ class _StuurTabState extends State<StuurTab> {
 // AGENDA TAB
 // ════════════════════════════════════════════════════════════
 class AgendaTab extends StatelessWidget {
-  const AgendaTab({super.key});
+  /// V9 2.17: perspectief-vlag. Default false = familie-kant (bestaand
+  /// gedrag). true = ontvanger-kant, waar het uitleg-tekstje over 'via
+  /// Instellingen → Momenten beheren' wordt verborgen — de ontvanger
+  /// heeft dat menu-item namelijk niet.
+  final bool alsOntvanger;
+  const AgendaTab({super.key, this.alsOntvanger = false});
 
   @override
   Widget build(BuildContext context) {
@@ -1815,7 +1820,7 @@ class AgendaTab extends StatelessWidget {
             style: TextStyle(fontSize: 13, color: kTextMuted)),
         const SizedBox(height: 16),
         Expanded(child: ListView(children: [
-          Container(
+          if (!alsOntvanger) Container(
             margin: const EdgeInsets.only(bottom: 8),
             padding: const EdgeInsets.all(10),
             decoration: BoxDecoration(
@@ -2989,13 +2994,15 @@ class _InstellingenTabState extends State<InstellingenTab> {
         const Text('Instellingen',
             style: TextStyle(fontSize: 24, fontWeight: FontWeight.w900,
                 color: kBrown)),
-        const SizedBox(height: 20),
-        _sectie('DAGELIJKSE MOMENTEN'),
-        _item('📅', 'Momenten beheren',
-            'Voeg toe, pas aan of verwijder vaste momenten', () {
-          Navigator.push(context, MaterialPageRoute(
-              builder: (c) => const MomentenBeherenScherm()));
-        }),
+        if (!widget.alsOntvanger) ...[
+          const SizedBox(height: 20),
+          _sectie('DAGELIJKSE MOMENTEN'),
+          _item('📅', 'Momenten beheren',
+              'Voeg toe, pas aan of verwijder vaste momenten', () {
+            Navigator.push(context, MaterialPageRoute(
+                builder: (c) => const MomentenBeherenScherm()));
+          }),
+        ],
         if (!widget.alsOntvanger) ...[
           const SizedBox(height: 20),
           _sectie('KRINGEN'),
