@@ -770,6 +770,12 @@ class _TabletSchermState extends State<TabletScherm>
   Widget _popupOverlay() {
     final d = _huidigPopup!;
     final type = d['type'] ?? '';
+    // V9 2.22: foto/video krijgen een compactere kop zodat de INHOUD (het
+    // beeld) het scherm vult zonder scroll op telefoon. De emoji (📷/🎥)
+    // staat inline vóór de naam-tekst als warm accent — geen aparte grote
+    // header meer. Andere types (tekst/hartje/stem/lied/dagelijks) behouden
+    // hun huidige, grotere kop met emoji-header erboven.
+    final bool isMedia = type == 'foto' || type == 'video';
     final vanRaw = (d['vanNaam'] as String?)?.trim() ?? '';
     final vanNaam = vanRaw.isNotEmpty ? vanRaw : 'Iemand uit je kring';
     final geplandOp = (d['geplandOp'] as Timestamp?)?.toDate();
@@ -782,15 +788,11 @@ class _TabletSchermState extends State<TabletScherm>
       child: SafeArea(child: Padding(
         padding: const EdgeInsets.all(20),
         child: LayoutBuilder(builder: (ctx, constraints) {
-          // V9 2.21: bereken de daadwerkelijk beschikbare foto-hoogte.
-          // LayoutBuilder krijgt hier constraints.maxHeight = resterende
-          // verticale ruimte na SafeArea + outer padding — automatisch
-          // inclusief bottom-nav-aftrek op scaffolds die er één hebben
-          // (familie) en zonder aftrek op scaffolds zonder bottom-nav
-          // (tablet). Trek de vaste card-chrome af (padding V:40+40,
-          // emoji 96, spacings 12+28+20+24, naam-tekst 30pt, tijd 16pt,
-          // hint 14pt) — ± 380 px totaal. Clamp 280-900 als vangnet.
-          const chromeInCard = 380.0;
+          // V9 2.22: chrome-aftrek is nu context-aware. Bij foto/video is de
+          // kop compact (geen emoji, kleinere naam-tekst, krappere spacings,
+          // half zo diepe kaart-padding) → ~150 px chrome. Bij andere types
+          // blijft de grote kop → ~380 px chrome. Clamp 280-900 als vangnet.
+          final chromeInCard = isMedia ? 150.0 : 380.0;
           final fotoRuimte = constraints.maxHeight - chromeInCard;
           final fotoHoogte = fotoRuimte.clamp(280.0, 900.0);
           return Center(child: ConstrainedBox(
@@ -801,32 +803,53 @@ class _TabletSchermState extends State<TabletScherm>
                   boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.3),
                       blurRadius: 40)]),
               child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 40),
+                  padding: EdgeInsets.symmetric(
+                      horizontal: 12, vertical: isMedia ? 22 : 40),
                 child: Column(mainAxisSize: MainAxisSize.min, children: [
-                  if (type != 'hartje') ...[
+                  if (type != 'hartje' && !isMedia) ...[
                     Text(_emojiVoorType(type),
                         style: const TextStyle(fontSize: 96)),
                     const SizedBox(height: 12),
                   ],
-                  Text(type == 'dagelijks'
-                      ? 'Het is tijd voor:'
-                      : type == 'hartje'
-                          ? '$vanNaam denkt aan je 💕'
-                          : '$vanNaam stuurt je een bericht',
+                  if (isMedia)
+                    // Emoji inline vóór de tekst — één regel, wraps netjes
+                    // (TextSpan → dezelfde tekstflow). Emoji iets groter dan
+                    // de tekst (22 vs 20) voor een warm accent zonder te
+                    // domineren.
+                    Text.rich(
+                      TextSpan(children: [
+                        TextSpan(
+                            text: '${_emojiVoorType(type)}  ',
+                            style: const TextStyle(fontSize: 22)),
+                        TextSpan(
+                            text: '$vanNaam stuurt je een bericht'),
+                      ]),
                       textAlign: TextAlign.center,
-                      style: const TextStyle(fontSize: 30,
-                          fontWeight: FontWeight.w800,
+                      style: const TextStyle(fontSize: 20,
+                          fontWeight: FontWeight.w700,
                           color: kBrown,
-                          height: 1.2)),
-                  const SizedBox(height: 28),
+                          height: 1.2),
+                    )
+                  else
+                    Text(type == 'dagelijks'
+                        ? 'Het is tijd voor:'
+                        : type == 'hartje'
+                            ? '$vanNaam denkt aan je 💕'
+                            : '$vanNaam stuurt je een bericht',
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(fontSize: 30,
+                            fontWeight: FontWeight.w800,
+                            color: kBrown,
+                            height: 1.2)),
+                  SizedBox(height: isMedia ? 14 : 28),
                   _popupInhoud(d, fotoMaxHoogte: fotoHoogte),
                   if (geplandOp != null && type != 'dagelijks') ...[
-                    const SizedBox(height: 20),
+                    SizedBox(height: isMedia ? 12 : 20),
                     Text(_formatPopupTijd(geplandOp),
                         style: const TextStyle(fontSize: 16,
                             color: kTextMuted, fontStyle: FontStyle.italic)),
                   ],
-                  const SizedBox(height: 24),
+                  SizedBox(height: isMedia ? 14 : 24),
                   Text(type == 'stem' || type == 'lied'
                       ? 'Sluit automatisch wanneer klaar'
                       : (type == 'dagelijks'
@@ -932,7 +955,13 @@ class _TabletSchermState extends State<TabletScherm>
                 .clamp(220.0, 380.0);
         return Center(child: PulserendHart(grootte: hartjeSize));
       case 'video':
-        return VideoSpeler(url: url);
+        // V9 2.22: cap de video-hoogte gelijk aan de foto — VideoSpeler
+        // gebruikt AspectRatio en zou anders bij portret-video's (9:16)
+        // hoger uitgroeien dan het scherm en scroll veroorzaken.
+        return ConstrainedBox(
+          constraints: BoxConstraints(maxHeight: fotoMaxHoogte ?? 600),
+          child: VideoSpeler(url: url),
+        );
       default:
         return const SizedBox();
     }
