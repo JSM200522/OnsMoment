@@ -182,6 +182,33 @@ class _FamilieSchermState extends State<FamilieScherm>
     ));
   }
 
+  /// V9 2.24: mirror van tablet_scherm._wachtOpBelKlaar. Wacht tot de
+  /// _geluidPlayer klaar is met afspelen, met een harde max-wachttijd als
+  /// vangnet. Gebruikt vóór het mounten van de VideoSpeler zodat het
+  /// herkenningsgeluid niet afgekapt wordt door de audio-focus-claim van
+  /// video_player op Android. Timeout garandeert dat de popup nooit langer
+  /// dan [maxWacht] blokkeert — zelfs bij een defecte player.
+  Future<void> _wachtOpBelKlaar(Duration maxWacht) async {
+    if (_geluidPlayer.playerState.processingState
+        == ProcessingState.completed) {
+      return;
+    }
+    final completer = Completer<void>();
+    StreamSubscription<PlayerState>? sub;
+    Timer? timeout;
+    void afronden() {
+      if (completer.isCompleted) return;
+      sub?.cancel();
+      timeout?.cancel();
+      completer.complete();
+    }
+    sub = _geluidPlayer.playerStateStream.listen((s) {
+      if (s.processingState == ProcessingState.completed) afronden();
+    });
+    timeout = Timer(maxWacht, afronden);
+    await completer.future;
+  }
+
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) _herscanMomenten();
@@ -384,6 +411,15 @@ class _FamilieSchermState extends State<FamilieScherm>
           .doc(id).update({'gezien': true});
     } catch (_) {}
 
+    // V9 2.24: type-lookup naar voren gehaald zodat de bel-branch kan
+    // differentiëren tussen video en de rest (mirror van tablet_scherm).
+    final type = d['type'];
+
+    // Speel herkenningsgeluid.
+    // - Bij VIDEO: wacht op echte completion van de bel (max 3000ms vangnet),
+    //   want video_player claimt audio-focus bij initialize en zou de bel
+    //   anders abrupt afkappen zodra de VideoSpeler mount.
+    // - Bij andere types: vaste 1200ms delay (bestaand gedrag, niet aanraken).
     final skipBel = d['heeftAangepasteAudio'] == true;
     final geluidAsset = kGeluidAssets[_herkenningsgeluid];
     if (!skipBel && geluidAsset != null) {
@@ -397,7 +433,11 @@ class _FamilieSchermState extends State<FamilieScherm>
         _debugLog('❌ Bel-fout: $e');
       }
       if (geluidGespeeld) {
-        await Future.delayed(const Duration(milliseconds: 1200));
+        if (type == 'video') {
+          await _wachtOpBelKlaar(const Duration(milliseconds: 3000));
+        } else {
+          await Future.delayed(const Duration(milliseconds: 1200));
+        }
       }
     }
 
