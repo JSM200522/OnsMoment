@@ -1372,31 +1372,58 @@ class _StuurTabState extends State<StuurTab> {
   }
 
   Future<void> _kiesVideo() async {
+    // V9 2.23: iPhone-video's (.mov, vaak HEVC) worden nu óók geaccepteerd.
+    // Native (iOS/Android) gebruikt de systeem-Foto's-picker via
+    // image_picker.pickVideo — op iOS levert die vaak automatisch een
+    // H.264/MP4-getranscodeerde variant op, wat afspelen overal betrouwbaar
+    // maakt. Web gebruikt FilePicker met een uitgebreid extensie-filter.
     try {
-      final result = await FilePicker.platform.pickFiles(
-          type: FileType.custom, allowedExtensions: ['mp4'], withData: true);
-      if (result == null) return;
-      final f = result.files.first;
-      Uint8List? bytes = f.bytes;
-      if (bytes == null && f.xFile != null) {
-        try {
-          bytes = await f.xFile!.readAsBytes();
-        } catch (e) {
-          debugPrint('xFile.readAsBytes faalde: $e');
+      Uint8List? bytes;
+      String? naam;
+      if (kIsWeb) {
+        final result = await FilePicker.platform.pickFiles(
+            type: FileType.custom,
+            allowedExtensions: ['mp4', 'mov', 'm4v'],
+            withData: true);
+        if (result == null) return;
+        final f = result.files.first;
+        bytes = f.bytes;
+        if (bytes == null && f.xFile != null) {
+          try {
+            bytes = await f.xFile!.readAsBytes();
+          } catch (e) {
+            debugPrint('xFile.readAsBytes faalde: $e');
+          }
         }
+        naam = f.name;
+      } else {
+        final picker = ImagePicker();
+        final v = await picker.pickVideo(
+            source: ImageSource.gallery,
+            maxDuration: const Duration(minutes: 2));
+        if (v == null) return;
+        try {
+          bytes = await v.readAsBytes();
+        } catch (e) {
+          debugPrint('video.readAsBytes faalde: $e');
+        }
+        naam = v.name;
       }
-      if (bytes == null) {
-        _toonFout('Kon video niet laden. Probeer een ander bestand.');
+      if (bytes == null || bytes.isEmpty) {
+        _toonFout('Kon video niet laden. '
+            'Kies een .mp4- of .mov-bestand (max 50MB).');
         return;
       }
       if (bytes.lengthInBytes > 50 * 1024 * 1024) {
-        _toonFout('Deze video is te groot. '
-            'Kies een video van maximaal 50MB.');
+        final mb =
+            (bytes.lengthInBytes / (1024 * 1024)).toStringAsFixed(0);
+        _toonFout('Deze video is te groot (${mb}MB). '
+            'Kies er één van maximaal 50MB.');
         return;
       }
       setState(() {
         _mediaBytes = bytes;
-        _mediaNaam = f.name;
+        _mediaNaam = naam ?? 'video';
         _type = 'video';
       });
     } catch (e) {
@@ -1422,7 +1449,7 @@ class _StuurTabState extends State<StuurTab> {
         const SizedBox(height: 4),
         Text(_mediaBytes != null
             ? '$_mediaNaam — ${_formatBytes(_mediaBytes!.lengthInBytes)}'
-            : 'Alleen .mp4, max 50MB',
+            : 'Video (.mp4 / .mov), max 50MB',
             textAlign: TextAlign.center,
             style: const TextStyle(fontSize: 12, color: kTextMuted)),
       ])),
@@ -1591,10 +1618,27 @@ class _StuurTabState extends State<StuurTab> {
         await ref.putData(bytes, SettableMetadata(contentType: contentType));
         mediaUrl = await ref.getDownloadURL();
       } else if (_type == 'video' && _mediaBytes != null) {
+        // V9 2.23: extensie en content-type dynamisch afgeleid van de
+        // originele bestandsnaam, zodat .mov (iPhone) correct wordt
+        // gemarkeerd en overal afspeelt. Onbekende/afwijkende extensies
+        // vallen veilig terug op mp4.
+        final naam = _mediaNaam.toLowerCase();
+        final dotIdx = naam.lastIndexOf('.');
+        final rawExt = (dotIdx >= 0 && dotIdx < naam.length - 1)
+            ? naam.substring(dotIdx + 1)
+            : '';
+        final ext = (rawExt == 'mov' || rawExt == 'm4v' || rawExt == 'mp4')
+            ? rawExt
+            : 'mp4';
+        final contentType = ext == 'mov'
+            ? 'video/quicktime'
+            : ext == 'm4v'
+                ? 'video/x-m4v'
+                : 'video/mp4';
         final ref = FirebaseStorage.instance.ref()
             .child('momenten')
-            .child('${DateTime.now().millisecondsSinceEpoch}.mp4');
-        mediaUrl = await _uploadMetProgress(ref, _mediaBytes!, 'video/mp4');
+            .child('${DateTime.now().millisecondsSinceEpoch}.$ext');
+        mediaUrl = await _uploadMetProgress(ref, _mediaBytes!, contentType);
       } else if (_mediaBytes != null) {
         final ext = _type == 'foto' ? 'jpg' : 'mp3';
         final ref = FirebaseStorage.instance.ref()
