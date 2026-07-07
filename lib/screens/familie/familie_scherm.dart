@@ -77,10 +77,26 @@ class _FamilieSchermState extends State<FamilieScherm>
     // V9 1.1f/1.1g/1.1h: alle kringId-gefilterde listeners pas starten ná
     // resolve, anders null-filter en hoort de ontvanger geen popups/
     // herkenningsgeluiden meer.
-    DeviceModusService.huidigeKringIdMetFallback().then((id) {
+    DeviceModusService.huidigeKringIdMetFallback().then((id) async {
       if (!mounted) return;
       setState(() => _kringId = id);
       if (id != null) {
+        // V9 2.24-b (mirror van tablet 2.13-a): wacht op _mijnApparaatId
+        // voordat de momenten-listener attacht. Chain A (regel 72-76) laadt
+        // hetzelfde ID uit dezelfde cache; is die nog niet klaar, dan halen
+        // we het hier direct op. Voorkomt dat de initial snapshot van
+        // _startMomentenListener docs met aanApparaatIds/aanApparaatId-
+        // targeting foutief als 'niet voor mij' filtert — symptoom: 'eerste
+        // bericht komt pas bij een tweede'.
+        if (_mijnApparaatId == null) {
+          _debugLog('⏳ Wacht op apparaatId voor momenten-listener');
+          final apparaatId = await DeviceModusService.krijgApparaatId();
+          if (!mounted) return;
+          if (_mijnApparaatId == null) {
+            setState(() => _mijnApparaatId = apparaatId);
+          }
+        }
+
         _startMomentenListener();
         if (widget.alsOntvanger) {
           _startDagelijksListener();
