@@ -4775,41 +4775,52 @@ class _HulpDialog extends StatelessWidget {
                 ]);
             })),
           Container(
-            padding: const EdgeInsets.fromLTRB(20, 14, 20, 18),
             decoration: const BoxDecoration(color: kCream,
                 border: Border(top: BorderSide(color: kPeachLight, width: 1))),
-            child: Column(crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                const Padding(
-                  padding: EdgeInsets.only(bottom: 10),
-                  child: Text('Staat je vraag er niet bij?',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(fontSize: 13, color: kBrownLight))),
-                ElevatedButton(
-                  style: ElevatedButton.styleFrom(backgroundColor: kPeach,
-                    padding: const EdgeInsets.symmetric(vertical: 12),
-                    shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12))),
-                  onPressed: () async {
-                    final messenger = ScaffoldMessenger.of(ctx);
-                    // CONTACT-ADRES — later vervangen door zakelijk adres
-                    final uri = Uri(scheme: 'mailto',
-                        path: 'joshuapanna@gmail.com',
-                        query: 'subject=Vraag of feedback over Ons Moment');
-                    try {
-                      final ok = await launchUrl(uri);
-                      if (!ok) {
-                        messenger.showSnackBar(const SnackBar(
-                            content: Text('Kon mail-app niet openen')));
-                      }
-                    } catch (_) {
-                      messenger.showSnackBar(const SnackBar(
-                          content: Text('Kon mail-app niet openen')));
-                    }
-                  },
-                  child: const Text('Stuur ons een mail',
-                    style: TextStyle(color: kWhite, fontWeight: FontWeight.w800))),
-              ])),
+            // V9 2.25: SafeArea(top: false) tilt de knop-strook boven de
+            // systeem-navigatiebalk (Samsung 3-knop, iPhone home-indicator,
+            // Pixel gesture-balk). Decoratie blijft op de Container zodat
+            // het cream-vlak visueel doorloopt tot achter de balk — geen
+            // afgesneden strook. Op web/tablet zonder balk is viewPadding=0
+            // en is het gedrag identiek aan vóór de fix.
+            child: SafeArea(
+              top: false,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(20, 14, 20, 18),
+                child: Column(crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    const Padding(
+                      padding: EdgeInsets.only(bottom: 10),
+                      child: Text('Staat je vraag er niet bij?',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(fontSize: 13, color: kBrownLight))),
+                    ElevatedButton(
+                      style: ElevatedButton.styleFrom(backgroundColor: kPeach,
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12))),
+                      onPressed: () async {
+                        final messenger = ScaffoldMessenger.of(ctx);
+                        // CONTACT-ADRES — later vervangen door zakelijk adres
+                        final uri = Uri(scheme: 'mailto',
+                            path: 'joshuapanna@gmail.com',
+                            query: 'subject=Vraag of feedback over Ons Moment');
+                        try {
+                          final ok = await launchUrl(uri);
+                          if (!ok) {
+                            messenger.showSnackBar(const SnackBar(
+                                content: Text('Kon mail-app niet openen')));
+                          }
+                        } catch (_) {
+                          messenger.showSnackBar(const SnackBar(
+                              content: Text('Kon mail-app niet openen')));
+                        }
+                      },
+                      child: const Text('Stuur ons een mail',
+                        style: TextStyle(color: kWhite, fontWeight: FontWeight.w800))),
+                  ]),
+              ),
+            )),
         ]),
       ),
     );
