@@ -183,7 +183,13 @@ class _TabletSchermState extends State<TabletScherm>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed) _herscanMomenten();
+    if (state == AppLifecycleState.resumed) {
+      _herscanMomenten();
+      // V9 2.26: bij terug op de voorgrond ook geplande/dagelijkse momenten
+      // opnieuw checken — zonder deze regel worden ze pas op de volgende
+      // 30s-tick opgepikt en missen we een moment nét na standby.
+      _checkGeplandeMomenten();
+    }
   }
 
   /// Her-scant openstaande (ongeziene) momenten via een verse query en voert
@@ -235,7 +241,14 @@ class _TabletSchermState extends State<TabletScherm>
         .where('kringId', isEqualTo: kringId)
         .where('actief', isEqualTo: true)
         .snapshots()
-        .listen((snap) => _dagelijkseDocs = snap.docs);
+        .listen((snap) {
+      // V9 2.26: bij de EERSTE snapshot direct één check aftrappen zodat we
+      // niet 30s hoeven te wachten op de Timer.periodic-tick. Dekt het gat
+      // waarin de app precies na een dagelijks-moment opstart.
+      final wasEersteSnapshot = _dagelijkseDocs == null;
+      _dagelijkseDocs = snap.docs;
+      if (wasEersteSnapshot) _checkGeplandeMomenten();
+    });
   }
 
   void _startEenmaligListener() {
@@ -246,7 +259,12 @@ class _TabletSchermState extends State<TabletScherm>
         .where('kringId', isEqualTo: kringId)
         .where('actief', isEqualTo: true)
         .snapshots()
-        .listen((snap) => _eenmaligDocs = snap.docs);
+        .listen((snap) {
+      // V9 2.26: eerste snapshot → direct check (mirror van dagelijks).
+      final wasEersteSnapshot = _eenmaligDocs == null;
+      _eenmaligDocs = snap.docs;
+      if (wasEersteSnapshot) _checkGeplandeMomenten();
+    });
   }
 
   void _verwerkMomenten(QuerySnapshot snap) {
@@ -300,23 +318,51 @@ class _TabletSchermState extends State<TabletScherm>
   Future<void> _checkGeplandeMomenten() async {
     if (_huidigPopupId != null) return;
     final nu = DateTime.now();
-    final huidigMin = nu.hour * 60 + nu.minute;
-    final vandaagKey = '${nu.year}-'
-        '${nu.month.toString().padLeft(2, '0')}-'
-        '${nu.day.toString().padLeft(2, '0')}';
+    // V9 2.26: 10-min window als vangnet voor korte opstart-/standby-
+    // vertragingen. Ruim genoeg om robuust te zijn, klein genoeg dat een
+    // ochtendmoment niet 's middags nog verschijnt.
+    const windowSec = 10 * 60;
+    String dagKey(DateTime d) => '${d.year}-'
+        '${d.month.toString().padLeft(2, '0')}-'
+        '${d.day.toString().padLeft(2, '0')}';
+    final vandaagKey = dagKey(nu);
+    final gisteren = DateTime(nu.year, nu.month, nu.day)
+        .subtract(const Duration(days: 1));
+    final gisterenKey = dagKey(gisteren);
+
     if (_dagelijkseDocs != null) {
       for (final doc in _dagelijkseDocs!) {
         final d = doc.data() as Map<String, dynamic>;
-        final momentMin = (d['uur'] as int? ?? 0) * 60
-                        + (d['minuut'] as int? ?? 0);
-        // Window van 60s: trigger als moment net of 1 minuut geleden is.
-        if (momentMin > huidigMin) continue;
-        if (huidigMin - momentMin > 1) continue;
-        if (d['laatstGetoond'] == vandaagKey) continue;
+        final uur = d['uur'] as int? ?? 0;
+        final minuut = d['minuut'] as int? ?? 0;
+        // V9 2.26: bepaal trigger als echte DateTime (vandaag of gisteren)
+        // zodat een 23:59-moment ook net na middernacht wordt herkend.
+        final momentVandaag =
+            DateTime(nu.year, nu.month, nu.day, uur, minuut);
+        final momentGisteren =
+            momentVandaag.subtract(const Duration(days: 1));
+        String? triggerKey;
+        if (!nu.isBefore(momentVandaag)
+            && nu.difference(momentVandaag).inSeconds <= windowSec) {
+          triggerKey = vandaagKey;
+        } else if (!nu.isBefore(momentGisteren)
+            && nu.difference(momentGisteren).inSeconds <= windowSec) {
+          triggerKey = gisterenKey;
+        }
+        if (triggerKey == null) continue;
+        if (d['laatstGetoond'] == triggerKey) continue;
+
+        // V9 2.26: popup EERST (die claimt synchroon _huidigPopupId), pas
+        // daarna laatstGetoond schrijven — zo verliezen we het moment niet
+        // als de app precies tussen write en render crasht. De extra
+        // popupId-check is een vangnet voor het geval een andere popup
+        // synchroon binnenkwam.
+        final popupId = 'dagelijks_${doc.id}';
+        await _toonDagelijksPopup(doc.id, d);
+        if (_huidigPopupId != popupId) return;
         try {
-          await doc.reference.update({'laatstGetoond': vandaagKey});
+          await doc.reference.update({'laatstGetoond': triggerKey});
         } catch (_) {}
-        _toonDagelijksPopup(doc.id, d);
         return;
       }
     }
@@ -331,10 +377,15 @@ class _TabletSchermState extends State<TabletScherm>
         final verschil = nu.difference(geplandOp);
         if (verschil.isNegative) continue;       // nog in toekomst
         if (verschil.inHours >= 24) continue;     // te laat, sla over
+
+        // V9 2.26: popup EERST, daarna markeren — zelfde reden als bij
+        // dagelijks (crash-veilig).
+        final popupId = 'eenmalig_${doc.id}';
+        await _toonEenmaligPopup(doc.id, d);
+        if (_huidigPopupId != popupId) return;
         try {
           await doc.reference.update({'getoond': true});
         } catch (_) {}
-        _toonEenmaligPopup(doc.id, d);
         return;
       }
     }
@@ -454,8 +505,15 @@ class _TabletSchermState extends State<TabletScherm>
         _huidigPopupId = null;
       });
     }
-    // Toon na een korte rustpauze een eventueel gemist bericht (Bug A).
-    Future.delayed(const Duration(milliseconds: 500), _herscanMomenten);
+    // Toon na een korte rustpauze een eventueel gemist bericht (Bug A) EN
+    // een gemist dagelijks/eenmalig moment (V9 2.26). Nodig als er meerdere
+    // momenten op (bijna) hetzelfde tijdstip staan: zonder deze extra check
+    // zou de 2e/3e pas op de volgende 30s-tick worden opgepikt en dan
+    // mogelijk al buiten het 10-min window vallen.
+    Future.delayed(const Duration(milliseconds: 500), () {
+      _herscanMomenten();
+      _checkGeplandeMomenten();
+    });
   }
 
   @override
