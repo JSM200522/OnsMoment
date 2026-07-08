@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:firebase_core/firebase_core.dart';
@@ -154,6 +155,15 @@ class _OntvangerRouterState extends State<_OntvangerRouter> {
   @override
   void initState() {
     super.initState();
+    // Portrait-lock voor de ontvanger-tak (rustig én normaal). Alleen native:
+    // op web negeert SystemChrome de oproep sowieso, maar de kIsWeb-guard
+    // maakt de intentie expliciet. Familie-kant loopt via een andere router-
+    // tak en wordt hier niet geraakt. dispose() zet 'm weer vrij zodat een
+    // modus-wissel naar familie de rotatie teruggeeft.
+    if (!kIsWeb) {
+      SystemChrome.setPreferredOrientations(
+          const [DeviceOrientation.portraitUp]);
+    }
     _startListener();
   }
 
@@ -176,6 +186,16 @@ class _OntvangerRouterState extends State<_OntvangerRouter> {
   @override
   void dispose() {
     _sub?.cancel();
+    // Reset naar alle richtingen zodat de familie-kant vrij kan draaien
+    // zodra iemand de modus terugzet naar familie.
+    if (!kIsWeb) {
+      SystemChrome.setPreferredOrientations(const [
+        DeviceOrientation.portraitUp,
+        DeviceOrientation.portraitDown,
+        DeviceOrientation.landscapeLeft,
+        DeviceOrientation.landscapeRight,
+      ]);
+    }
     super.dispose();
   }
 

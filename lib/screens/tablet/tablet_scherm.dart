@@ -633,41 +633,59 @@ class _TabletSchermState extends State<TabletScherm>
           blurRadius: 12, offset: const Offset(0, 3))
     ] : <Shadow>[];
 
+    // V9 2.28: scroll-vangnet voor krappe schermen (bv. tablet in landscape
+    // of klein toestel met veel systeembalk). Op ruime schermen verandert
+    // er niets: minHeight = beschikbare hoogte + IntrinsicHeight + Column
+    // met mainAxisAlignment.center houdt de content verticaal gecentreerd.
+    // Zodra de inhoud niet meer past, wordt het geheel scrollbaar i.p.v.
+    // een gele overflow-banner te tonen.
     return Center(child: ConstrainedBox(
       constraints: const BoxConstraints(maxWidth: 640),
-      child: Padding(padding: const EdgeInsets.symmetric(horizontal: 24),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            _Klok(textColor: textColor, shadow: shadow),
-            const SizedBox(height: 36),
+      child: LayoutBuilder(builder: (ctx, cons) {
+        return SingleChildScrollView(
+          child: ConstrainedBox(
+            constraints: BoxConstraints(minHeight: cons.maxHeight),
+            child: IntrinsicHeight(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 24),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    _Klok(textColor: textColor, shadow: shadow),
+                    const SizedBox(height: 36),
 
-            // BEGROETING
-            if (naam.isNotEmpty) Container(
-              padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 14),
-              decoration: BoxDecoration(
-                color: hasBackground
-                    ? kWhite.withOpacity(0.25) : kPeachPale,
-                borderRadius: BorderRadius.circular(50),
-                border: hasBackground
-                    ? Border.all(color: kWhite.withOpacity(0.5), width: 1.5)
-                    : null),
-              child: Text('Hallo $naam 💕',
-                  style: TextStyle(fontSize: 26,
-                      fontWeight: FontWeight.w800, color: textColor,
-                      shadows: shadow)),
+                    // BEGROETING
+                    if (naam.isNotEmpty) Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 28, vertical: 14),
+                      decoration: BoxDecoration(
+                        color: hasBackground
+                            ? kWhite.withOpacity(0.25) : kPeachPale,
+                        borderRadius: BorderRadius.circular(50),
+                        border: hasBackground
+                            ? Border.all(
+                                color: kWhite.withOpacity(0.5), width: 1.5)
+                            : null),
+                      child: Text('Hallo $naam 💕',
+                          style: TextStyle(fontSize: 26,
+                              fontWeight: FontWeight.w800, color: textColor,
+                              shadows: shadow)),
+                    ),
+                    const SizedBox(height: 28),
+
+                    // VOLGENDE MOMENT KAART
+                    _volgendeMomentKaart(),
+                    const SizedBox(height: 16),
+
+                    // EERDER VANDAAG
+                    _eerderVandaag(hasBackground: hasBackground),
+                  ]),
+              ),
             ),
-            const SizedBox(height: 28),
-
-            // VOLGENDE MOMENT KAART
-            _volgendeMomentKaart(),
-            const SizedBox(height: 16),
-
-            // EERDER VANDAAG
-            _eerderVandaag(hasBackground: hasBackground),
-          ]),
-      ),
+          ),
+        );
+      }),
     ));
   }
 
