@@ -36,6 +36,14 @@ class _TabletSchermState extends State<TabletScherm>
   List<QueryDocumentSnapshot>? _dagelijkseDocs;
   StreamSubscription<QuerySnapshot>? _eenmaligSub;
   List<QueryDocumentSnapshot>? _eenmaligDocs;
+  /// V9 2.27: lokale in-memory dedup naast Firestore's laatstGetoond/getoond.
+  /// Wordt SYNCHROON gezet vóór de popup opent, zodat een re-check tussen
+  /// popup-sluit en Firestore-snapshot-re-emit het moment niet nogmaals kan
+  /// triggeren binnen het 10-min window. Voor dagelijks bevat de key ook de
+  /// triggerKey (dag-key), zodat dagovergang zich vanzelf reset — een moment
+  /// van gisteren mag vandaag opnieuw. Voor eenmalig alleen de doc.id (die
+  /// maar één keer mag komen, niet per dag).
+  final Set<String> _reedsGetoondLokaal = <String>{};
   String? _mijnApparaatId;
   String? _kringId;
   // V9 2.4-a-2: kring-doc als primaire bron; _gebruikerSub blijft als
@@ -350,16 +358,27 @@ class _TabletSchermState extends State<TabletScherm>
           triggerKey = gisterenKey;
         }
         if (triggerKey == null) continue;
+        // V9 2.27: lokale dedup EERST — dekt het gat tussen popup-sluit en
+        // Firestore-snapshot-re-emit. Overleeft niet cold restart, maar dan
+        // valt laatstGetoond terug als backup.
+        final lokaleKey = 'dagelijks_${doc.id}_$triggerKey';
+        if (_reedsGetoondLokaal.contains(lokaleKey)) continue;
         if (d['laatstGetoond'] == triggerKey) continue;
 
         // V9 2.26: popup EERST (die claimt synchroon _huidigPopupId), pas
         // daarna laatstGetoond schrijven — zo verliezen we het moment niet
-        // als de app precies tussen write en render crasht. De extra
-        // popupId-check is een vangnet voor het geval een andere popup
-        // synchroon binnenkwam.
+        // als de app precies tussen write en render crasht.
+        // V9 2.27: lokale markering óók synchroon vóór de async popup-flow,
+        // zodat een re-check tijdens/na de popup het moment niet opnieuw
+        // pakt. Bij popupId-mismatch (andere popup claimde eerst) rollback
+        // van de lokale markering — anders zou het moment stil verloren gaan.
         final popupId = 'dagelijks_${doc.id}';
+        _reedsGetoondLokaal.add(lokaleKey);
         await _toonDagelijksPopup(doc.id, d);
-        if (_huidigPopupId != popupId) return;
+        if (_huidigPopupId != popupId) {
+          _reedsGetoondLokaal.remove(lokaleKey);
+          return;
+        }
         try {
           await doc.reference.update({'laatstGetoond': triggerKey});
         } catch (_) {}
@@ -378,11 +397,20 @@ class _TabletSchermState extends State<TabletScherm>
         if (verschil.isNegative) continue;       // nog in toekomst
         if (verschil.inHours >= 24) continue;     // te laat, sla over
 
+        // V9 2.27: lokale dedup (zelfde reden als dagelijks).
+        final lokaleKey = 'eenmalig_${doc.id}';
+        if (_reedsGetoondLokaal.contains(lokaleKey)) continue;
+
         // V9 2.26: popup EERST, daarna markeren — zelfde reden als bij
         // dagelijks (crash-veilig).
+        // V9 2.27: lokale markering óók synchroon vóór de async popup-flow.
         final popupId = 'eenmalig_${doc.id}';
+        _reedsGetoondLokaal.add(lokaleKey);
         await _toonEenmaligPopup(doc.id, d);
-        if (_huidigPopupId != popupId) return;
+        if (_huidigPopupId != popupId) {
+          _reedsGetoondLokaal.remove(lokaleKey);
+          return;
+        }
         try {
           await doc.reference.update({'getoond': true});
         } catch (_) {}
