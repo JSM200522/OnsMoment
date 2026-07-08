@@ -639,8 +639,19 @@ class _TabletSchermState extends State<TabletScherm>
     // met mainAxisAlignment.center houdt de content verticaal gecentreerd.
     // Zodra de inhoud niet meer past, wordt het geheel scrollbaar i.p.v.
     // een gele overflow-banner te tonen.
+    //
+    // V9 2.30 (tablet-fit):
+    // - schaal-factor op basis van shortestSide zodat teksten, emoji's en
+    //   iconen mee-groeien op tablets. Op mobiel (shortestSide <=400)
+    //   blijft schaal 1.0 → geen verslechtering. Cap op 1.6 voorkomt
+    //   onnodig grote UI op ultra-brede toestellen.
+    // - maxWidth verruimd naar 800 op grote tablets zodat de content niet
+    //   'verdwaald in het midden' oogt op 10-12-inch portrait.
+    final shortestSide = MediaQuery.of(context).size.shortestSide;
+    final schaal = (shortestSide / 400).clamp(1.0, 1.6);
+    final maxWidth = shortestSide < 600 ? 640.0 : 800.0;
     return Center(child: ConstrainedBox(
-      constraints: const BoxConstraints(maxWidth: 640),
+      constraints: BoxConstraints(maxWidth: maxWidth),
       child: LayoutBuilder(builder: (ctx, cons) {
         return SingleChildScrollView(
           child: ConstrainedBox(
@@ -652,7 +663,10 @@ class _TabletSchermState extends State<TabletScherm>
                   mainAxisAlignment: MainAxisAlignment.center,
                   crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
-                    _Klok(textColor: textColor, shadow: shadow),
+                    _Klok(
+                        textColor: textColor,
+                        shadow: shadow,
+                        schaal: schaal),
                     const SizedBox(height: 36),
 
                     // DAGDEEL-GEVOELIGE BEGROETING
@@ -660,11 +674,20 @@ class _TabletSchermState extends State<TabletScherm>
                         naam: naam,
                         textColor: textColor,
                         shadow: shadow,
-                        hasBackground: hasBackground),
+                        hasBackground: hasBackground,
+                        schaal: schaal),
                     const SizedBox(height: 28),
 
-                    // DAGOVERZICHT: vaste + geplande momenten van vandaag
-                    _dagOverzicht(hasBackground: hasBackground),
+                    // DAGOVERZICHT: vaste + geplande momenten van vandaag.
+                    // SizedBox(width: infinity) zorgt dat de tijdlijn de
+                    // volle kolombreedte pakt — anders zou de Column met
+                    // .center de _dagOverzicht als 'min-width' chip
+                    // renderen ondanks stretch binnenin.
+                    SizedBox(
+                        width: double.infinity,
+                        child: _dagOverzicht(
+                            hasBackground: hasBackground,
+                            schaal: schaal)),
                   ]),
               ),
             ),
@@ -684,7 +707,7 @@ class _TabletSchermState extends State<TabletScherm>
   /// geen extra Firestore-verkeer. Puur informatief: geen tap-acties, dus
   /// dedup/popup-flow blijft ongemoeid. Verstuurde `momenten` worden hier
   /// bewust NIET getoond — die blijven via de auto-popup binnenkomen.
-  Widget _dagOverzicht({required bool hasBackground}) {
+  Widget _dagOverzicht({required bool hasBackground, required double schaal}) {
     final kringId = _kringId;
     if (kringId == null) return const SizedBox();
     return StreamBuilder<QuerySnapshot>(
@@ -700,7 +723,7 @@ class _TabletSchermState extends State<TabletScherm>
             // Wacht tot BEIDE streams hun eerste snapshot hebben geleverd
             // — anders zou een eenmalig moment ontbreken tijdens het laden.
             if (!dagelijksSnap.hasData || !eenmaligSnap.hasData) {
-              return _placeholderKaart();
+              return _placeholderKaart(schaal: schaal);
             }
             final nu = DateTime.now();
             final beginVandaag = DateTime(nu.year, nu.month, nu.day);
@@ -738,15 +761,23 @@ class _TabletSchermState extends State<TabletScherm>
               ));
             }
 
-            if (items.isEmpty) return _legeDagKaart();
+            if (items.isEmpty) return _legeDagKaart(schaal: schaal);
             items.sort((a, b) => a.tijd.compareTo(b.tijd));
 
-            return Column(mainAxisSize: MainAxisSize.min, children: [
-              _sectieTitel('Vandaag', hasBackground: hasBackground),
-              const SizedBox(height: 12),
-              ...items.map((m) =>
-                  _dagMomentRegel(m, hasBackground: hasBackground)),
-            ]);
+            // V9 2.30: crossAxisAlignment.stretch maakt elke regel vol-
+            // breedte → tijden lopen onder elkaar, nu-peach wordt een
+            // brede opvallende kaart in plaats van een chip.
+            // De sectie-titel blijft een pil (via Center-wrapping).
+            return Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Center(child: _sectieTitel('Vandaag',
+                    hasBackground: hasBackground, schaal: schaal)),
+                const SizedBox(height: 12),
+                ...items.map((m) => _dagMomentRegel(m,
+                    hasBackground: hasBackground, schaal: schaal)),
+              ]);
           },
         );
       },
@@ -769,20 +800,25 @@ class _TabletSchermState extends State<TabletScherm>
       '${t.hour.toString().padLeft(2, '0')}:'
       '${t.minute.toString().padLeft(2, '0')}';
 
-  Widget _sectieTitel(String tekst, {required bool hasBackground}) {
+  Widget _sectieTitel(String tekst,
+      {required bool hasBackground, required double schaal}) {
+    // V9 2.30: fontSize van 11 → 15 * schaal. Op mobiel oogt de badge nu
+    // wat prominenter (was op afstand slecht leesbaar); op tablet groeit
+    // hij mee zodat 'Vandaag' de kop van het dagoverzicht wordt.
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+      padding: EdgeInsets.symmetric(
+          horizontal: 16 * schaal, vertical: 7 * schaal),
       decoration: BoxDecoration(
         color: hasBackground ? kWhite.withOpacity(0.2) : kPeachPale,
         borderRadius: BorderRadius.circular(20)),
       child: Text(tekst,
-          style: TextStyle(fontSize: 11,
+          style: TextStyle(fontSize: 15 * schaal,
               color: hasBackground ? kWhite : kBrown,
               fontWeight: FontWeight.w800, letterSpacing: 0.8)),
     );
   }
 
-  Widget _placeholderKaart() {
+  Widget _placeholderKaart({required double schaal}) {
     return Container(
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
@@ -790,19 +826,19 @@ class _TabletSchermState extends State<TabletScherm>
         borderRadius: BorderRadius.circular(20),
         boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.2),
             blurRadius: 20, offset: const Offset(0, 6))]),
-      child: const Row(mainAxisSize: MainAxisSize.min, children: [
-        SizedBox(width: 24, height: 24,
-          child: CircularProgressIndicator(
+      child: Row(mainAxisSize: MainAxisSize.min, children: [
+        SizedBox(width: 24 * schaal, height: 24 * schaal,
+          child: const CircularProgressIndicator(
               color: kPeach, strokeWidth: 3)),
-        SizedBox(width: 14),
+        const SizedBox(width: 14),
         Text('Even klaarzetten...',
-            style: TextStyle(fontSize: 18,
+            style: TextStyle(fontSize: 18 * schaal,
                 fontWeight: FontWeight.w700, color: kBrown)),
       ]),
     );
   }
 
-  Widget _legeDagKaart() {
+  Widget _legeDagKaart({required double schaal}) {
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
@@ -810,9 +846,10 @@ class _TabletSchermState extends State<TabletScherm>
         borderRadius: BorderRadius.circular(20),
         boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.15),
             blurRadius: 16, offset: const Offset(0, 4))]),
-      child: const Text('Vandaag geen vaste momenten — geniet ervan 💕',
+      child: Text('Vandaag geen vaste momenten — geniet ervan 💕',
           textAlign: TextAlign.center,
-          style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700,
+          style: TextStyle(fontSize: 18 * schaal,
+              fontWeight: FontWeight.w700,
               color: kBrown, height: 1.4)),
     );
   }
@@ -821,89 +858,101 @@ class _TabletSchermState extends State<TabletScherm>
   /// Verleden = compact/grijs/vinkje, nu = peach-accent/pijl/groter,
   /// toekomst = normale peach-pale kaart. Bewust GEEN GestureDetector —
   /// tap-acties zouden de dedup/popup-flow doorbreken.
-  Widget _dagMomentRegel(_DagMoment m, {required bool hasBackground}) {
+  ///
+  /// V9 2.30: alle Row's zonder MainAxisSize.min (default = max) zodat de
+  /// container vol-breedte pakt en tijden onder elkaar staan. Flexible om
+  /// het label opvangen bij lange teksten (ellipsis). Fontsizes schalen
+  /// met [schaal] zodat regels op tablet groter zijn.
+  Widget _dagMomentRegel(_DagMoment m,
+      {required bool hasBackground, required double schaal}) {
     final tijd = _formatUurMinuut(m.tijd);
     switch (m.status) {
       case _MomentStatus.verleden:
         // Compact, grijs, vinkje links. Bij foto-achtergrond een subtiele
-        // glazen container voor leesbaarheid.
-        final container = Container(
+        // glazen container voor leesbaarheid — opacity 0.15 → 0.28 zodat
+        // tekst leesbaar blijft op detailrijke foto's.
+        return Container(
           margin: const EdgeInsets.only(bottom: 6),
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+          padding: EdgeInsets.symmetric(
+              horizontal: 14 * schaal, vertical: 8 * schaal),
           decoration: BoxDecoration(
             color: hasBackground
-                ? kWhite.withOpacity(0.15) : Colors.transparent,
+                ? kWhite.withOpacity(0.28) : Colors.transparent,
             borderRadius: BorderRadius.circular(12)),
-          child: Row(mainAxisSize: MainAxisSize.min, children: [
+          child: Row(children: [
             Icon(Icons.check_rounded,
-                size: 18,
+                size: 18 * schaal,
                 color: hasBackground ? kWhite : kTextMuted),
-            const SizedBox(width: 10),
+            SizedBox(width: 10 * schaal),
             Text(tijd,
-                style: TextStyle(fontSize: 15,
+                style: TextStyle(fontSize: 15 * schaal,
                     fontWeight: FontWeight.w600,
                     color: hasBackground ? kWhite : kTextMuted)),
-            const SizedBox(width: 12),
-            Text(m.emoji, style: const TextStyle(fontSize: 20)),
-            const SizedBox(width: 10),
-            Flexible(child: Text(m.label,
+            SizedBox(width: 12 * schaal),
+            Text(m.emoji, style: TextStyle(fontSize: 20 * schaal)),
+            SizedBox(width: 10 * schaal),
+            Expanded(child: Text(m.label,
                 overflow: TextOverflow.ellipsis,
-                style: TextStyle(fontSize: 15,
+                style: TextStyle(fontSize: 15 * schaal,
                     fontWeight: FontWeight.w600,
                     color: hasBackground ? kWhite : kTextMuted))),
           ]),
         );
-        return container;
 
       case _MomentStatus.nu:
         // Warm accent: kPeach achtergrond, wit tekst, pijl links, groter,
-        // zachte schaduw voor 'lift'.
+        // zachte schaduw voor 'lift'. Vol-breedte zodat het als kaart
+        // valt op i.p.v. als chip.
         return Container(
           margin: const EdgeInsets.only(bottom: 10),
-          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
+          padding: EdgeInsets.symmetric(
+              horizontal: 18 * schaal, vertical: 16 * schaal),
           decoration: BoxDecoration(
             color: kPeach,
             borderRadius: BorderRadius.circular(18),
             boxShadow: [BoxShadow(
                 color: kPeach.withOpacity(0.35),
                 blurRadius: 20, offset: const Offset(0, 6))]),
-          child: Row(mainAxisSize: MainAxisSize.min, children: [
-            const Icon(Icons.arrow_forward_rounded,
-                size: 22, color: kWhite),
-            const SizedBox(width: 12),
+          child: Row(children: [
+            Icon(Icons.arrow_forward_rounded,
+                size: 22 * schaal, color: kWhite),
+            SizedBox(width: 12 * schaal),
             Text(tijd,
-                style: const TextStyle(fontSize: 20,
+                style: TextStyle(fontSize: 20 * schaal,
                     fontWeight: FontWeight.w800, color: kWhite)),
-            const SizedBox(width: 14),
-            Text(m.emoji, style: const TextStyle(fontSize: 28)),
-            const SizedBox(width: 12),
-            Flexible(child: Text(m.label,
+            SizedBox(width: 14 * schaal),
+            Text(m.emoji, style: TextStyle(fontSize: 28 * schaal)),
+            SizedBox(width: 12 * schaal),
+            Expanded(child: Text(m.label,
                 overflow: TextOverflow.ellipsis,
-                style: const TextStyle(fontSize: 20,
+                style: TextStyle(fontSize: 20 * schaal,
                     fontWeight: FontWeight.w800, color: kWhite))),
           ]),
         );
 
       case _MomentStatus.toekomst:
         // Normale peach-pale kaart, matcht de visuele taal van de oude
-        // 'volgende moment'-kaart maar dan per regel.
+        // 'volgende moment'-kaart maar dan per regel en vol-breedte.
+        // De lege SizedBox(22) links spiegelt de icoon-breedte van
+        // verleden/nu zodat de tijden onder elkaar uitgelijnd staan.
         return Container(
           margin: const EdgeInsets.only(bottom: 8),
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          padding: EdgeInsets.symmetric(
+              horizontal: 16 * schaal, vertical: 12 * schaal),
           decoration: BoxDecoration(
             color: kPeachPale,
             borderRadius: BorderRadius.circular(14)),
-          child: Row(mainAxisSize: MainAxisSize.min, children: [
-            const SizedBox(width: 22),
+          child: Row(children: [
+            SizedBox(width: 22 * schaal),
             Text(tijd,
-                style: const TextStyle(fontSize: 17,
+                style: TextStyle(fontSize: 17 * schaal,
                     fontWeight: FontWeight.w700, color: kBrown)),
-            const SizedBox(width: 14),
-            Text(m.emoji, style: const TextStyle(fontSize: 24)),
-            const SizedBox(width: 12),
-            Flexible(child: Text(m.label,
+            SizedBox(width: 14 * schaal),
+            Text(m.emoji, style: TextStyle(fontSize: 24 * schaal)),
+            SizedBox(width: 12 * schaal),
+            Expanded(child: Text(m.label,
                 overflow: TextOverflow.ellipsis,
-                style: const TextStyle(fontSize: 17,
+                style: TextStyle(fontSize: 17 * schaal,
                     fontWeight: FontWeight.w700, color: kBrown))),
           ]),
         );
@@ -1155,7 +1204,14 @@ class _TabletSchermState extends State<TabletScherm>
 class _Klok extends StatefulWidget {
   final Color textColor;
   final List<Shadow> shadow;
-  const _Klok({required this.textColor, required this.shadow});
+  /// V9 2.30: schaal-factor uit _homeInhoud (shortestSide-gebaseerd).
+  /// Op mobiel 1.0, op tablet groter zodat de klok herkenbaar blijft.
+  final double schaal;
+  const _Klok({
+    required this.textColor,
+    required this.shadow,
+    required this.schaal,
+  });
   @override
   State<_Klok> createState() => _KlokState();
 }
@@ -1179,16 +1235,17 @@ class _KlokState extends State<_Klok> {
 
   @override
   Widget build(BuildContext context) {
+    final s = widget.schaal;
     return Column(mainAxisSize: MainAxisSize.min, children: [
       Text(_formatTijd(_nu),
           textAlign: TextAlign.center,
-          style: TextStyle(fontSize: 110,
+          style: TextStyle(fontSize: 110 * s,
               fontWeight: FontWeight.w900, color: widget.textColor, height: 1,
               shadows: widget.shadow)),
       const SizedBox(height: 4),
       Text(_formatDatum(_nu),
           textAlign: TextAlign.center,
-          style: TextStyle(fontSize: 20,
+          style: TextStyle(fontSize: 20 * s,
               fontWeight: FontWeight.w700, color: widget.textColor,
               shadows: widget.shadow)),
     ]);
@@ -1235,11 +1292,14 @@ class _DagdeelGroet extends StatefulWidget {
   final Color textColor;
   final List<Shadow> shadow;
   final bool hasBackground;
+  /// V9 2.30: schaal-factor voor tablet-leesbaarheid.
+  final double schaal;
   const _DagdeelGroet({
     required this.naam,
     required this.textColor,
     required this.shadow,
     required this.hasBackground,
+    required this.schaal,
   });
   @override
   State<_DagdeelGroet> createState() => _DagdeelGroetState();
@@ -1272,8 +1332,10 @@ class _DagdeelGroetState extends State<_DagdeelGroet> {
 
   @override
   Widget build(BuildContext context) {
+    final s = widget.schaal;
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 14),
+      padding: EdgeInsets.symmetric(
+          horizontal: 28 * s, vertical: 14 * s),
       decoration: BoxDecoration(
         color: widget.hasBackground
             ? kWhite.withOpacity(0.25) : kPeachPale,
@@ -1282,7 +1344,7 @@ class _DagdeelGroetState extends State<_DagdeelGroet> {
             ? Border.all(color: kWhite.withOpacity(0.5), width: 1.5)
             : null),
       child: Text('${_groet()}, ${widget.naam} 💕',
-          style: TextStyle(fontSize: 26,
+          style: TextStyle(fontSize: 26 * s,
               fontWeight: FontWeight.w800, color: widget.textColor,
               shadows: widget.shadow)),
     );
