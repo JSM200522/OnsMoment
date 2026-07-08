@@ -967,17 +967,24 @@ class _TabletSchermState extends State<TabletScherm>
           children: [
             Expanded(child: ClipRRect(
               borderRadius: BorderRadius.circular(24),
-              child: Image.network(url,
-                fit: BoxFit.contain,
-                loadingBuilder: (c, child, prog) {
-                  if (prog == null) return child;
-                  return Container(color: kPeachPale,
-                    child: const Center(
-                        child: CircularProgressIndicator(color: kPeach)));
-                },
-                errorBuilder: (c, e, s) => Container(color: kPeachPale,
-                  child: const Center(child: Icon(Icons.broken_image,
-                      size: 96, color: kPeach))),
+              child: Container(
+                color: kPeachPale,
+                width: double.infinity,
+                height: double.infinity,
+                child: Image.network(url,
+                  fit: BoxFit.contain,
+                  width: double.infinity,
+                  height: double.infinity,
+                  loadingBuilder: (c, child, prog) {
+                    if (prog == null) return child;
+                    return Container(color: kPeachPale,
+                      child: const Center(
+                          child: CircularProgressIndicator(color: kPeach)));
+                  },
+                  errorBuilder: (c, e, s) => Container(color: kPeachPale,
+                    child: const Center(child: Icon(Icons.broken_image,
+                        size: 96, color: kPeach))),
+                ),
               ),
             )),
             if (bericht.isNotEmpty) ...[
@@ -1056,7 +1063,16 @@ class _TabletSchermState extends State<TabletScherm>
       case 'video':
         // V9 2.25: VideoSpeler behoudt zijn eigen AspectRatio; Center
         // zorgt dat portret-video's netjes gecentreerd worden in het kader.
-        return Center(child: VideoSpeler(url: url));
+        // Zwart kader vult de letterbox-ruimte natuurlijk aan.
+        return ClipRRect(
+          borderRadius: BorderRadius.circular(24),
+          child: Container(
+            color: Colors.black,
+            width: double.infinity,
+            height: double.infinity,
+            child: Center(child: VideoSpeler(url: url)),
+          ),
+        );
       default:
         return const SizedBox();
     }
