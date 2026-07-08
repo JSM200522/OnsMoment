@@ -655,31 +655,16 @@ class _TabletSchermState extends State<TabletScherm>
                     _Klok(textColor: textColor, shadow: shadow),
                     const SizedBox(height: 36),
 
-                    // BEGROETING
-                    if (naam.isNotEmpty) Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 28, vertical: 14),
-                      decoration: BoxDecoration(
-                        color: hasBackground
-                            ? kWhite.withOpacity(0.25) : kPeachPale,
-                        borderRadius: BorderRadius.circular(50),
-                        border: hasBackground
-                            ? Border.all(
-                                color: kWhite.withOpacity(0.5), width: 1.5)
-                            : null),
-                      child: Text('Hallo $naam 💕',
-                          style: TextStyle(fontSize: 26,
-                              fontWeight: FontWeight.w800, color: textColor,
-                              shadows: shadow)),
-                    ),
+                    // DAGDEEL-GEVOELIGE BEGROETING
+                    if (naam.isNotEmpty) _DagdeelGroet(
+                        naam: naam,
+                        textColor: textColor,
+                        shadow: shadow,
+                        hasBackground: hasBackground),
                     const SizedBox(height: 28),
 
-                    // VOLGENDE MOMENT KAART
-                    _volgendeMomentKaart(),
-                    const SizedBox(height: 16),
-
-                    // EERDER VANDAAG
-                    _eerderVandaag(hasBackground: hasBackground),
+                    // DAGOVERZICHT: vaste + geplande momenten van vandaag
+                    _dagOverzicht(hasBackground: hasBackground),
                   ]),
               ),
             ),
@@ -689,7 +674,17 @@ class _TabletSchermState extends State<TabletScherm>
     ));
   }
 
-  Widget _volgendeMomentKaart() {
+  /// V9 2.29: rustig dagoverzicht voor de kiosk-modus. Toont alle vaste
+  /// (dagelijkse_momenten) en geplande (gepland_momenten die op vandaag
+  /// vallen) momenten van vandaag als één tijdlijn met drie visuele
+  /// statussen: verleden compact/grijs met vinkje, nu/aankomend (binnen
+  /// 15 min) met peach-accent, toekomst als normale peach-pale kaart.
+  ///
+  /// Gebruikt DEZELFDE streams als de oude _volgendeMomentKaart deed —
+  /// geen extra Firestore-verkeer. Puur informatief: geen tap-acties, dus
+  /// dedup/popup-flow blijft ongemoeid. Verstuurde `momenten` worden hier
+  /// bewust NIET getoond — die blijven via de auto-popup binnenkomen.
+  Widget _dagOverzicht({required bool hasBackground}) {
     final kringId = _kringId;
     if (kringId == null) return const SizedBox();
     return StreamBuilder<QuerySnapshot>(
@@ -702,173 +697,217 @@ class _TabletSchermState extends State<TabletScherm>
               .where('kringId', isEqualTo: kringId)
               .where('actief', isEqualTo: true).snapshots(),
           builder: (ctx, eenmaligSnap) {
-            // Wacht tot BEIDE streams hun eerste snapshot hebben geleverd,
-            // anders rendert de kaart een dagelijks-only kandidaat terwijl
-            // een eerder eenmalig moment nog op de eenmalig-stream wacht.
-            // V9 2.9-perf-2: laat tijdens dat wachten een placeholder-
-            // kaart staan i.p.v. SizedBox() — voorkomt het 'leeg gat'-
-            // gevoel direct na modus-keuze. Zelfde container-styling als
-            // de echte kaart zodat de layout niet jankt.
+            // Wacht tot BEIDE streams hun eerste snapshot hebben geleverd
+            // — anders zou een eenmalig moment ontbreken tijdens het laden.
             if (!dagelijksSnap.hasData || !eenmaligSnap.hasData) {
-              return Container(
-                padding: const EdgeInsets.all(18),
-                decoration: BoxDecoration(
-                  color: kWhite.withOpacity(0.94),
-                  borderRadius: BorderRadius.circular(20),
-                  boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.2),
-                      blurRadius: 20, offset: const Offset(0, 6))]),
-                child: const Row(mainAxisSize: MainAxisSize.min, children: [
-                  SizedBox(width: 24, height: 24,
-                    child: CircularProgressIndicator(
-                        color: kPeach, strokeWidth: 3)),
-                  SizedBox(width: 14),
-                  Text('Even klaarzetten...',
-                      style: TextStyle(fontSize: 18,
-                          fontWeight: FontWeight.w700, color: kBrown)),
-                ]),
-              );
+              return _placeholderKaart();
             }
             final nu = DateTime.now();
-            final kandidaten = <_VolgendeKandidaat>[];
+            final beginVandaag = DateTime(nu.year, nu.month, nu.day);
+            final eindVandaag = beginVandaag.add(const Duration(days: 1));
+            final items = <_DagMoment>[];
 
-            // Dagelijks: bereken volgende DateTime (vandaag als nog niet
-            // voorbij, anders morgen op zelfde tijd)
-            for (final doc in dagelijksSnap.data?.docs ?? []) {
+            // Dagelijkse: tijd = VANDAAG op uur:minuut. Niet verschuiven
+            // naar morgen — verleden willen we juist tonen (grijs/vinkje).
+            for (final doc in dagelijksSnap.data!.docs) {
               final d = doc.data() as Map<String, dynamic>;
               final uur = d['uur'] as int? ?? 0;
               final minuut = d['minuut'] as int? ?? 0;
-              DateTime moment = DateTime(nu.year, nu.month, nu.day,
-                  uur, minuut);
-              if (!moment.isAfter(nu)) {
-                moment = moment.add(const Duration(days: 1));
-              }
-              kandidaten.add(_VolgendeKandidaat(
-                  when: moment,
-                  emoji: d['emoji'] as String? ?? '⭐',
-                  label: d['label'] as String? ?? 'Moment'));
+              final tijd =
+                  DateTime(nu.year, nu.month, nu.day, uur, minuut);
+              items.add(_DagMoment(
+                tijd: tijd,
+                emoji: d['emoji'] as String? ?? '⭐',
+                label: d['label'] as String? ?? 'Moment',
+                status: _bepaalStatus(tijd, nu),
+              ));
             }
 
-            // Eenmalig: gebruik geplandOp direct, alleen toekomst
-            for (final doc in eenmaligSnap.data?.docs ?? []) {
+            // Eenmalige: alleen als geplandOp op vandaag valt.
+            for (final doc in eenmaligSnap.data!.docs) {
               final d = doc.data() as Map<String, dynamic>;
               final geplandOp = (d['geplandOp'] as Timestamp?)?.toDate();
-              if (geplandOp == null || !geplandOp.isAfter(nu)) continue;
-              kandidaten.add(_VolgendeKandidaat(
-                  when: geplandOp,
-                  emoji: d['emoji'] as String? ?? '⭐',
-                  label: d['label'] as String? ?? 'Moment'));
+              if (geplandOp == null) continue;
+              if (geplandOp.isBefore(beginVandaag)) continue;
+              if (!geplandOp.isBefore(eindVandaag)) continue;
+              items.add(_DagMoment(
+                tijd: geplandOp,
+                emoji: d['emoji'] as String? ?? '⭐',
+                label: d['label'] as String? ?? 'Moment',
+                status: _bepaalStatus(geplandOp, nu),
+              ));
             }
 
-            if (kandidaten.isEmpty) return const SizedBox();
-            kandidaten.sort((a, b) => a.when.compareTo(b.when));
-            final volgende = kandidaten.first;
+            if (items.isEmpty) return _legeDagKaart();
+            items.sort((a, b) => a.tijd.compareTo(b.tijd));
 
-            // Datumlabel: 'Vandaag' / 'Morgen' / 'DD-MM'
-            final beginVandaag = DateTime(nu.year, nu.month, nu.day);
-            final beginMorgen = beginVandaag.add(const Duration(days: 1));
-            final beginOvermorgen =
-                beginMorgen.add(const Duration(days: 1));
-            final dagLabel = volgende.when.isBefore(beginMorgen)
-                ? 'Vandaag'
-                : volgende.when.isBefore(beginOvermorgen)
-                    ? 'Morgen'
-                    : '${volgende.when.day.toString().padLeft(2, '0')}-'
-                      '${volgende.when.month.toString().padLeft(2, '0')}';
-            final tijdLabel =
-                '${volgende.when.hour.toString().padLeft(2, '0')}:'
-                '${volgende.when.minute.toString().padLeft(2, '0')}';
-
-            return Container(
-              padding: const EdgeInsets.all(18),
-              decoration: BoxDecoration(
-                color: kWhite.withOpacity(0.94),
-                borderRadius: BorderRadius.circular(20),
-                boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.2),
-                    blurRadius: 20, offset: const Offset(0, 6))]),
-              child: Row(mainAxisSize: MainAxisSize.min, children: [
-                Text(volgende.emoji,
-                    style: const TextStyle(fontSize: 44)),
-                const SizedBox(width: 16),
-                Column(crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min, children: [
-                  Text(dagLabel,
-                      style: const TextStyle(fontSize: 11, color: kTextMuted,
-                          fontWeight: FontWeight.w800, letterSpacing: 0.8)),
-                  const SizedBox(height: 2),
-                  Text(volgende.label,
-                      style: const TextStyle(fontSize: 20,
-                          fontWeight: FontWeight.w800, color: kBrown)),
-                ]),
-                const SizedBox(width: 16),
-                Container(padding: const EdgeInsets.symmetric(
-                    horizontal: 14, vertical: 8),
-                  decoration: BoxDecoration(color: kPeachPale,
-                      borderRadius: BorderRadius.circular(12)),
-                  child: Text(tijdLabel,
-                      style: const TextStyle(fontSize: 20,
-                          fontWeight: FontWeight.w800, color: kBrown))),
-              ]),
-            );
+            return Column(mainAxisSize: MainAxisSize.min, children: [
+              _sectieTitel('Vandaag', hasBackground: hasBackground),
+              const SizedBox(height: 12),
+              ...items.map((m) =>
+                  _dagMomentRegel(m, hasBackground: hasBackground)),
+            ]);
           },
         );
       },
     );
   }
 
-  Widget _eerderVandaag({required bool hasBackground}) {
-    final kringId = _kringId;
-    if (kringId == null) return const SizedBox();
-    return StreamBuilder<QuerySnapshot>(
-      stream: FirebaseFirestore.instance.collection('momenten')
-          .where('kringId', isEqualTo: kringId)
-          .where('gezien', isEqualTo: true).snapshots(),
-      builder: (ctx, snap) {
-        if (!snap.hasData) return const SizedBox();
-        final vandaag = DateTime.now();
-        final beginVandaag = DateTime(vandaag.year, vandaag.month, vandaag.day);
-        final docs = snap.data!.docs.where((d) {
-          final t = ((d.data() as Map)['geplandOp'] as Timestamp?)?.toDate();
-          return t != null && t.isAfter(beginVandaag);
-        }).take(20).toList();
-        if (docs.isEmpty) return const SizedBox();
-        return Column(mainAxisSize: MainAxisSize.min, children: [
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-            decoration: BoxDecoration(
-              color: hasBackground
-                  ? kWhite.withOpacity(0.2) : kPeachPale,
-              borderRadius: BorderRadius.circular(20)),
-            child: Text('Eerder vandaag',
-              style: TextStyle(fontSize: 11,
-                  color: hasBackground ? kWhite : kBrown,
-                  fontWeight: FontWeight.w800, letterSpacing: 0.8)),
-          ),
-          const SizedBox(height: 10),
-          SizedBox(height: 64, child: ListView.builder(
-            scrollDirection: Axis.horizontal,
-            shrinkWrap: true,
-            itemCount: docs.length,
-            itemBuilder: (c, i) {
-              final d = docs[i].data() as Map<String, dynamic>;
-              return GestureDetector(
-                onTap: () => _toonPopup(docs[i].id, d),
-                child: Container(
-                  margin: const EdgeInsets.symmetric(horizontal: 4),
-                  width: 56, height: 56,
-                  decoration: BoxDecoration(
-                    color: kWhite.withOpacity(0.9),
-                    borderRadius: BorderRadius.circular(14),
-                    boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.15),
-                        blurRadius: 8)]),
-                  child: Center(child: Text(_emojiVoorType(d['type'] ?? ''),
-                      style: const TextStyle(fontSize: 24))),
-                ),
-              );
-            },
-          )),
-        ]);
-      },
+  /// Bepaalt de visuele status van een moment op basis van het verschil
+  /// tussen `tijd` en `nu`. Marge van -1 min voorkomt flikkeren op het
+  /// exacte moment; window van 15 min voor 'nu/aankomend' matcht het
+  /// popup-window in _checkGeplandeMomenten (10 min) ruim genoeg zodat
+  /// de gebruiker het accent al ziet vóór de popup verschijnt.
+  _MomentStatus _bepaalStatus(DateTime tijd, DateTime nu) {
+    final verschil = tijd.difference(nu);
+    if (verschil.inMinutes < -1) return _MomentStatus.verleden;
+    if (verschil.inMinutes <= 15) return _MomentStatus.nu;
+    return _MomentStatus.toekomst;
+  }
+
+  String _formatUurMinuut(DateTime t) =>
+      '${t.hour.toString().padLeft(2, '0')}:'
+      '${t.minute.toString().padLeft(2, '0')}';
+
+  Widget _sectieTitel(String tekst, {required bool hasBackground}) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+      decoration: BoxDecoration(
+        color: hasBackground ? kWhite.withOpacity(0.2) : kPeachPale,
+        borderRadius: BorderRadius.circular(20)),
+      child: Text(tekst,
+          style: TextStyle(fontSize: 11,
+              color: hasBackground ? kWhite : kBrown,
+              fontWeight: FontWeight.w800, letterSpacing: 0.8)),
     );
+  }
+
+  Widget _placeholderKaart() {
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: kWhite.withOpacity(0.94),
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.2),
+            blurRadius: 20, offset: const Offset(0, 6))]),
+      child: const Row(mainAxisSize: MainAxisSize.min, children: [
+        SizedBox(width: 24, height: 24,
+          child: CircularProgressIndicator(
+              color: kPeach, strokeWidth: 3)),
+        SizedBox(width: 14),
+        Text('Even klaarzetten...',
+            style: TextStyle(fontSize: 18,
+                fontWeight: FontWeight.w700, color: kBrown)),
+      ]),
+    );
+  }
+
+  Widget _legeDagKaart() {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: kWhite.withOpacity(0.94),
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.15),
+            blurRadius: 16, offset: const Offset(0, 4))]),
+      child: const Text('Vandaag geen vaste momenten — geniet ervan 💕',
+          textAlign: TextAlign.center,
+          style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700,
+              color: kBrown, height: 1.4)),
+    );
+  }
+
+  /// Rendert één regel van het dagoverzicht op basis van de status.
+  /// Verleden = compact/grijs/vinkje, nu = peach-accent/pijl/groter,
+  /// toekomst = normale peach-pale kaart. Bewust GEEN GestureDetector —
+  /// tap-acties zouden de dedup/popup-flow doorbreken.
+  Widget _dagMomentRegel(_DagMoment m, {required bool hasBackground}) {
+    final tijd = _formatUurMinuut(m.tijd);
+    switch (m.status) {
+      case _MomentStatus.verleden:
+        // Compact, grijs, vinkje links. Bij foto-achtergrond een subtiele
+        // glazen container voor leesbaarheid.
+        final container = Container(
+          margin: const EdgeInsets.only(bottom: 6),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+          decoration: BoxDecoration(
+            color: hasBackground
+                ? kWhite.withOpacity(0.15) : Colors.transparent,
+            borderRadius: BorderRadius.circular(12)),
+          child: Row(mainAxisSize: MainAxisSize.min, children: [
+            Icon(Icons.check_rounded,
+                size: 18,
+                color: hasBackground ? kWhite : kTextMuted),
+            const SizedBox(width: 10),
+            Text(tijd,
+                style: TextStyle(fontSize: 15,
+                    fontWeight: FontWeight.w600,
+                    color: hasBackground ? kWhite : kTextMuted)),
+            const SizedBox(width: 12),
+            Text(m.emoji, style: const TextStyle(fontSize: 20)),
+            const SizedBox(width: 10),
+            Flexible(child: Text(m.label,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(fontSize: 15,
+                    fontWeight: FontWeight.w600,
+                    color: hasBackground ? kWhite : kTextMuted))),
+          ]),
+        );
+        return container;
+
+      case _MomentStatus.nu:
+        // Warm accent: kPeach achtergrond, wit tekst, pijl links, groter,
+        // zachte schaduw voor 'lift'.
+        return Container(
+          margin: const EdgeInsets.only(bottom: 10),
+          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
+          decoration: BoxDecoration(
+            color: kPeach,
+            borderRadius: BorderRadius.circular(18),
+            boxShadow: [BoxShadow(
+                color: kPeach.withOpacity(0.35),
+                blurRadius: 20, offset: const Offset(0, 6))]),
+          child: Row(mainAxisSize: MainAxisSize.min, children: [
+            const Icon(Icons.arrow_forward_rounded,
+                size: 22, color: kWhite),
+            const SizedBox(width: 12),
+            Text(tijd,
+                style: const TextStyle(fontSize: 20,
+                    fontWeight: FontWeight.w800, color: kWhite)),
+            const SizedBox(width: 14),
+            Text(m.emoji, style: const TextStyle(fontSize: 28)),
+            const SizedBox(width: 12),
+            Flexible(child: Text(m.label,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(fontSize: 20,
+                    fontWeight: FontWeight.w800, color: kWhite))),
+          ]),
+        );
+
+      case _MomentStatus.toekomst:
+        // Normale peach-pale kaart, matcht de visuele taal van de oude
+        // 'volgende moment'-kaart maar dan per regel.
+        return Container(
+          margin: const EdgeInsets.only(bottom: 8),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          decoration: BoxDecoration(
+            color: kPeachPale,
+            borderRadius: BorderRadius.circular(14)),
+          child: Row(mainAxisSize: MainAxisSize.min, children: [
+            const SizedBox(width: 22),
+            Text(tijd,
+                style: const TextStyle(fontSize: 17,
+                    fontWeight: FontWeight.w700, color: kBrown)),
+            const SizedBox(width: 14),
+            Text(m.emoji, style: const TextStyle(fontSize: 24)),
+            const SizedBox(width: 12),
+            Flexible(child: Text(m.label,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(fontSize: 17,
+                    fontWeight: FontWeight.w700, color: kBrown))),
+          ]),
+        );
+    }
   }
 
   Widget _popupOverlay() {
@@ -1167,16 +1206,85 @@ class _KlokState extends State<_Klok> {
   }
 }
 
-/// Genormaliseerde kandidaat voor _volgendeMomentKaart: één type voor zowel
-/// dagelijkse (waar `when` op uur:minuut vandaag of morgen wordt gezet) als
-/// eenmalige momenten (waar `when` gelijk is aan `geplandOp`).
-class _VolgendeKandidaat {
-  final DateTime when;
+/// V9 2.29: één type voor items in het dagoverzicht — dagelijkse en
+/// eenmalige momenten met dezelfde velden. `status` bepaalt de visuele
+/// staat (verleden / nu / toekomst), berekend uit tijd vs. now via
+/// _bepaalStatus in _TabletSchermState.
+enum _MomentStatus { verleden, nu, toekomst }
+
+class _DagMoment {
+  final DateTime tijd;
   final String emoji;
   final String label;
-  const _VolgendeKandidaat({
-    required this.when,
+  final _MomentStatus status;
+  const _DagMoment({
+    required this.tijd,
     required this.emoji,
     required this.label,
+    required this.status,
   });
+}
+
+/// V9 2.29: dagdeel-gevoelige begroeting die zichzelf elke minuut ververst
+/// zodat de tekst mee-schuift met de klok (bv. van 'Goedemorgen' naar
+/// 'Goedemiddag' om 12:00). Spiegel van _Klok qua timer-patroon. De vaste
+/// 💕-emoji blijft — is de handtekening van de app en minder verwarrend
+/// voor de doelgroep dan een wisselende dagdeel-emoji.
+class _DagdeelGroet extends StatefulWidget {
+  final String naam;
+  final Color textColor;
+  final List<Shadow> shadow;
+  final bool hasBackground;
+  const _DagdeelGroet({
+    required this.naam,
+    required this.textColor,
+    required this.shadow,
+    required this.hasBackground,
+  });
+  @override
+  State<_DagdeelGroet> createState() => _DagdeelGroetState();
+}
+
+class _DagdeelGroetState extends State<_DagdeelGroet> {
+  Timer? _timer;
+  DateTime _nu = DateTime.now();
+
+  @override
+  void initState() {
+    super.initState();
+    _timer = Timer.periodic(const Duration(minutes: 1),
+        (_) => setState(() => _nu = DateTime.now()));
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  String _groet() {
+    final uur = _nu.hour;
+    if (uur >= 5 && uur < 12) return 'Goedemorgen';
+    if (uur >= 12 && uur < 18) return 'Goedemiddag';
+    if (uur >= 18 && uur < 23) return 'Goedenavond';
+    return 'Fijne nacht';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 14),
+      decoration: BoxDecoration(
+        color: widget.hasBackground
+            ? kWhite.withOpacity(0.25) : kPeachPale,
+        borderRadius: BorderRadius.circular(50),
+        border: widget.hasBackground
+            ? Border.all(color: kWhite.withOpacity(0.5), width: 1.5)
+            : null),
+      child: Text('${_groet()}, ${widget.naam} 💕',
+          style: TextStyle(fontSize: 26,
+              fontWeight: FontWeight.w800, color: widget.textColor,
+              shadows: widget.shadow)),
+    );
+  }
 }
