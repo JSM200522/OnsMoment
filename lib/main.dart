@@ -10,6 +10,7 @@ import 'screens/familie/familie_scherm.dart';
 import 'screens/tablet/tablet_scherm.dart';
 import 'services/apparaat_service.dart';
 import 'services/device_modus_service.dart';
+import 'services/push_service.dart';
 import 'data/debug_flags.dart';
 import 'theme/kleuren.dart';
 
@@ -26,6 +27,12 @@ void main() async {
   // afgedwongen). Schermen zijn al voorbereid met SafeArea op de juiste
   // plekken — zie tablet_scherm.dart en familie_scherm.dart.
   SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+  // Fase 1 push-meldingen: FCM-basis opzetten (background-handler,
+  // notification channel, foreground/tap-listeners). No-op op web dankzij
+  // kIsWeb-guard in PushService. Faalt silent bij Play Services-fouten —
+  // de rest van de app blijft dan werken via de bestaande Firestore-
+  // listeners.
+  await PushService.initApp();
   runApp(const OnsMomentApp());
 }
 
@@ -79,6 +86,14 @@ class _RouterSchermState extends State<RouterScherm> {
       final apparaatId = await DeviceModusService.krijgApparaatId();
       ApparaatService.updateLaatstActief(
           familieUid: user.uid, apparaatId: apparaatId);
+      // Fase 1 push-meldingen: registreer FCM-token voor dit apparaat.
+      // Fire-and-forget — PushService heeft zelf try/catch en no-op op web.
+      // Draait bij elke geslaagde auth-state (verse signIn én cold-start
+      // ingelogd), zodat token-registratie op één centraal punt zit i.p.v.
+      // vijf verspreide signIn-blokken.
+      PushService.registreerHuidigApparaat(
+              familieUid: user.uid, apparaatId: apparaatId)
+          .catchError((_) {});
       // Eenmalige migratie: bestaande accounts zonder accountType -> 'familie'.
       FirebaseFirestore.instance.collection('gebruikers').doc(user.uid).get()
           .then((d) {
