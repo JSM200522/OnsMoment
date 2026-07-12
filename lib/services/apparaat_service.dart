@@ -72,6 +72,30 @@ class ApparaatService {
     } catch (_) {}
   }
 
+  /// V9+ Fase 1 push-meldingen: schrijft het FCM-token van dit apparaat
+  /// naar het apparaat-doc. Set+merge zodat het doc niet hoeft te bestaan
+  /// bij eerste aanroep — wordt door PushService aangeroepen bij inloggen
+  /// en bij onTokenRefresh. Verwijderen van het apparaat uit de kring
+  /// wist het token automatisch mee (via verwijderApparaat).
+  static Future<void> zetFcmToken({
+    required String familieUid,
+    required String apparaatId,
+    required String token,
+    required String platform,
+  }) async {
+    if (token.isEmpty) return;
+    try {
+      await FirebaseFirestore.instance
+          .collection('gebruikers').doc(familieUid)
+          .collection('apparaten').doc(apparaatId)
+          .set({
+        'fcmToken': token,
+        'fcmTokenBijgewerkt': FieldValue.serverTimestamp(),
+        'fcmPlatform': platform,
+      }, SetOptions(merge: true));
+    } catch (_) {}
+  }
+
   /// Geeft alle apparaten in deze kring terug voor adres-keuze in stuur-UI.
   /// Lege lijst bij fout (bv. permission-denied of nog geen apparaten).
   static Future<List<Map<String, dynamic>>> kringLeden(String familieUid) async {
