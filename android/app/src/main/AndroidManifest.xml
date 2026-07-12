@@ -45,6 +45,15 @@
         <meta-data
             android:name="com.google.firebase.messaging.default_notification_channel_id"
             android:value="ons_moment_default"/>
+        <!-- FCM statusbar-icon (Fase 2a): monochroom wit-op-transparant
+             silhouet van de spraakballon met hart. Android tint automatisch
+             met de default_notification_color. -->
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_icon"
+            android:resource="@drawable/ic_stat_ons_moment"/>
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_color"
+            android:resource="@color/ons_moment_peach"/>
     </application>
     <!-- Required to query activities that can process text, see:
          https://developer.android.com/training/package-visibility?hl=en and
