@@ -572,7 +572,13 @@ class _TabletSchermState extends State<TabletScherm>
                     : (_gecachteOntvangerNaam ?? ''));
 
         return Scaffold(
-          body: Stack(children: [
+          // V9 2.26: Stack in SizedBox.expand zodat hij tight body-hoogte
+          // krijgt. Zonder dit krimpt de Stack naar de intrinsieke hoogte
+          // van _homeInhoud, waardoor de popup (nu Positioned.fill) niet
+          // gegarandeerd het volle scherm vulde. StackFit blijft loose zodat
+          // _homeInhoud zijn eigen opmaak behoudt; alleen de popup pakt nu
+          // gegarandeerd de volle body-hoogte.
+          body: SizedBox.expand(child: Stack(children: [
             // ━━━━ ACHTERGROND ━━━━
             Positioned.fill(child: profielFotoUrl.isNotEmpty
               ? Image.network(profielFotoUrl,
@@ -618,9 +624,10 @@ class _TabletSchermState extends State<TabletScherm>
                 hasBackground: profielFotoUrl.isNotEmpty)),
 
             // ━━━━ POPUP ━━━━
-            if (_huidigPopup != null) GestureDetector(
-              onTap: _sluitPopup, child: _popupOverlay()),
-          ]),
+            if (_huidigPopup != null) Positioned.fill(
+              child: GestureDetector(
+                onTap: _sluitPopup, child: _popupOverlay())),
+          ])),
         );
       },
     );

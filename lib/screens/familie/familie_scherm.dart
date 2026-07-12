@@ -877,7 +877,14 @@ class _FamilieSchermState extends State<FamilieScherm>
           ),
         ],
       ),
-      body: Stack(children: [
+      // V9 2.26: Stack in SizedBox.expand zodat hij tight body-hoogte krijgt.
+      // Zonder dit krimpt de Stack naar de intrinsieke hoogte van _huidigeTab()
+      // (bv. StuurTab is SingleChildScrollView, pakt maar ~halve schermhoogte
+      // op de Pixel), waardoor Positioned.fill van de popup ook maar half het
+      // scherm vulde. StackFit blijft loose zodat de tabs hun eigen hoogte
+      // behouden en visueel identiek blijven; alleen de popup profiteert van
+      // de nu-vol-hoge Stack.
+      body: SizedBox.expand(child: Stack(children: [
         if (toonAchtergrond) ...[
           Positioned.fill(child: Image.network(achtergrondFotoUrl,
             fit: BoxFit.cover,
@@ -903,7 +910,7 @@ class _FamilieSchermState extends State<FamilieScherm>
             child: _popupOverlay(),
           ),
         ),
-      ]),
+      ])),
       bottomNavigationBar: Container(
         decoration: BoxDecoration(color: kWhite,
             boxShadow: [BoxShadow(color: kBrown.withOpacity(0.08),
