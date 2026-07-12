@@ -3,6 +3,10 @@
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
     <uses-permission android:name="android.permission.RECORD_AUDIO"/>
     <uses-permission android:name="android.permission.WAKE_LOCK"/>
+    <!-- Android 13+ runtime-permission voor system-tray notificaties.
+         Wordt via firebase_messaging.requestPermission() aangevraagd zodra
+         de gebruiker succesvol is ingelogd (Fase 1 push-meldingen). -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
 
     <application
         android:label="Ons Moment"
@@ -34,6 +38,13 @@
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
+        <!-- FCM: default channel voor pure-notification messages die van de
+             Cloud Function (Fase 3) komen. Channel-ID moet exact matchen
+             met de channel die PushService via flutter_local_notifications
+             registreert bij app-start. -->
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_channel_id"
+            android:value="ons_moment_default"/>
     </application>
     <!-- Required to query activities that can process text, see:
          https://developer.android.com/training/package-visibility?hl=en and
