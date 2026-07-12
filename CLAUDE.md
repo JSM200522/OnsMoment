@@ -99,3 +99,20 @@ NOOIT blind pushen — vandaag (15 mei 2026) heeft dat 10 rode builds opgeleverd
 
 - 15 mei 2026: V7 release, build #47 groen
 - 15 mei 2026: Overstap naar Claude Code workflow
+- 12 juli 2026: Push-meldingen Fase 1 code-compleet (commits 1a-1d) en Fase 2
+  code-compleet (commits 2a-2c). Alle 7 commits groen op CI. Wat er ligt:
+  - FCM-basis: firebase_messaging ^14.7.20 + flutter_local_notifications ^17.1.2
+  - PushService (lib/services/push_service.dart) met kIsWeb-guards + fail-soft
+  - FCM-token per apparaat op gebruikers/{uid}/apparaten/{id} (fcmToken,
+    fcmTokenBijgewerkt, fcmPlatform) — NIET op de gebruiker-doc, zodat tablet
+    én familie-toestellen elk hun eigen adres hebben binnen het gedeelde account
+  - Monochroom statusbar-icoon ic_stat_ons_moment (5 densities) + peach-tint
+  - Zes notification channels, één per herkenningsgeluid; channelIdVoorGeluid
+    als bron van waarheid voor de Cloud Function
+  - Tap-op-notificatie opent het juiste moment via PushService.tapMomentIdNotifier
+    → beide schermen fetchen het moment en tonen bestaande _toonPopup
+  - Payload-conventie verankerd: notification.android.channel_id +
+    data.momentId (Cloud Function moet die vullen)
+  - Handmatige device-test (1e + 2d) verschoven naar ná Fase 3 zodat we in
+    één keer de volledige automatische flow testen (Cloud Function → FCM →
+    tray → tap → popup) i.p.v. twee losse handmatige rondes.
