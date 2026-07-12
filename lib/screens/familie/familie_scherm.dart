@@ -16,6 +16,7 @@ import 'package:path_provider/path_provider.dart';
 import '../../services/apparaat_service.dart';
 import '../../services/device_modus_service.dart';
 import '../../services/dagelijks_audio_service.dart';
+import '../../services/push_service.dart';
 import '../../theme/kleuren.dart';
 import '../../data/geluiden.dart';
 import '../../data/debug_flags.dart';
@@ -70,6 +71,10 @@ class _FamilieSchermState extends State<FamilieScherm>
   /// van gisteren mag vandaag opnieuw. Voor eenmalig alleen de doc.id (die
   /// maar één keer mag komen, niet per dag).
   final Set<String> _reedsGetoondLokaal = <String>{};
+
+  /// Fase 2c: callback op [PushService.tapMomentIdNotifier]. Gecached
+  /// zodat we bij dispose netjes remove-listener kunnen doen.
+  VoidCallback? _tapMomentListener;
 
   @override
   void initState() {
@@ -146,6 +151,45 @@ class _FamilieSchermState extends State<FamilieScherm>
         _sluitPopup();
       }
     });
+    _startTapMomentListener();
+  }
+
+  /// Fase 2c: luistert op de tap-notifier van PushService. Wordt getriggerd
+  /// bij een tik op een systeem-tray-notificatie (background of terminated
+  /// launch). Fetcht het moment uit Firestore en toont het via de bestaande
+  /// [_toonPopup]. Skip wanneer er al een popup open staat (reentrancy-guard
+  /// via _huidigPopupId), en reset de notifier synchroon vóór de fetch zodat
+  /// een re-emit hem niet nog eens laat afvuren. Op web blijft de notifier
+  /// altijd null (PushService.initApp doet no-op via kIsWeb) — deze code
+  /// draait daar dus zonder side-effect.
+  void _startTapMomentListener() {
+    void cb() { _verwerkTapMomentId(PushService.tapMomentIdNotifier.value); }
+    PushService.tapMomentIdNotifier.addListener(cb);
+    _tapMomentListener = cb;
+    // Initial: als de notifier al gezet is (terminated-launch waarbij
+    // initApp getInitialMessage al heeft gepubliceerd vóór dit scherm
+    // bouwde), triggeren we de callback zelf — addListener doet dat niet.
+    if (PushService.tapMomentIdNotifier.value != null) cb();
+  }
+
+  Future<void> _verwerkTapMomentId(String? id) async {
+    if (id == null || id.isEmpty) return;
+    // Consumeer direct — synchroon vóór de async fetch — zodat een
+    // re-emit tijdens de fetch niet dubbel afvuurt.
+    PushService.tapMomentIdNotifier.value = null;
+    if (_huidigPopupId != null) return;
+    try {
+      final doc = await FirebaseFirestore.instance
+          .collection('momenten').doc(id).get();
+      if (!mounted || !doc.exists) return;
+      final data = doc.data();
+      if (data == null) return;
+      await _toonPopup(doc.id, data);
+    } catch (_) {
+      // Silent — fetch-fout mag app niet crashen. Bekende beperking:
+      // moment in andere kring blokkeert Firestore-rules, dat komt hier
+      // als exception binnen en wordt geskipt. Fase 3 pakt kring-switching.
+    }
   }
 
   @override
@@ -153,6 +197,10 @@ class _FamilieSchermState extends State<FamilieScherm>
     WidgetsBinding.instance.removeObserver(this);
     DeviceModusService.actieveKringNotifier
         .removeListener(_opActieveKringWijziging);
+    if (_tapMomentListener != null) {
+      PushService.tapMomentIdNotifier.removeListener(_tapMomentListener!);
+      _tapMomentListener = null;
+    }
     _autoSluitTimer?.cancel();
     _checkTimer?.cancel();
     _momentenListener?.cancel();

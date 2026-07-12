@@ -71,6 +71,21 @@ class PushService {
   static String? _huidigeFamilieUid;
   static String? _huidigeApparaatId;
 
+  /// Fase 2c: pusht het moment-id uit een aangetikte notificatie door naar
+  /// de UI-schermen (familie_scherm en tablet_scherm). Beide luisteren
+  /// erop en tonen bij een niet-null waarde de popup voor dat moment via
+  /// hun eigen bestaande `_toonPopup`. Payload-conventie: de Cloud Function
+  /// (Fase 3) zet `data: {'momentId': '<firestore-doc-id>'}` in de
+  /// FCM-payload; tikken op de tray-notificatie triggert dan `onMessage
+  /// OpenedApp` of `getInitialMessage`, en die zetten deze notifier.
+  ///
+  /// De consumer (het scherm) is verantwoordelijk voor het resetten naar
+  /// null zodra hij de tik heeft afgehandeld, zodat een re-emit hem niet
+  /// opnieuw laat afvuren. Op web blijft de waarde altijd null (initApp
+  /// doet no-op via kIsWeb-guard).
+  static final ValueNotifier<String?> tapMomentIdNotifier =
+      ValueNotifier<String?>(null);
+
   /// Roep één keer aan in main() ná Firebase.initializeApp().
   /// Idempotent — een tweede aanroep is een no-op.
   static Future<void> initApp() async {
@@ -138,13 +153,18 @@ class PushService {
       FirebaseMessaging.onMessageOpenedApp.listen((msg) {
         debugPrint('🔔 FCM tap (background→foreground): ${msg.messageId} '
             'data=${msg.data}');
+        _publiceerTapMomentId(msg);
       });
 
-      // Tap terwijl app volledig gesloten was.
+      // Tap terwijl app volledig gesloten was. De schermen luisteren op
+      // tapMomentIdNotifier en pikken de waarde op zodra ze bouwen —
+      // main() await't initApp() vóór runApp(), dus de notifier is gezet
+      // vóór het eerste build.
       final initial = await FirebaseMessaging.instance.getInitialMessage();
       if (initial != null) {
         debugPrint('🔔 FCM tap (terminated launch): ${initial.messageId} '
             'data=${initial.data}');
+        _publiceerTapMomentId(initial);
       }
     } catch (e, st) {
       debugPrint('⚠️ PushService.initApp faalde: $e\n$st');
@@ -214,6 +234,18 @@ class PushService {
       default:
         return 'onbekend';
     }
+  }
+
+  /// Leest `data.momentId` uit een FCM-payload en publiceert die op
+  /// [tapMomentIdNotifier]. Bij ontbreken of leeg → notifier wordt niet
+  /// gezet (fail-safe: app opent gewoon zonder popup). Trimmed zodat
+  /// whitespace-only waarden ook worden genegeerd.
+  static void _publiceerTapMomentId(RemoteMessage msg) {
+    final raw = msg.data['momentId'];
+    if (raw is! String) return;
+    final id = raw.trim();
+    if (id.isEmpty) return;
+    tapMomentIdNotifier.value = id;
   }
 }
 
