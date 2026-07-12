@@ -38,13 +38,17 @@
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
-        <!-- FCM: default channel voor pure-notification messages die van de
-             Cloud Function (Fase 3) komen. Channel-ID moet exact matchen
-             met de channel die PushService via flutter_local_notifications
-             registreert bij app-start. -->
+        <!-- FCM fallback-channel: wanneer een payload geen expliciete
+             channel_id meegeeft, komen meldingen op ons_moment_twinkel
+             binnen (twinkel is ook de codebase-default voor kring.
+             herkenningsgeluid). De 6 per-geluid channels worden door
+             PushService bij eerste app-open aangemaakt; de Cloud Function
+             (Fase 3) zet notification.android.channel_id per bericht op
+             basis van kring.herkenningsgeluid via PushService.
+             channelIdVoorGeluid. -->
         <meta-data
             android:name="com.google.firebase.messaging.default_notification_channel_id"
-            android:value="ons_moment_default"/>
+            android:value="ons_moment_twinkel"/>
         <!-- FCM statusbar-icon (Fase 2a): monochroom wit-op-transparant
              silhouet van de spraakballon met hart. Android tint automatisch
              met de default_notification_color. -->

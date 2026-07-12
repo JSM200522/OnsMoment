@@ -21,15 +21,44 @@ import 'apparaat_service.dart';
 ///   De listener in familie_scherm.dart triggert de popup al; hier ook
 ///   een lokale notification tonen zou dubbeltellen.
 class PushService {
-  /// Channel-ID moet exact matchen met de meta-data
-  /// `com.google.firebase.messaging.default_notification_channel_id`
-  /// in AndroidManifest.xml (commit 1b). FCM plaatst pure-notification
-  /// messages automatisch in dit kanaal wanneer de app in background of
-  /// terminated state is.
-  static const String _channelId = 'ons_moment_default';
-  static const String _channelName = 'Ons Moment meldingen';
-  static const String _channelDescription =
-      "Berichten en foto's van je familie";
+  /// Bron van waarheid voor de mapping herkenningsgeluid → notification-
+  /// channel-id. Elke kring heeft een herkenningsgeluid uit deze 6 IDs
+  /// (zie [kGeluidAssets] in lib/data/geluiden.dart, autoritatieve bron
+  /// in kringen/{kringId}.herkenningsgeluid). De Cloud Function (Fase 3)
+  /// leest de kring, kiest via deze map het juiste channel-id en zet
+  /// dat als `notification.android.channel_id` in de FCM-payload; het
+  /// systeem speelt dan het bijbehorende geluid via het channel.
+  ///
+  /// Channels zijn Android-immutable na registratie — wisselen van
+  /// herkenningsgeluid door de familie betekent alleen dat volgende
+  /// meldingen op een ander channel binnenkomen. Alle 6 channels worden
+  /// bij eerste app-open aangemaakt zodat live wisselen direct werkt.
+  static const Map<String, String> channelIdVoorGeluid = {
+    'twinkel':  'ons_moment_twinkel',
+    'bel':      'ons_moment_bel',
+    'vogel':    'ons_moment_vogel',
+    'piano':    'ons_moment_piano',
+    'kerkklok': 'ons_moment_kerkklok',
+    'hart':     'ons_moment_hart',
+  };
+
+  /// User-visible namen voor de 6 channels in Android Instellingen →
+  /// App-meldingen. Gemapt op geluid-ID (niet channel-ID) zodat het
+  /// eenvoudig blijft synchroon met [kGeluiden] in geluiden.dart.
+  static const Map<String, String> _channelNaamVoorGeluid = {
+    'twinkel':  'Ons Moment – Twinkel',
+    'bel':      'Ons Moment – Zachte bel',
+    'vogel':    'Ons Moment – Vogel',
+    'piano':    'Ons Moment – Piano',
+    'kerkklok': 'Ons Moment – Kerkklok',
+    'hart':     'Ons Moment – Liefdes-melodie',
+  };
+
+  /// Channel-ID uit Fase 1 dat bij commit 2b vervangen wordt door de 6
+  /// per-geluid channels. Wordt bij initApp geprobeerd te deleten zodat
+  /// het channel niet als weeskind achterblijft in Android-instellingen
+  /// bij bestaande installs.
+  static const String _oudDefaultChannelId = 'ons_moment_default';
 
   static final FlutterLocalNotificationsPlugin _localNotifications =
       FlutterLocalNotificationsPlugin();
@@ -69,14 +98,33 @@ class PushService {
       final androidImpl = _localNotifications
           .resolvePlatformSpecificImplementation<
               AndroidFlutterLocalNotificationsPlugin>();
-      await androidImpl?.createNotificationChannel(
-        const AndroidNotificationChannel(
-          _channelId,
-          _channelName,
-          description: _channelDescription,
-          importance: Importance.high,
-        ),
-      );
+
+      // Cleanup: verwijder het Fase-1 channel zodat het niet als weeskind
+      // in Android-instellingen achterblijft. Silent fail als niet aanwezig
+      // (nieuwe installs of al eerder verwijderd).
+      try {
+        await androidImpl?.deleteNotificationChannel(_oudDefaultChannelId);
+      } catch (_) {}
+
+      // Zes channels registreren, één per herkenningsgeluid. Elk channel
+      // is immutable na aanmaak, dus we doen dit één keer bij eerste
+      // app-open. Wisselt de familie het herkenningsgeluid, dan komen
+      // volgende meldingen automatisch op een ander bestaand channel.
+      for (final entry in channelIdVoorGeluid.entries) {
+        final geluidId = entry.key;
+        final channelId = entry.value;
+        final channelNaam = _channelNaamVoorGeluid[geluidId]
+            ?? 'Ons Moment';
+        await androidImpl?.createNotificationChannel(
+          AndroidNotificationChannel(
+            channelId,
+            channelNaam,
+            description: 'Nieuwe berichten van je familie',
+            importance: Importance.high,
+            sound: RawResourceAndroidNotificationSound(channelId),
+          ),
+        );
+      }
 
       // Foreground-handler: alleen loggen. De Firestore-listener in
       // familie_scherm.dart toont de popup — een lokale notification
