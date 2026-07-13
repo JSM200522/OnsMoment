@@ -203,4 +203,26 @@ class KringService {
       return [];
     }
   }
+
+  /// Lichtgewicht variant van [mijnKringen] die alleen de kringIds
+  /// teruggeeft — zonder de N extra kring-doc-reads. Gebruikt door
+  /// [PushService.registreerHuidigApparaat] om het `kringId`-veld
+  /// atomair mee te schrijven bij de fcmToken-update. Zelfde
+  /// collectionGroup-query, zelfde rules/index-vereisten.
+  static Future<List<String>> mijnKringIds(String uid) async {
+    if (uid.isEmpty) return const [];
+    try {
+      final ledenSnap = await FirebaseFirestore.instance
+          .collectionGroup('leden')
+          .where('userUid', isEqualTo: uid)
+          .get();
+      return ledenSnap.docs
+          .map((d) => d.reference.parent.parent?.id)
+          .whereType<String>()
+          .toList();
+    } catch (e) {
+      debugPrint('🌀 [KringService] mijnKringIds($uid) faalde: $e');
+      return const [];
+    }
+  }
 }

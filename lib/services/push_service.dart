@@ -4,6 +4,8 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'apparaat_service.dart';
+import 'device_modus_service.dart';
+import 'kring_service.dart';
 
 /// FCM-basis (Fase 1 push-meldingen).
 ///
@@ -192,6 +194,12 @@ class PushService {
       // (Firestore-listener) blijft in beide gevallen werken.
       await FirebaseMessaging.instance.requestPermission();
 
+      // Fase 3c-B: bepaal kringId zodat we die in dezelfde set+merge
+      // als het fcmToken kunnen meeschrijven — vangt bestaande familie-
+      // apparaat-docs op die 'm bij initiële registratie niet meekregen
+      // (setup_wizard/accept_uitnodig/gast_signup skipten het veld).
+      final kringId = await _bepaalKringIdVoorApparaat(familieUid);
+
       final token = await FirebaseMessaging.instance.getToken();
       if (token != null && token.isNotEmpty) {
         await ApparaatService.zetFcmToken(
@@ -199,6 +207,7 @@ class PushService {
           apparaatId: apparaatId,
           token: token,
           platform: _huidigPlatform(),
+          kringId: kringId,
         );
       }
 
@@ -208,20 +217,50 @@ class PushService {
       // opnieuw-inloggen op hetzelfde apparaat.
       await _tokenRefreshSub?.cancel();
       _tokenRefreshSub =
-          FirebaseMessaging.instance.onTokenRefresh.listen((nieuw) {
+          FirebaseMessaging.instance.onTokenRefresh.listen((nieuw) async {
         final uid = _huidigeFamilieUid;
         final apparaat = _huidigeApparaatId;
         if (uid == null || apparaat == null) return;
+        // Zelfde backfill-lookup bij elke token-refresh — de kring-
+        // membership van deze gebruiker kan tussen refresh en refresh
+        // gewijzigd zijn (nieuwe kring, verlaten kring).
+        final refreshKringId = await _bepaalKringIdVoorApparaat(uid);
         ApparaatService.zetFcmToken(
           familieUid: uid,
           apparaatId: apparaat,
           token: nieuw,
           platform: _huidigPlatform(),
+          kringId: refreshKringId,
         );
       });
     } catch (e) {
       debugPrint('⚠️ PushService.registreerHuidigApparaat faalde: $e');
     }
+  }
+
+  /// Fase 3c-B: bepaalt welk kringId in het apparaat-doc moet komen.
+  ///
+  /// Regels:
+  /// - 0 kringen → null (user zit in geen kring; niks schrijven).
+  /// - 1 kring   → gebruik die.
+  /// - >1 kring  → tiebreak op [DeviceModusService.actieveKringNotifier].
+  ///   Als die gezet is én in de lijst voorkomt → gebruik 'm. Anders
+  ///   warning + null (liever géén kringId dan de verkeerde — de
+  ///   Cloud Function skipt dit apparaat dan gewoon totdat de volgende
+  ///   refresh een geldige actieve kring vindt).
+  ///
+  /// Fail-soft: elke fout in de collectionGroup-query wordt door
+  /// [KringService.mijnKringIds] al opgevangen als lege lijst.
+  static Future<String?> _bepaalKringIdVoorApparaat(String familieUid) async {
+    final ids = await KringService.mijnKringIds(familieUid);
+    if (ids.isEmpty) return null;
+    if (ids.length == 1) return ids.first;
+    final actief = DeviceModusService.actieveKringNotifier.value;
+    if (actief != null && ids.contains(actief)) return actief;
+    debugPrint('⚠️ PushService: gebruiker zit in ${ids.length} kringen, '
+        'maar actieveKring is niet gezet of niet in de lijst — '
+        'kringId overgeslagen voor apparaat-doc');
+    return null;
   }
 
   static String _huidigPlatform() {

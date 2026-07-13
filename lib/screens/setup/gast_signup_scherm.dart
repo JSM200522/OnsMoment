@@ -151,6 +151,9 @@ class _GastSignupSchermState extends State<GastSignupScherm> {
     }
 
     // ─── 4. Apparaat-registratie — niet kritiek, fail silent.
+    // Fase 3c-B: kringId uit de uitnodiging meegeven zodat de Cloud
+    // Function `onNieuwMoment` dit familie-apparaat als push-target
+    // vindt binnen de host-kring.
     try {
       final apparaatId = await DeviceModusService.krijgApparaatId();
       await ApparaatService.registreer(
@@ -158,6 +161,7 @@ class _GastSignupSchermState extends State<GastSignupScherm> {
         apparaatId: apparaatId,
         persoonsNaam: naam,
         modus: 'familie',
+        kringId: widget.uitnodiging.kringId,
       );
     } catch (_) {}
 

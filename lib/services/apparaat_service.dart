@@ -77,22 +77,34 @@ class ApparaatService {
   /// bij eerste aanroep — wordt door PushService aangeroepen bij inloggen
   /// en bij onTokenRefresh. Verwijderen van het apparaat uit de kring
   /// wist het token automatisch mee (via verwijderApparaat).
+  ///
+  /// Fase 3c-B: optionele [kringId] wordt in dezelfde set+merge meegeschreven
+  /// als backfill voor familie-apparaat-docs die 'm bij initiële registratie
+  /// nog niet meekregen. Null of leeg → veld wordt niet aangeraakt (behoudt
+  /// bestaande waarde). Cloud Function `onNieuwMoment` gebruikt dit veld om
+  /// familie- én ontvanger-apparaten binnen dezelfde kring als target te
+  /// vinden.
   static Future<void> zetFcmToken({
     required String familieUid,
     required String apparaatId,
     required String token,
     required String platform,
+    String? kringId,
   }) async {
     if (token.isEmpty) return;
     try {
-      await FirebaseFirestore.instance
-          .collection('gebruikers').doc(familieUid)
-          .collection('apparaten').doc(apparaatId)
-          .set({
+      final data = <String, dynamic>{
         'fcmToken': token,
         'fcmTokenBijgewerkt': FieldValue.serverTimestamp(),
         'fcmPlatform': platform,
-      }, SetOptions(merge: true));
+      };
+      if (kringId != null && kringId.isNotEmpty) {
+        data['kringId'] = kringId;
+      }
+      await FirebaseFirestore.instance
+          .collection('gebruikers').doc(familieUid)
+          .collection('apparaten').doc(apparaatId)
+          .set(data, SetOptions(merge: true));
     } catch (_) {}
   }
 

@@ -899,13 +899,16 @@ class _SetupWizardState extends State<SetupWizard> {
         ));
       }
       // Apparaat registreren in sub-collectie zodat kringleden-overzicht
-      // (sub-commit C) dit apparaat kan tonen.
+      // (sub-commit C) dit apparaat kan tonen. Fase 3c-B: kringId meegeven
+      // zodat de Cloud Function `onNieuwMoment` dit familie-apparaat als
+      // push-target vindt binnen de kring.
       final apparaatId = await DeviceModusService.krijgApparaatId();
       await ApparaatService.registreer(
         familieUid: uid,
         apparaatId: apparaatId,
         persoonsNaam: _naamCtrl.text.trim(),
         modus: 'familie',
+        kringId: kringId,
       );
       await DeviceModusService.zet(DeviceModusService.FAMILIE);
       await DeviceModusService.zetActieveKring(kringId);
@@ -1034,12 +1037,19 @@ class _SetupWizardState extends State<SetupWizard> {
         if (mounted) setState(() => _bezig = false);
         return;
       }
+      // Fase 3c-B: kringId komt uit de actieve-kring-notifier — bij een
+      // familie-login op een bestaande kring is die typisch al gezet
+      // door de vorige sessie. Als 'ie null is (verse install of eerst
+      // uitgelogd geweest), schrijft registreer() het veld gewoon niet
+      // en pikt PushService.registreerHuidigApparaat de backfill op via
+      // collectionGroup('leden') zodra de fcmToken binnenkomt.
       final apparaatId = await DeviceModusService.krijgApparaatId();
       await ApparaatService.registreer(
         familieUid: uid,
         apparaatId: apparaatId,
         persoonsNaam: naam,
         modus: 'familie',
+        kringId: DeviceModusService.actieveKringNotifier.value,
       );
       await DeviceModusService.zet(DeviceModusService.FAMILIE);
     } finally {

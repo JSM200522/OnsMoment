@@ -138,11 +138,15 @@ class _AcceptUitnodigSchermState extends State<AcceptUitnodigScherm> {
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid != null) {
       try {
+        // Fase 3c-B: kringId uit de uitnodiging meegeven zodat de Cloud
+        // Function `onNieuwMoment` dit familie-apparaat als push-target
+        // vindt binnen de host-kring.
         await ApparaatService.registreer(
           familieUid: uid,
           apparaatId: apparaatId,
           persoonsNaam: 'Kringlid',
           modus: 'familie',
+          kringId: uitnodiging.kringId,
         );
       } catch (_) {
         // Apparaat-registratie is niet kritiek voor de accept zelf.
