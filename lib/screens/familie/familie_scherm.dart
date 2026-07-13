@@ -2890,7 +2890,20 @@ class _GeplandItem extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final d = doc.data() as Map<String, dynamic>;
-    final t = (d['geplandOp'] as Timestamp?)?.toDate() ?? DateTime.now();
+    // Fase 3c-F: in het VERSTUURD-blok (isHistorie=true) leest de tijd
+    // uit verstuurdOp (server-timestamp op moment van send) i.p.v. uit
+    // geplandOp. geplandOp is voor non-testModus, non-hartje momenten
+    // opgebouwd uit de _datum/_tijd-state van het compose-scherm, die
+    // bij het openen van de tab wordt geïnitialiseerd — als de gebruiker
+    // de picker niet aanraakt blijft die op de tab-open-tijd staan
+    // (effectief het inlogmoment). Fallback naar geplandOp voor legacy
+    // V6/vroege V7-docs die verstuurdOp nog niet hebben.
+    // Voor het GEPLAND-blok (isHistorie=false) blijft geplandOp leidend
+    // omdat dat aangeeft wanneer het bij de ontvanger moet verschijnen.
+    final ts = isHistorie
+        ? ((d['verstuurdOp'] as Timestamp?) ?? (d['geplandOp'] as Timestamp?))
+        : (d['geplandOp'] as Timestamp?);
+    final t = ts?.toDate() ?? DateTime.now();
     return Container(margin: const EdgeInsets.only(bottom: 8),
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(color: isHistorie ? kPeachPale : kWhite,
