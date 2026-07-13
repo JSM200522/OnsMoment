@@ -116,3 +116,29 @@ NOOIT blind pushen — vandaag (15 mei 2026) heeft dat 10 rode builds opgeleverd
   - Handmatige device-test (1e + 2d) verschoven naar ná Fase 3 zodat we in
     één keer de volledige automatische flow testen (Cloud Function → FCM →
     tray → tap → popup) i.p.v. twee losse handmatige rondes.
+- 13 juli 2026: Push-meldingen Fase 3 code-compleet (commits 3a + 3b) EN
+  gedeployed naar productie. Volledige status:
+  - Firebase Functions skelet: functions/-map, TypeScript strict, Node 22,
+    region europe-west1 (matcht Firestore eur3 multi-region)
+  - onNieuwMoment: Firestore-trigger onDocumentCreated('momenten/{id}') met
+    hybride targeting (aanApparaatIds indien niet-leeg, anders ontvangers in
+    kring; altijd afzender-uitfilter), 5-min skip voor toekomstige geplande
+    momenten, gespiegelde channelIdVoorGeluid-map, dead-token cleanup bij
+    registration-token-not-registered / invalid-registration-token, en
+    NOOIT writes naar momenten/ (recursie onmogelijk)
+  - Gedeployed naar onsmonent 13 juli 2026. Function is live (v2, 256MB,
+    nodejs22, europe-west1). Deploy vereiste 2 pogingen door first-time
+    Eventarc-service-agent-permissies (~8 min wachten tussen pogingen).
+  - Artifact Registry cleanup policy op europe-west1: images ouder dan 7 dagen
+    worden automatisch verwijderd (voorkomt oplopende opslagkosten).
+  - Geparkeerd tot na testresultaten: firebase-functions v6 → v7 major-upgrade
+    (waarschuwing tijdens deploy; niet blocking, wachten om breaking changes
+    in één keer te doen ná bevestiging dat huidige setup werkt).
+  - Openstaand: 3d device-test staat open tot build 1.0.7+9 via Play Store op
+    de testtoestellen (telefoon + tablet) is geïnstalleerd. Testscenario's:
+    (a) FCM-token verschijnt in Firestore na eerste inlog, (b) meldingen komen
+    binnen met eigen geluid per kring, (c) tik opent het juiste moment,
+    (d) afzender krijgt zijn eigen bericht niet, (e) statusbar-icoon is
+    zichtbaar en peach-getint. Bij problemen: Cloud Function logs via
+    `firebase functions:log --only onNieuwMoment`.
+  - GEEN Claude Code-werk tot testresultaten binnen zijn.
