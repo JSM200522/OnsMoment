@@ -23,6 +23,10 @@ import * as admin from 'firebase-admin';
 setGlobalOptions({ region: 'europe-west1' });
 admin.initializeApp();
 
+// Fase VB-V0: LiveKit-token-endpoint voor videobellen. Aparte file zodat
+// index.ts overzichtelijk blijft.
+export { getVideoCallToken } from './videocall';
+
 /**
  * Spiegel van PushService.channelIdVoorGeluid in
  * lib/services/push_service.dart. LET OP: bij wijziging beide files
