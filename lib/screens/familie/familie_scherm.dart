@@ -1915,6 +1915,18 @@ class _StuurTabState extends State<StuurTab> {
           }
           liedBytes = await File(_mediaPad!).readAsBytes();
         }
+        // V9-mp3-fix: vangnet-limiet. Boven de 15 MB is een liedje op 4G
+        // sowieso lastig te uploaden en groot genoeg om memory-druk te
+        // geven. Nette snackbar i.p.v. een halve upload of crash.
+        if (liedBytes.length > 15 * 1024 * 1024) {
+          if (mounted) {
+            setState(() => _bezig = false);
+            _toonFout('Dit liedje is te groot (${(liedBytes.length /
+                (1024 * 1024)).toStringAsFixed(0)} MB). '
+                'Kies er één van maximaal 15 MB.');
+          }
+          return;
+        }
         final ref = FirebaseStorage.instance.ref()
             .child('momenten')
             .child('${DateTime.now().millisecondsSinceEpoch}.mp3');
