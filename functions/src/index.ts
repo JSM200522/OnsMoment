@@ -26,6 +26,8 @@ admin.initializeApp();
 // Fase VB-V0: LiveKit-token-endpoint voor videobellen. Aparte file zodat
 // index.ts overzichtelijk blijft.
 export { getVideoCallToken } from './videocall';
+// Fase VB-V2: gesprek initiëren + callee bereiken via high-priority FCM.
+export { startVideoCall } from './start_call';
 
 /**
  * Spiegel van PushService.channelIdVoorGeluid in
