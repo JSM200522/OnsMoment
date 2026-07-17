@@ -4,6 +4,7 @@ import 'package:livekit_client/livekit_client.dart';
 import 'package:permission_handler/permission_handler.dart';
 import '../../services/video_call_service.dart';
 import '../../theme/kleuren.dart';
+import '../videobellen/gesprek_scherm.dart';
 
 /// Caller-perspectief van een gesprek. Voert de startVideoCall-flow uit,
 /// join't LiveKit met het caller-token, en toont een self-view + wacht-
@@ -43,8 +44,11 @@ enum _Fase {
 class _BelSchermState extends State<BelScherm> {
   _Fase _fase = _Fase.camera;
   String _foutmelding = '';
-  bool _calleeVerbonden = false;
   EventsListener<RoomEvent>? _roomListener;
+  /// V3-3: gezet op true zodra we pushReplacement doen naar
+  /// GesprekScherm. Dispose skipt dan de hangup want GesprekScherm
+  /// heeft de room overgenomen en handelt hem zelf af.
+  bool _doorstroomNaarGesprek = false;
 
   @override
   void initState() {
@@ -73,16 +77,16 @@ class _BelSchermState extends State<BelScherm> {
       if (room != null) {
         final listener = room.createListener();
         listener.on<ParticipantConnectedEvent>((_) {
-          if (!mounted) return;
-          setState(() => _calleeVerbonden = true);
+          _naarGesprekScherm();
         });
+        _roomListener = listener;
         // Als de callee al join'de vóór dat we de listener attachten
         // (edge case: super-snelle callee), pikt remoteParticipants
-        // dat op en zetten we de state gelijk.
+        // dat op en gaan we direct door naar GesprekScherm.
         if (room.remoteParticipants.isNotEmpty) {
-          _calleeVerbonden = true;
+          _naarGesprekScherm();
+          return;
         }
-        _roomListener = listener;
       }
       setState(() => _fase = _Fase.actief);
     } catch (e) {
@@ -100,13 +104,29 @@ class _BelSchermState extends State<BelScherm> {
     Navigator.of(context).pop();
   }
 
+  /// V3-3: pushReplacement naar het gedeelde GesprekScherm zodra de
+  /// callee joint. GesprekScherm neemt de room over — dispose van dit
+  /// scherm moet dus NIET hangen, anders wordt de vers overgenomen
+  /// room direct weer disconnect.
+  void _naarGesprekScherm() {
+    if (!mounted) return;
+    if (_doorstroomNaarGesprek) return;
+    _doorstroomNaarGesprek = true;
+    Navigator.of(context).pushReplacement(MaterialPageRoute<void>(
+      builder: (_) => GesprekScherm(remoteNaam: widget.doelNaam),
+    ));
+  }
+
   @override
   void dispose() {
     unawaited(_roomListener?.dispose());
-    // Ook bij back-swipe of proces-kill de LiveKit-verbinding netjes
-    // verbreken — anders blijft de room op LiveKit-Cloud open tot de
-    // sessie op timeout eruit valt.
-    unawaited(VideoCallService.hangup());
+    // Alleen hangen als we NIET doorstromen naar GesprekScherm.
+    // Bij doorstroom heeft dat scherm de room overgenomen en handelt
+    // hij zelf de hangup af (in zijn eigen dispose). Doe je hier toch
+    // hangup, dan disconnect je de vers overgenomen room meteen weer.
+    if (!_doorstroomNaarGesprek) {
+      unawaited(VideoCallService.hangup());
+    }
     super.dispose();
   }
 
@@ -157,15 +177,18 @@ class _BelSchermState extends State<BelScherm> {
             final pubs =
                 room.localParticipant?.videoTrackPublications ?? const [];
             final track = pubs.isNotEmpty ? pubs.first.track : null;
-            // Als AnimatedBuilder rebuild triggert door participant-events,
-            // syncen we hier ook direct de calleeVerbonden-flag. Voorkomt
-            // dat een track-event vóór ons ParticipantConnected-callback
-            // de status stale laat.
-            final callee = _calleeVerbonden
-                || room.remoteParticipants.isNotEmpty;
-            final status = callee
-                ? 'Verbonden met ${widget.doelNaam}'
-                : 'Wachten tot ${widget.doelNaam} opneemt…';
+            // V3-3: dit scherm blijft in wacht-status tot ParticipantConnected;
+            // op dat event doen we pushReplacement naar GesprekScherm en
+            // toont die de 'verbonden'-UI. Fallback als AnimatedBuilder
+            // sneller triggert dan de participant-callback (edge case):
+            // ook op deze rebuild controleren en zo nodig doorstromen.
+            if (room.remoteParticipants.isNotEmpty
+                && !_doorstroomNaarGesprek) {
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                _naarGesprekScherm();
+              });
+            }
+            final status = 'Wachten tot ${widget.doelNaam} opneemt…';
             return Stack(children: [
               Positioned.fill(
                 child: track == null
