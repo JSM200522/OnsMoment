@@ -7,6 +7,18 @@
          Wordt via firebase_messaging.requestPermission() aangevraagd zodra
          de gebruiker succesvol is ingelogd (Fase 1 push-meldingen). -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+    <!-- Fase VB-V0 videobellen: camera-toegang voor de LiveKit-verbinding
+         (runtime-permission wordt in V1 via permission_handler aan-
+         gevraagd bij de eerste bel). -->
+    <uses-permission android:name="android.permission.CAMERA"/>
+    <!-- Vereist door flutter_webrtc voor audio-routing (speaker/oor-
+         schelp, bluetooth-headset) tijdens een gesprek. -->
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS"/>
+    <!-- Fase VB-V5: laat een inkomend gesprek het scherm wakker maken
+         en over het lock-screen tonen. Android 14+ vraagt hiervoor een
+         extra runtime-check die V5 zal toevoegen. Ons Moment kwalificeert
+         als 'calling app' zodat het gebruik gerechtvaardigd is. -->
+    <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT"/>
 
     <application
         android:label="Ons Moment"
