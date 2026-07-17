@@ -92,6 +92,55 @@ class VideoCallService {
     return (token: token, roomName: roomName, identity: identity);
   }
 
+  /// V2: initieert een gesprek via de [startVideoCall] Cloud Function.
+  /// Server bepaalt roomName + callId; caller-token komt in de response,
+  /// callee-token gaat via high-priority data-FCM naar het doel-
+  /// apparaat (zie functions/src/start_call.ts).
+  ///
+  /// Payload:
+  /// - [kringId]: de kring waarin het gesprek plaatsvindt.
+  /// - [bellerApparaatId]: eigen apparaatId van de beller (server bindt
+  ///   hem aan de auth-uid voor de identity).
+  /// - [doelApparaatId]: apparaatId van de callee. Server verifieert
+  ///   dat dat apparaat in dezelfde kring zit en een fcmToken heeft.
+  ///
+  /// Returnt een record met caller-token/roomName/callId. Throwt bij
+  /// netwerkfout, HttpsError of onverwacht antwoord; caller beslist over
+  /// UI-feedback. Verwachte HttpsError-codes:
+  /// - permission-denied  → beller is geen lid / doel niet in kring
+  /// - not-found           → kring of doel-apparaat bestaat niet
+  /// - failed-precondition → doel heeft geen fcmToken
+  /// - resource-exhausted  → rate-limit (max 10/min per uid)
+  /// - unavailable         → FCM naar doel is mislukt
+  static Future<({String token, String roomName, String callId})>
+      startCall({
+    required String kringId,
+    required String bellerApparaatId,
+    required String doelApparaatId,
+  }) async {
+    final callable = FirebaseFunctions
+        .instanceFor(region: 'europe-west1')
+        .httpsCallable('startVideoCall');
+    final result = await callable.call<dynamic>(<String, dynamic>{
+      'kringId': kringId,
+      'bellerApparaatId': bellerApparaatId,
+      'doelApparaatId': doelApparaatId,
+    });
+    final data = result.data;
+    if (data is! Map) {
+      throw StateError('startVideoCall gaf onverwacht antwoord');
+    }
+    final token = data['token'];
+    final roomName = data['roomName'];
+    final callId = data['callId'];
+    if (token is! String || token.isEmpty
+        || roomName is! String || roomName.isEmpty
+        || callId is! String || callId.isEmpty) {
+      throw StateError('startVideoCall gaf incompleet antwoord');
+    }
+    return (token: token, roomName: roomName, callId: callId);
+  }
+
   /// Runtime camera-permissie. Native: vraagt via [permission_handler] en
   /// returnt of de gebruiker het permitteerde. Web: no-op → true, want
   /// de browser vraagt zelf om toestemming zodra LiveKit getUserMedia

@@ -2,43 +2,49 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:livekit_client/livekit_client.dart';
 import 'package:permission_handler/permission_handler.dart';
-import '../../services/device_modus_service.dart';
 import '../../services/video_call_service.dart';
 import '../../theme/kleuren.dart';
 
-/// Verborgen test-scherm voor Fase VB-V1. Bereikbaar vanuit Instellingen
-/// zolang [DEBUG_VIDEOBELLEN] aan staat. Bedoeld om de complete keten
-/// (camera-permissie → Cloud Function → LiveKit-connect → self-view)
-/// in één klik uit te oefenen, zónder dat er al een echte belflow of
-/// ontvanger-kant klaar hoeft te staan.
+/// Caller-perspectief van een gesprek. Voert de startVideoCall-flow uit,
+/// join't LiveKit met het caller-token, en toont een self-view + wacht-
+/// status tot de callee aan de andere kant opneemt. Ophangen ruimt alles
+/// netjes op.
 ///
-/// De room-naam is per apparaat uniek (`test_{apparaatId}`) zodat twee
-/// testtoestellen tegelijk niet in elkaars gesprek belanden. Wie er
-/// alsnog samen wil testen zet expliciet dezelfde apparaatId over —
-/// dat komt in V2 wanneer we een tweede deelnemer toevoegen.
-class VideobellenTestScherm extends StatefulWidget {
-  const VideobellenTestScherm({super.key});
+/// Detectie van "callee heeft opgenomen" gebeurt via een eigen listener
+/// op de room die op [ParticipantConnectedEvent] wacht. LiveKit garandeert
+/// dat lokale participants niet in dit event verschijnen; elke join
+/// hierna is dus een echt remote-lid (de callee).
+class BelScherm extends StatefulWidget {
+  final String kringId;
+  final String bellerApparaatId;
+  final String doelApparaatId;
+  final String doelNaam;
+
+  const BelScherm({
+    super.key,
+    required this.kringId,
+    required this.bellerApparaatId,
+    required this.doelApparaatId,
+    required this.doelNaam,
+  });
 
   @override
-  State<VideobellenTestScherm> createState() => _VideobellenTestSchermState();
+  State<BelScherm> createState() => _BelSchermState();
 }
 
 enum _Fase {
   camera,
-  token,
   verbinden,
   actief,
   geenPerm,
   fout,
 }
 
-class _VideobellenTestSchermState extends State<VideobellenTestScherm> {
+class _BelSchermState extends State<BelScherm> {
   _Fase _fase = _Fase.camera;
   String _foutmelding = '';
-  /// Server-bepaalde roomName; wordt gezet zodra [haalToken] slaagt en
-  /// getoond in de TEST-badge zodat je in de test kunt controleren dat
-  /// de server hem correct opbouwt als `test_{uid}_{apparaatId}`.
-  String? _serverRoomName;
+  bool _calleeVerbonden = false;
+  EventsListener<RoomEvent>? _roomListener;
 
   @override
   void initState() {
@@ -54,22 +60,30 @@ class _VideobellenTestSchermState extends State<VideobellenTestScherm> {
         setState(() => _fase = _Fase.geenPerm);
         return;
       }
-      setState(() => _fase = _Fase.token);
-      final apparaatId = await DeviceModusService.krijgApparaatId();
-      // Sinds V2-0 bepaalt de server roomName + identity. De client
-      // geeft alleen modus + apparaatId door; kringId is null want
-      // dit is de test-route (per-apparaat unieke room).
-      final resultaat = await VideoCallService.haalToken(
-        modus: VideoCallService.modusTest,
-        apparaatId: apparaatId,
+      setState(() => _fase = _Fase.verbinden);
+      final resultaat = await VideoCallService.startCall(
+        kringId: widget.kringId,
+        bellerApparaatId: widget.bellerApparaatId,
+        doelApparaatId: widget.doelApparaatId,
       );
       if (!mounted) return;
-      setState(() {
-        _fase = _Fase.verbinden;
-        _serverRoomName = resultaat.roomName;
-      });
       await VideoCallService.join(resultaat.token);
       if (!mounted) return;
+      final room = VideoCallService.roomNotifier.value;
+      if (room != null) {
+        final listener = room.createListener();
+        listener.on<ParticipantConnectedEvent>((_) {
+          if (!mounted) return;
+          setState(() => _calleeVerbonden = true);
+        });
+        // Als de callee al join'de vóór dat we de listener attachten
+        // (edge case: super-snelle callee), pikt remoteParticipants
+        // dat op en zetten we de state gelijk.
+        if (room.remoteParticipants.isNotEmpty) {
+          _calleeVerbonden = true;
+        }
+        _roomListener = listener;
+      }
       setState(() => _fase = _Fase.actief);
     } catch (e) {
       if (!mounted) return;
@@ -88,6 +102,7 @@ class _VideobellenTestSchermState extends State<VideobellenTestScherm> {
 
   @override
   void dispose() {
+    unawaited(_roomListener?.dispose());
     // Ook bij back-swipe of proces-kill de LiveKit-verbinding netjes
     // verbreken — anders blijft de room op LiveKit-Cloud open tot de
     // sessie op timeout eruit valt.
@@ -107,10 +122,8 @@ class _VideobellenTestSchermState extends State<VideobellenTestScherm> {
     switch (_fase) {
       case _Fase.camera:
         return _statusPaneel('Camera-toestemming vragen…');
-      case _Fase.token:
-        return _statusPaneel('Token ophalen…');
       case _Fase.verbinden:
-        return _statusPaneel('Verbinden met LiveKit…');
+        return _statusPaneel('Bellen naar ${widget.doelNaam}…');
       case _Fase.actief:
         return _bouwActief();
       case _Fase.geenPerm:
@@ -138,35 +151,38 @@ class _VideobellenTestSchermState extends State<VideobellenTestScherm> {
         if (room == null) {
           return _statusPaneelMetKnop('Verbinding verloren');
         }
-        // Room is een ChangeNotifier: rebuild zodra tracks published/
-        // unpublished worden zodat de self-view zonder polling verschijnt.
         return AnimatedBuilder(
           animation: room,
           builder: (context, _) {
             final pubs =
                 room.localParticipant?.videoTrackPublications ?? const [];
             final track = pubs.isNotEmpty ? pubs.first.track : null;
+            // Als AnimatedBuilder rebuild triggert door participant-events,
+            // syncen we hier ook direct de calleeVerbonden-flag. Voorkomt
+            // dat een track-event vóór ons ParticipantConnected-callback
+            // de status stale laat.
+            final callee = _calleeVerbonden
+                || room.remoteParticipants.isNotEmpty;
+            final status = callee
+                ? 'Verbonden met ${widget.doelNaam}'
+                : 'Wachten tot ${widget.doelNaam} opneemt…';
             return Stack(children: [
               Positioned.fill(
                 child: track == null
                     ? const ColoredBox(color: Colors.black)
                     : VideoTrackRenderer(track),
               ),
-              // Kader met status linksboven — zodat je in de test snel
-              // ziet dat het écht een live-track is en geen still.
               Positioned(
-                top: 12, left: 12,
+                top: 12, left: 12, right: 12,
                 child: Container(
                   padding: const EdgeInsets.symmetric(
-                      horizontal: 10, vertical: 6),
+                      horizontal: 12, vertical: 8),
                   decoration: BoxDecoration(
                       color: Colors.black54,
                       borderRadius: BorderRadius.circular(8)),
-                  child: Text(
-                      'TEST · self-view'
-                      '${_serverRoomName != null ? '\n${_serverRoomName!}' : ''}',
-                      style: const TextStyle(color: Colors.white, fontSize: 12,
-                          fontWeight: FontWeight.w700)),
+                  child: Text(status,
+                      style: const TextStyle(color: Colors.white,
+                          fontSize: 14, fontWeight: FontWeight.w700)),
                 ),
               ),
               Positioned(
@@ -193,8 +209,8 @@ class _VideobellenTestSchermState extends State<VideobellenTestScherm> {
               textAlign: TextAlign.center),
           const SizedBox(height: 8),
           const Text(
-              'Zet camera aan in de app-instellingen om de videobel-'
-              'functie te testen.',
+              'Zet camera aan in de app-instellingen om te kunnen '
+              'videobellen.',
               style: TextStyle(color: Colors.white70, fontSize: 14),
               textAlign: TextAlign.center),
           const SizedBox(height: 20),
@@ -221,7 +237,7 @@ class _VideobellenTestSchermState extends State<VideobellenTestScherm> {
           const Icon(Icons.error_outline_rounded,
               color: kRood, size: 48),
           const SizedBox(height: 16),
-          const Text('Verbinden mislukt',
+          const Text('Bellen mislukt',
               style: TextStyle(color: Colors.white, fontSize: 18,
                   fontWeight: FontWeight.w800)),
           const SizedBox(height: 8),

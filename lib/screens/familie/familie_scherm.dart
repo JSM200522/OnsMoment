@@ -25,7 +25,7 @@ import '../../widgets/video_speler.dart';
 import '../../data/labels.dart';
 import 'kringleden_scherm.dart';
 import 'kring_aanmaken_scherm.dart';
-import 'videobellen_test_scherm.dart';
+import 'bel_apparaat_kies_scherm.dart';
 import '../../data/kring.dart';
 import '../../data/kring_membership.dart';
 import '../../services/kring_service.dart';
@@ -3570,10 +3570,10 @@ class _InstellingenTabState extends State<InstellingenTab> {
         if (DEBUG_VIDEOBELLEN && !widget.alsOntvanger) ...[
           const SizedBox(height: 20),
           _sectie('ONTWIKKELING'),
-          _item('🎥', 'Test videobellen',
-              'Verbind met een test-room en zie jezelf', () {
+          _item('📞', 'Bel apparaat',
+              'Kies een apparaat in de kring en bel', () {
             Navigator.push(context, MaterialPageRoute(
-                builder: (c) => const VideobellenTestScherm()));
+                builder: (c) => const BelApparaatKiesScherm()));
           }),
         ],
         const SizedBox(height: 30),
