@@ -44,11 +44,17 @@ class InkomendGesprekScherm extends StatefulWidget {
 class _InkomendGesprekSchermState extends State<InkomendGesprekScherm> {
   final AudioPlayer _ringtone = AudioPlayer();
   bool _gehandeld = false;
+  /// V3-4: auto-afwijzen als niemand binnen 45 seconden opneemt. Zelfde
+  /// effect als de 'Niet nu'-knop indrukken — scherm sluit, ringtone
+  /// stopt. Cancel in dispose en bij handmatig beantwoord/afwijs zodat
+  /// hij niet nog een keer vuurt na sluiting.
+  Timer? _timeout;
 
   @override
   void initState() {
     super.initState();
     unawaited(_startRingtone());
+    _timeout = Timer(const Duration(seconds: 45), _afwijzen);
   }
 
   Future<void> _startRingtone() async {
@@ -70,6 +76,7 @@ class _InkomendGesprekSchermState extends State<InkomendGesprekScherm> {
 
   @override
   void dispose() {
+    _timeout?.cancel();
     // Fire-and-forget: dispose mag niet async worden.
     unawaited(_ringtone.dispose());
     super.dispose();
@@ -80,6 +87,7 @@ class _InkomendGesprekSchermState extends State<InkomendGesprekScherm> {
     // twee keer de vervolg-flow triggert.
     if (_gehandeld) return;
     _gehandeld = true;
+    _timeout?.cancel();
     unawaited(_stopRingtone());
     widget.onBeantwoord();
   }
@@ -87,6 +95,7 @@ class _InkomendGesprekSchermState extends State<InkomendGesprekScherm> {
   void _afwijzen() {
     if (_gehandeld) return;
     _gehandeld = true;
+    _timeout?.cancel();
     unawaited(_stopRingtone());
     widget.onAfgewezen();
   }
