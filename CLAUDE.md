@@ -142,3 +142,82 @@ NOOIT blind pushen — vandaag (15 mei 2026) heeft dat 10 rode builds opgeleverd
     zichtbaar en peach-getint. Bij problemen: Cloud Function logs via
     `firebase functions:log --only onNieuwMoment`.
   - GEEN Claude Code-werk tot testresultaten binnen zijn.
+- 17 juli 2026: Videobellen V0 volledig af én gedeployed, V1 code-compleet
+  op main (commits VB-V0-1 t/m VB-V1-5, alle 9 groen op CI). Wat er ligt:
+  - LiveKit Cloud project `onsmoment-jsh7c0m3` (EU), API-key + secret in
+    Firebase Secrets (LIVEKIT_API_KEY + LIVEKIT_API_SECRET, versie 1)
+  - Cloud Function `getVideoCallToken` (europe-west1, secrets-binding via
+    defineSecret) — auth-required, 10-min JWT-TTL, schrijft niets naar
+    Firestore. `onNieuwMoment` volledig ongewijzigd naast deze toevoeging.
+  - Flutter-service `VideoCallService` met haalToken/vraagCameraPermissie/
+    join/hangup. Alle publieke methods kIsWeb-guarded; hangup is idempotent
+    en synchroon-resettend; join reverten bij fout en re-throwen.
+  - `VideobellenTestScherm` (verborgen achter DEBUG_VIDEOBELLEN, alleen op
+    familie-modus) verbindt met `test_{apparaatId}` en toont self-view via
+    AnimatedBuilder op Room (ChangeNotifier).
+  - Android manifest: CAMERA + MODIFY_AUDIO_SETTINGS + USE_FULL_SCREEN_INTENT
+    (RECORD_AUDIO was al aanwezig).
+- 17 juli 2026 — Veiligheidsaudit V0+V1: alle 7 punten groen (bewijs
+  vastgelegd; belangrijkste uitkomsten):
+  1. Flag-uit-garantie: `grep VideoCallService|videobellen|livekit|
+     cloud_functions|permission_handler|FirebaseFunctions lib/main.dart`
+     geeft ZERO matches — de service wordt in productie nergens gebootstrapt.
+     Enige productie-aanroep zit achter `if (DEBUG_VIDEOBELLEN &&
+     !widget.alsOntvanger)` in familie_scherm.dart:3570.
+  2. Bestaande flows onaangeraakt: `git diff 91a65d0..HEAD -- lib/main.dart
+     lib/screens/tablet/tablet_scherm.dart lib/services/push_service.dart`
+     = 0 regels. Enige aanpassing in familie_scherm.dart = +1 import + 15
+     flag-gated regels. Momenten-flow, 22 listeners, push, popup identiek.
+  3. Permissies: CAMERA is dangerous (runtime-prompt, nooit getriggerd met
+     flag uit); MODIFY_AUDIO_SETTINGS is normal (geen prompt);
+     USE_FULL_SCREEN_INTENT is special (Play Console-declaration nodig vóór
+     V9 store-release). Geen crash-risico op minSdk 23 (permission_handler
+     11 vereist minSdk 21).
+  4. Cloud Function veiligheid: auth ✓; ROOM/IDENTITY WORDEN NIET SERVER-
+     SIDE GEBONDEN AAN KRING-MEMBERSHIP OF UID — voor V1 met test-rooms
+     acceptabel, MOET fixed voor V2 (zie openstaande punten).
+  5. Deps schoon: cloud_functions 4.7.6, permission_handler 11.3.1,
+     transitief 9 nieuwe packages, geen conflict met record/just_audio/
+     video_player. pubspec.lock consistent.
+  6. Kosten: getVideoCallToken schrijft niks (regel-audit videocall.ts) →
+     recursie onmogelijk. Enige kosten: 1 invocation + JWT-CPU per call.
+     Geen server-side rate-limiting → V2-punt.
+  7. Openstaande punten geregistreerd in aparte sectie hieronder.
+
+## Openstaande punten (niet vergeten)
+
+Losse eindjes die bewust zijn uitgesteld en niet mogen wegzakken.
+Update deze lijst zodra een item is opgepakt of afgerond.
+
+Push-meldingen (Fase 3+):
+- **Device-test 3d**: open tot testers 1.0.7+9 uit Play Store hebben
+  geïnstalleerd — 5 scenario's beschreven in de sessielog van 13 juli.
+- **firebase-functions v6 → v7**: major-upgrade waarschuwing tijdens deploy,
+  wachten tot na 3d-testresultaten om breaking changes te bundelen.
+- **Verstuurtijd-root-cause**: nog niet gediagnosticeerd — pakken zodra
+  push-meldingen groen zijn getest.
+- **Orphan-cleanup stap E**: laatste stap van de push-orphan-cleanup staat
+  nog open (details in oude sessie-log — te achterhalen via git-history).
+
+Videobellen (Fase VB):
+- **Device-test V1**: handmatig op telefoon met DEBUG_VIDEOBELLEN=true —
+  scenario's: (a) camera-permissie-prompt verschijnt bij eerste tap,
+  (b) self-view komt binnen 3s in beeld, (c) ophangen sluit netjes en
+  LiveKit-room verdwijnt (te checken in LiveKit Cloud dashboard),
+  (d) back-swipe verbreekt ook (dispose-pad), (e) tweede tap na ophangen
+  werkt opnieuw (geen stale state).
+- **V2-vereiste — kring-membership check server-side**: getVideoCallToken
+  moet vóór token-uitgifte verifiëren dat `request.auth.uid` deel is van
+  de kring waar `roomName` bij hoort. Nu kan elke ingelogde user tokens
+  voor elke room vragen. Blocker voor productie-belflow.
+- **V2-vereiste — identity binden**: server bepaalt identity uit
+  (uid, apparaatId) i.p.v. deze uit client-payload over te nemen. Anders
+  kan client zich als iemand anders aanmelden in LiveKit.
+- **V2-vereiste — rate-limiting**: bv. max N token-requests per uid per
+  minuut, of App Check-integratie. Nu onbegrensd → potentieel misbruik.
+- **LiveKit secret-rotatie**: procedure vastleggen (regenerate in LiveKit
+  Cloud → `firebase functions:secrets:set` → redeploy). Documenteer.
+- **Play Store camera-verklaring (V9)**: bij store-release verklaren dat
+  CAMERA gebruikt wordt voor familie-videobellen, dat USE_FULL_SCREEN_
+  INTENT bij calling-functionaliteit hoort, en dat MODIFY_AUDIO_SETTINGS
+  vereist is door WebRTC audio-routing.
