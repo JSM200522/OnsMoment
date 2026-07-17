@@ -13,6 +13,7 @@ import '../../data/debug_flags.dart';
 import '../../data/kring.dart';
 import '../../widgets/pulserend_hart.dart';
 import '../../widgets/video_speler.dart';
+import 'inkomend_gesprek_scherm.dart';
 
 class TabletScherm extends StatefulWidget {
   const TabletScherm({super.key});
@@ -49,6 +50,13 @@ class _TabletSchermState extends State<TabletScherm>
   /// Fase 2c: callback op [PushService.tapMomentIdNotifier]. Gecached
   /// zodat we bij dispose netjes remove-listener kunnen doen.
   VoidCallback? _tapMomentListener;
+  /// V2-5: callback op [PushService.incomingCallNotifier]. Alleen
+  /// geattacht als [DEBUG_VIDEOBELLEN] aan staat — met flag uit blijft
+  /// deze null en wordt de belflow op deze tablet nergens bereikbaar.
+  VoidCallback? _incomingCallListener;
+  /// Reentrancy-guard: voorkomt dat een re-emit van de notifier tijdens
+  /// een openstaand inkomend-gesprek-scherm nogmaals een scherm opent.
+  bool _inkomendGesprekOpen = false;
   String? _mijnApparaatId;
   String? _kringId;
   // V9 2.4-a-2: kring-doc als primaire bron; _gebruikerSub blijft als
@@ -139,6 +147,7 @@ class _TabletSchermState extends State<TabletScherm>
       });
     });
     _startTapMomentListener();
+    _startIncomingCallListener();
   }
 
   /// Fase 2c: luistert op de tap-notifier van PushService. Wordt getriggerd
@@ -157,6 +166,63 @@ class _TabletSchermState extends State<TabletScherm>
     // initApp getInitialMessage al heeft gepubliceerd vóór dit scherm
     // bouwde), triggeren we de callback zelf — addListener doet dat niet.
     if (PushService.tapMomentIdNotifier.value != null) cb();
+  }
+
+  /// V2-5: attach de incomingCall-listener alleen als DEBUG_VIDEOBELLEN
+  /// aan staat. Met flag uit blijft [PushService.incomingCallNotifier]
+  /// eventueel wél op waarde staan (want PushService is niet flag-
+  /// gated), maar niemand luistert dus er verandert niets aan het
+  /// gedrag van de tablet.
+  void _startIncomingCallListener() {
+    if (!DEBUG_VIDEOBELLEN) return;
+    void cb() { _verwerkInkomendGesprek(PushService.incomingCallNotifier.value); }
+    PushService.incomingCallNotifier.addListener(cb);
+    _incomingCallListener = cb;
+    // Initial: als er al een call gepubliceerd is voordat dit scherm
+    // bouwde (bv. FCM binnengekomen tijdens app-startup), triggeren we
+    // de callback zelf — addListener doet dat niet.
+    if (PushService.incomingCallNotifier.value != null) cb();
+  }
+
+  Future<void> _verwerkInkomendGesprek(IncomingCall? call) async {
+    if (call == null) return;
+    // Consumeer synchroon vóór de scherm-push zodat een re-emit tijdens
+    // het scherm geen tweede scherm opent.
+    PushService.incomingCallNotifier.value = null;
+    if (_inkomendGesprekOpen) return;
+    if (!mounted) return;
+    _inkomendGesprekOpen = true;
+    try {
+      final navigator = Navigator.of(context);
+      final messenger = ScaffoldMessenger.of(context);
+      bool beantwoord = false;
+      await navigator.push(MaterialPageRoute<void>(
+        fullscreenDialog: true,
+        builder: (_) => InkomendGesprekScherm(
+          call: call,
+          onBeantwoord: () {
+            beantwoord = true;
+            Navigator.of(navigator.context).pop();
+          },
+          onAfgewezen: () {
+            Navigator.of(navigator.context).pop();
+          },
+        ),
+      ));
+      if (!mounted) return;
+      // V2 wacht-status: nette toast tot V3 de echte verbinding legt.
+      // Bij afwijzen geen toast — het gesprek verdwijnt gewoon.
+      if (beantwoord) {
+        messenger.showSnackBar(SnackBar(
+          content: Text('Beantwoord — verbinding met '
+              '${call.callerName} volgt in V3'),
+          backgroundColor: kGreen,
+          duration: const Duration(seconds: 4),
+        ));
+      }
+    } finally {
+      _inkomendGesprekOpen = false;
+    }
   }
 
   Future<void> _verwerkTapMomentId(String? id) async {
@@ -185,6 +251,10 @@ class _TabletSchermState extends State<TabletScherm>
     if (_tapMomentListener != null) {
       PushService.tapMomentIdNotifier.removeListener(_tapMomentListener!);
       _tapMomentListener = null;
+    }
+    if (_incomingCallListener != null) {
+      PushService.incomingCallNotifier.removeListener(_incomingCallListener!);
+      _incomingCallListener = null;
     }
     _autoSluitTimer?.cancel();
     _checkTimer?.cancel();
