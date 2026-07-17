@@ -1026,6 +1026,14 @@ class _StuurTabState extends State<StuurTab> {
   TimeOfDay _tijd = TimeOfDay.now();
   DateTime _datum = DateTime.now();
   Uint8List? _mediaBytes;
+  // V9-mp3-fix: op mobiel houden we voor 'lied' alleen het bestandspad vast
+  // (withData: false in file_picker). De bytes worden pas gelezen op het
+  // moment van _verstuur, binnen de bestaande try/catch. Zo hangt er nooit
+  // minutenlang een groot mp3 in RAM — dat gaf OOM-kills bij terug-
+  // navigatie op 4G, met name bij cloud-bronnen (Drive/OneDrive) waar de
+  // picker eerst een cache-download doet en de gebruiker soms wegtapt.
+  // Op web blijft _mediaBytes leidend (geen filesystem).
+  String? _mediaPad;
   String _mediaNaam = '';
   bool _bezig = false;
   bool _testModus = false;  // Default UIT in productie (zie DEBUG_TESTMODUS)
@@ -1467,6 +1475,7 @@ class _StuurTabState extends State<StuurTab> {
         _opnameSeconden = 0;
         _hebOpname = false;
         _mediaBytes = null;
+        _mediaPad = null;
       });
       _opnameTimer?.cancel();
       _opnameTimer = Timer.periodic(const Duration(seconds: 1),
@@ -1532,7 +1541,7 @@ class _StuurTabState extends State<StuurTab> {
             textAlign: TextAlign.center,
             style: const TextStyle(fontSize: 14,
                 fontWeight: FontWeight.w700, color: kBrown)),
-        if (_type == 'lied' && _mediaBytes != null) ...[
+        if (_type == 'lied' && (_mediaBytes != null || _mediaPad != null)) ...[
           const SizedBox(height: 12),
           GestureDetector(
             onTap: _speelLiedPreview,
@@ -1555,11 +1564,17 @@ class _StuurTabState extends State<StuurTab> {
   );
 
   Future<void> _speelLiedPreview() async {
-    if (_mediaBytes == null) return;
+    if (_mediaBytes == null && _mediaPad == null) return;
     try {
       await _previewPlayer.stop();
-      await _previewPlayer.setAudioSource(
-          _BytesAudioSource(_mediaBytes!, 'audio/mpeg'));
+      if (kIsWeb) {
+        // Web: bytes zijn leidend (geen filesystem).
+        await _previewPlayer.setAudioSource(
+            _BytesAudioSource(_mediaBytes!, 'audio/mpeg'));
+      } else {
+        // Mobiel: streamt vanaf het pad — geen bytes in RAM.
+        await _previewPlayer.setFilePath(_mediaPad!);
+      }
       await _previewPlayer.play();
     } catch (e) {
       _toonFout('Afspelen mislukt: $e');
@@ -1580,12 +1595,31 @@ class _StuurTabState extends State<StuurTab> {
           });
         }
       } else {
+        // V9-mp3-fix: op mobiel withData:false — houdt het volledige mp3
+        // uit RAM tot het moment van versturen. Op web is er geen file-
+        // systeem, daar is withData:true de enige optie.
         final result = await FilePicker.platform.pickFiles(
-            type: FileType.audio, withData: true);
-        if (result != null && result.files.first.bytes != null) {
+            type: FileType.audio, withData: kIsWeb);
+        if (result == null) return;
+        final f = result.files.first;
+        if (kIsWeb) {
+          if (f.bytes == null) return;
           setState(() {
-            _mediaBytes = result.files.first.bytes;
-            _mediaNaam = result.files.first.name;
+            _mediaBytes = f.bytes;
+            _mediaPad = null;
+            _mediaNaam = f.name;
+          });
+        } else {
+          final pad = f.path;
+          if (pad == null || pad.isEmpty) {
+            _toonFout('Kon dit bestand niet openen — kies er een uit '
+                'Downloads of je muziekmap.');
+            return;
+          }
+          setState(() {
+            _mediaBytes = null;
+            _mediaPad = pad;
+            _mediaNaam = f.name;
           });
         }
       }
@@ -1780,8 +1814,10 @@ class _StuurTabState extends State<StuurTab> {
     if (_type == 'stem' && !_hebOpname) {
       _toonFout('Neem eerst een stembericht op'); return;
     }
-    if ((_type == 'foto' || _type == 'lied' || _type == 'video')
-        && _mediaBytes == null) {
+    if ((_type == 'foto' || _type == 'video') && _mediaBytes == null) {
+      _toonFout('Kies eerst een bestand'); return;
+    }
+    if (_type == 'lied' && _mediaBytes == null && _mediaPad == null) {
       _toonFout('Kies eerst een bestand'); return;
     }
     setState(() => _bezig = true);
@@ -1862,13 +1898,35 @@ class _StuurTabState extends State<StuurTab> {
             .child('momenten')
             .child('${DateTime.now().millisecondsSinceEpoch}.$ext');
         mediaUrl = await _uploadMetProgress(ref, _mediaBytes!, contentType);
-      } else if (_mediaBytes != null) {
-        final ext = _type == 'foto' ? 'jpg' : 'mp3';
+      } else if (_type == 'lied') {
+        // V9-mp3-fix: bytes pas nu lezen (op mobiel uit _mediaPad, op web
+        // uit _mediaBytes). Fouten (lees-fout, te groot bestand) worden
+        // door de bovenliggende try/catch afgevangen en tonen een
+        // vriendelijke snackbar i.p.v. een crash.
+        final Uint8List liedBytes;
+        if (kIsWeb) {
+          if (_mediaBytes == null) {
+            throw Exception('Geen mp3 geselecteerd');
+          }
+          liedBytes = _mediaBytes!;
+        } else {
+          if (_mediaPad == null) {
+            throw Exception('Geen mp3 geselecteerd');
+          }
+          liedBytes = await File(_mediaPad!).readAsBytes();
+        }
         final ref = FirebaseStorage.instance.ref()
             .child('momenten')
-            .child('${DateTime.now().millisecondsSinceEpoch}.$ext');
-        await ref.putData(_mediaBytes!, SettableMetadata(
-            contentType: _type == 'foto' ? 'image/jpeg' : 'audio/mpeg'));
+            .child('${DateTime.now().millisecondsSinceEpoch}.mp3');
+        await ref.putData(liedBytes,
+            SettableMetadata(contentType: 'audio/mpeg'));
+        mediaUrl = await ref.getDownloadURL();
+      } else if (_type == 'foto' && _mediaBytes != null) {
+        final ref = FirebaseStorage.instance.ref()
+            .child('momenten')
+            .child('${DateTime.now().millisecondsSinceEpoch}.jpg');
+        await ref.putData(_mediaBytes!,
+            SettableMetadata(contentType: 'image/jpeg'));
         mediaUrl = await ref.getDownloadURL();
       }
 
@@ -1923,6 +1981,7 @@ class _StuurTabState extends State<StuurTab> {
           _type = '';
           _berichtCtrl.clear();
           _mediaBytes = null;
+          _mediaPad = null;
           _mediaNaam = '';
           _hebOpname = false;
           _opnamePad = null;
@@ -2080,6 +2139,7 @@ class _StuurTabState extends State<StuurTab> {
       onTap: () => setState(() {
         _type = _type == waarde ? '' : waarde;
         _mediaBytes = null;
+        _mediaPad = null;
         _mediaNaam = '';
         _hebOpname = false;
         _opnamePad = null;
