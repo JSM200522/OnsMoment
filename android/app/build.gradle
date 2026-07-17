@@ -114,3 +114,6 @@ dependencies {
 }
 
 apply plugin: 'com.google.gms.google-services'
+// Fase 3d-C4: Crashlytics Gradle-plugin. Moet ná google-services staan,
+// anders vindt hij het Firebase-project niet.
+apply plugin: 'com.google.firebase.crashlytics'

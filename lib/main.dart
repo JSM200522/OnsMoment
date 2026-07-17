@@ -10,6 +10,7 @@ import 'screens/familie/familie_scherm.dart';
 import 'screens/tablet/tablet_scherm.dart';
 import 'services/apparaat_service.dart';
 import 'services/device_modus_service.dart';
+import 'services/crash_service.dart';
 import 'services/push_service.dart';
 import 'data/debug_flags.dart';
 import 'theme/kleuren.dart';
@@ -22,6 +23,10 @@ final GlobalKey<ScaffoldMessengerState> scaffoldMessengerKey =
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp();
+  // Fase 3d-C4: Crashlytics zo vroeg mogelijk zodat crashes tijdens de
+  // rest van de init óók worden gerapporteerd. Web-veilig (no-op) en
+  // fail-soft — spiegelt het PushService-patroon.
+  await CrashService.initApp();
   // V9 API 35-compliance: vraag edge-to-edge expliciet aan zodat het gedrag
   // deterministisch is over alle Android-versies (op API 35 wordt het toch
   // afgedwongen). Schermen zijn al voorbereid met SafeArea op de juiste

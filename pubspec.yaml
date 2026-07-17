@@ -17,6 +17,7 @@ dependencies:
   cloud_firestore: ^4.15.8
   firebase_storage: ^11.6.9
   firebase_messaging: ^14.7.20
+  firebase_crashlytics: ^3.5.0
   flutter_local_notifications: ^17.1.2
   just_audio: ^0.9.36
   record: ^5.1.0

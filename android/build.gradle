@@ -5,6 +5,11 @@ buildscript {
     }
     dependencies {
         classpath 'com.google.gms:google-services:4.4.0'
+        // Crashlytics Gradle-plugin (Fase 3d-C4): uploadt automatisch de
+        // mapping/symbol-files bij elke release-build zodat stack-traces in
+        // de Firebase Console leesbaar zijn i.p.v. obfuscated. Vereist door
+        // firebase_crashlytics — zonder deze plugin faalt de Android-build.
+        classpath 'com.google.firebase:firebase-crashlytics-gradle:3.0.2'
     }
 }
 
