@@ -119,7 +119,11 @@ export const onNieuwMoment = onDocumentCreated(
 
     // 3. Target-apparaten bepalen (hybride):
     //    - aanApparaatIds als niet-lege array → gebruik die
-    //    - anders → alle ontvanger-apparaten in deze kring
+    //    - anders → ALLE apparaten in deze kring (familie + ontvanger),
+    //      zonder modus-filter. Zo krijgen ook familie-telefoons die in
+    //      dezelfde kring zitten de melding (bv. Pixel die zowel verstuurt
+    //      als meekijkt). De afzender-uitfilter hieronder voorkomt dat
+    //      de verstuurder zichzelf pusht.
     //    - altijd → afzender (vanApparaatId) uitsluiten
     const vanApparaatId = moment.vanApparaatId as string | undefined;
     let targetIds: string[] = [];
@@ -132,7 +136,6 @@ export const onNieuwMoment = onDocumentCreated(
       const q = await db
         .collection('gebruikers').doc(eigenaarUid)
         .collection('apparaten')
-        .where('modus', '==', 'ontvanger')
         .where('kringId', '==', kringId)
         .get();
       targetIds = q.docs.map((d) => d.id);
@@ -181,7 +184,15 @@ export const onNieuwMoment = onDocumentCreated(
       notification: { title: titel, body },
       android: {
         priority: 'high',
-        notification: { channelId },
+        notification: {
+          channelId,
+          // Monochroom statusbar-icoon uit android/app/src/main/res/drawable-*
+          // (Fase 1: ic_stat_ons_moment, 5 densities). Zonder expliciete
+          // 'icon' pakt Android het launcher-icoon wit-op-wit in de statusbar.
+          icon: 'ic_stat_ons_moment',
+          // Peach-tint (matcht app-huisstijl) op het monochrome icoon.
+          color: '#FF9B71',
+        },
       },
       data: { momentId },
     };
