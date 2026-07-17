@@ -1231,6 +1231,12 @@ class _StuurTabState extends State<StuurTab> {
     _recorder.dispose();
     _previewPlayer.dispose();
     _opnameTimer?.cancel();
+    // V9-mp3-fix: expliciete cleanup als de gebruiker het scherm verlaat
+    // zonder te versturen. Framework GC ruimt dit uiteindelijk zelf op,
+    // maar door hier direct null te zetten geven we een grote Uint8List
+    // meteen vrij i.p.v. tijdens de navigatie-transitie mee te dragen.
+    _mediaBytes = null;
+    _mediaPad = null;
     super.dispose();
   }
 
