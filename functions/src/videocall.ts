@@ -59,6 +59,65 @@ const MODUS_GESPREK = 'gesprek';
  */
 const MAX_ID_LEN = 128;
 
+/**
+ * Rate-limit: max RATE_LIMIT_MAX token-requests per uid per rollend
+ * RATE_LIMIT_WINDOW_MS venster. Genoeg voor normale kring-gesprekken
+ * (bellen + accepteren + retry = ~5 requests) en tegelijk beperkend
+ * genoeg om spam-misbruik zichtbaar te maken.
+ */
+const RATE_LIMIT_WINDOW_MS = 60_000;
+const RATE_LIMIT_MAX = 10;
+
+/**
+ * Verwerkt de rate-limit-teller voor deze uid in één Firestore-
+ * transactie. Bij overschrijding gooit-ie HttpsError('resource-
+ * exhausted') zonder de teller verder op te hogen (transaction schrijft
+ * pas onder de threshold — de exception verhindert de tx.set-write).
+ *
+ * expireAt is een Timestamp op windowStart+60s. Firestore's TTL-policy
+ * ruimt verlaten docs op zodra Joshua handmatig de policy zet in
+ * Console (Firestore → TTL → collection group 'rate_limits', field
+ * 'expireAt'). Zonder policy blijft het doc staan (~50 bytes/uid,
+ * verwaarloosbaar) maar wordt niet opgeruimd.
+ *
+ * Firestore rules: 'rate_limits' moet dicht staan voor clients — de
+ * function schrijft via admin SDK die rules bypasset. Rule om toe te
+ * voegen in Console: `match /rate_limits/{u} { allow read, write: if
+ * false; }`.
+ */
+async function verwerkRateLimit(
+  db: admin.firestore.Firestore,
+  uid: string,
+): Promise<void> {
+  const nowMs = Date.now();
+  const ref = db.collection('rate_limits').doc(uid);
+  await db.runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    const raw = snap.data() ?? {};
+    const prevStart = typeof raw.windowStartMs === 'number'
+      ? raw.windowStartMs : null;
+    const prevCount = typeof raw.count === 'number' ? raw.count : 0;
+    const inWindow =
+      prevStart !== null && nowMs - prevStart < RATE_LIMIT_WINDOW_MS;
+    const windowStartMs = inWindow ? prevStart : nowMs;
+    const count = (inWindow ? prevCount : 0) + 1;
+    if (count > RATE_LIMIT_MAX) {
+      logger.warn('rate-limit overschreden', {
+        uid, count, windowStartMs, windowSizeMs: RATE_LIMIT_WINDOW_MS,
+      });
+      throw new HttpsError('resource-exhausted',
+        'Te veel token-verzoeken; probeer over een minuut opnieuw');
+    }
+    tx.set(ref, {
+      windowStartMs,
+      count,
+      expireAt: admin.firestore.Timestamp.fromMillis(
+        windowStartMs + RATE_LIMIT_WINDOW_MS,
+      ),
+    });
+  });
+}
+
 export const getVideoCallToken = onCall(
   {
     region: 'europe-west1',
@@ -70,7 +129,14 @@ export const getVideoCallToken = onCall(
     }
     const uid = request.auth.uid;
 
-    // 1. Payload valideren.
+    const db = admin.firestore();
+
+    // 1. Rate-limit vóór alle andere checks. Beschermt óók tegen
+    //    aanvragers die spammen met invalid payloads (die zouden
+    //    anders ongelimiteerd invalid-argument-responses krijgen).
+    await verwerkRateLimit(db, uid);
+
+    // 2. Payload valideren.
     const data = request.data ?? {};
     const modus = data.modus;
     const apparaatId = data.apparaatId;
@@ -92,9 +158,7 @@ export const getVideoCallToken = onCall(
       }
     }
 
-    const db = admin.firestore();
-
-    // 2. Apparaat-verify: het apparaat moet bestaan onder deze uid.
+    // 3. Apparaat-verify: het apparaat moet bestaan onder deze uid.
     //    Bewijst dat de aanvrager écht toegang heeft tot dit apparaat en
     //    voorkomt dat iemand met identity={andermans-appId} spookt.
     const apparaatRef = db
@@ -109,7 +173,7 @@ export const getVideoCallToken = onCall(
         'Apparaat hoort niet bij dit account');
     }
 
-    // 3. Kring-membership (alleen voor gesprek). Bewijs van lidmaatschap
+    // 4. Kring-membership (alleen voor gesprek). Bewijs van lidmaatschap
     //    is óf een leden-subcollectie-doc (V9-schema) óf eigenaarUid op
     //    de kring-doc (V7/V8-fallback). Parallel-fetch — 2 reads,
     //    trivial in kosten.
@@ -136,12 +200,12 @@ export const getVideoCallToken = onCall(
       roomName = `gesprek_${kringId}`;
     }
 
-    // 4. Identity is SERVER-BEPAALD. Elke client-input voor identity
+    // 5. Identity is SERVER-BEPAALD. Elke client-input voor identity
     //    wordt genegeerd — voorkomt dat een aanvrager zichzelf in
     //    LiveKit als iemand anders presenteert (impersonation-risk).
     const identity = `${uid}_${apparaatId}`;
 
-    // 5. Token uitgeven.
+    // 6. Token uitgeven.
     try {
       const at = new AccessToken(
         LIVEKIT_API_KEY.value(),
