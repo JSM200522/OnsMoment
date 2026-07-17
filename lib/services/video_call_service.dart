@@ -29,6 +29,10 @@ class VideoCallService {
 
   static bool _initGedaan = false;
   static Room? _room;
+  /// Gescheiden van [_room] zodat we hem in [hangup] netjes kunnen
+  /// disposen los van de room-lifecycle. LiveKit garbage-collect de
+  /// listener niet vanzelf zodra de room weg is.
+  static EventsListener<RoomEvent>? _listener;
 
   /// Actieve LiveKit-room, of null als er geen gesprek loopt. UI-schermen
   /// luisteren hierop om de juiste view te tonen (idle vs actief-gesprek).
@@ -90,33 +94,74 @@ class VideoCallService {
     }
   }
 
-  /// V1: verbindt met [livekitUrl] via [token], joint de room en publiceert
+  /// Verbindt met [livekitUrl] via [token], joint de room en publiceert
   /// camera + microfoon. Vult [roomNotifier] met de actieve room zodat UI
   /// naar het gesprek-scherm kan switchen. No-op op web.
+  ///
+  /// Werkwijze:
+  /// - Eerst [hangup] aanroepen zodat een oude sessie netjes opruimt als
+  ///   join per ongeluk dubbel wordt aangeroepen (voorkomt orphan-rooms).
+  /// - Verse [Room] per sessie — LiveKit-listeners en publications leven
+  ///   op room-niveau; hergebruik zou stale state kunnen introduceren.
+  /// - [RoomDisconnectedEvent] triggert bij server-drop of netwerkverlies.
+  ///   Daar resetten we alleen state; hangup zelf disposet de listener,
+  ///   dus we voorkomen dubbele dispose.
+  /// - Faalt connect of publish, dan reverten we alle state en re-throwen
+  ///   zodat het aanroepend scherm foutmelding kan tonen.
   static Future<void> join(String token) async {
     if (kIsWeb) return;
-    // V1 implementeert dit:
-    //   final room = Room();
-    //   await room.connect(livekitUrl, token,
-    //       roomOptions: const RoomOptions(adaptiveStream: true,
-    //           dynacast: true));
-    //   await room.localParticipant?.setCameraEnabled(true);
-    //   await room.localParticipant?.setMicrophoneEnabled(true);
-    //   _room = room;
-    //   roomNotifier.value = room;
+    await hangup();
+    // RoomOptions horen sinds livekit_client 2.x in de constructor, niet
+    // in connect() (die parameter is daar deprecated).
+    final room = Room(
+      roomOptions: const RoomOptions(
+        adaptiveStream: true,
+        dynacast: true,
+      ),
+    );
+    final listener = room.createListener();
+    listener.on<RoomDisconnectedEvent>((_) {
+      _room = null;
+      roomNotifier.value = null;
+    });
+    try {
+      await room.connect(livekitUrl, token);
+      await room.localParticipant?.setCameraEnabled(true);
+      await room.localParticipant?.setMicrophoneEnabled(true);
+      _room = room;
+      _listener = listener;
+      roomNotifier.value = room;
+    } catch (_) {
+      await listener.dispose();
+      try {
+        await room.disconnect();
+      } catch (_) {
+        // Al mislukt; niets extra's te doen.
+      }
+      rethrow;
+    }
   }
 
-  /// Verbreekt het gesprek en ruimt de room op. Safe om te callen als
-  /// er geen gesprek loopt. Wordt door V3 aangeroepen vanaf de ophangen-
-  /// knop op het gesprek-scherm.
+  /// Verbreekt het gesprek en ruimt de room + listener op. Safe om te
+  /// callen als er geen gesprek loopt. Wordt door V3 aangeroepen vanaf
+  /// de ophangen-knop op het gesprek-scherm.
+  ///
+  /// State wordt SYNCHROON gereset vóór we disconnect awaiten, zodat
+  /// een ophang-knop voelt-als-direct-reagerend en een tweede tap niet
+  /// dezelfde room nogmaals disconnect.
   static Future<void> hangup() async {
     if (kIsWeb) return;
-    try {
-      await _room?.disconnect();
-    } catch (_) {
-      // Disconnect kan falen als de verbinding al weg is; log niet nodig.
-    }
+    final room = _room;
+    final listener = _listener;
     _room = null;
+    _listener = null;
     roomNotifier.value = null;
+    await listener?.dispose();
+    if (room == null) return;
+    try {
+      await room.disconnect();
+    } catch (_) {
+      // Al disconnected of netwerk-uit — negeer.
+    }
   }
 }
