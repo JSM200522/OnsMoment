@@ -1930,9 +1930,11 @@ class _StuurTabState extends State<StuurTab> {
         final ref = FirebaseStorage.instance.ref()
             .child('momenten')
             .child('${DateTime.now().millisecondsSinceEpoch}.mp3');
-        await ref.putData(liedBytes,
-            SettableMetadata(contentType: 'audio/mpeg'));
-        mediaUrl = await ref.getDownloadURL();
+        // V9-mp3-fix: dezelfde progress-upload als video (zie
+        // _uploadMetProgress) — zonder feedback lijkt de app op 4G te
+        // hangen, waarna gebruikers wegtappen en het venster inconsistent
+        // achterlaten.
+        mediaUrl = await _uploadMetProgress(ref, liedBytes, 'audio/mpeg');
       } else if (_type == 'foto' && _mediaBytes != null) {
         final ref = FirebaseStorage.instance.ref()
             .child('momenten')
