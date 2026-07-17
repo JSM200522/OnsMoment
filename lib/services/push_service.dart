@@ -7,6 +7,62 @@ import 'apparaat_service.dart';
 import 'device_modus_service.dart';
 import 'kring_service.dart';
 
+/// Immutable payload voor een inkomend videogesprek. Wordt gepubliceerd
+/// op [PushService.incomingCallNotifier] zodra een high-priority data-
+/// FCM met `type: 'inkomend_gesprek'` binnenkomt. tablet_scherm (V2-5)
+/// leest hem en opent [InkomendGesprekScherm] (V2-4).
+///
+/// Alle velden worden server-side geleverd door startVideoCall (V2-2):
+/// - [roomName]/[callId]: uniek per gesprek, gesprek_{kringId}_{ms}_{r6}
+/// - [callerName]: leesbare naam van de beller, klaar voor het scherm
+/// - [calleeToken]: LiveKit-JWT (10 min) — callee kan direct join'en,
+///   geen tweede getVideoCallToken-call nodig
+/// - [kringId]: voor logging en debug
+@immutable
+class IncomingCall {
+  final String roomName;
+  final String callId;
+  final String callerName;
+  final String calleeToken;
+  final String kringId;
+  final DateTime ontvangenOp;
+
+  const IncomingCall({
+    required this.roomName,
+    required this.callId,
+    required this.callerName,
+    required this.calleeToken,
+    required this.kringId,
+    required this.ontvangenOp,
+  });
+
+  /// Bouwt uit een FCM-data-map. Returnt null als één van de vereiste
+  /// velden ontbreekt of leeg is — dan wordt er niks op de notifier
+  /// gezet en logt PushService een waarschuwing.
+  static IncomingCall? uitFcmData(Map<String, dynamic> data) {
+    final roomName = data['roomName'];
+    final callId = data['callId'];
+    final callerName = data['callerName'];
+    final calleeToken = data['calleeToken'];
+    final kringId = data['kringId'];
+    if (roomName is! String || roomName.isEmpty
+        || callId is! String || callId.isEmpty
+        || callerName is! String || callerName.isEmpty
+        || calleeToken is! String || calleeToken.isEmpty
+        || kringId is! String || kringId.isEmpty) {
+      return null;
+    }
+    return IncomingCall(
+      roomName: roomName,
+      callId: callId,
+      callerName: callerName,
+      calleeToken: calleeToken,
+      kringId: kringId,
+      ontvangenOp: DateTime.now(),
+    );
+  }
+}
+
 /// FCM-basis (Fase 1 push-meldingen).
 ///
 /// Ontwerpprincipes:
@@ -62,6 +118,17 @@ class PushService {
   /// bij bestaande installs.
   static const String _oudDefaultChannelId = 'ons_moment_default';
 
+  /// V2-3: eigen channel voor inkomend videogesprek. Aparte channel
+  /// (buiten de zes moment-channels) zodat de gebruiker in Android →
+  /// App-meldingen het gesprek-geluid en de importance apart kan zetten
+  /// zonder de moment-meldingen te beïnvloeden.
+  ///
+  /// Nu nog niet in FCM-payload gebruikt (startVideoCall stuurt data-
+  /// only, screen-open gaat via [incomingCallNotifier]). Bij V5 (full-
+  /// screen intent op lock-screen) komt hier de notification-block bij
+  /// die dit channel gebruikt.
+  static const String gesprekChannelId = 'ons_moment_gesprek';
+
   static final FlutterLocalNotificationsPlugin _localNotifications =
       FlutterLocalNotificationsPlugin();
 
@@ -87,6 +154,20 @@ class PushService {
   /// doet no-op via kIsWeb-guard).
   static final ValueNotifier<String?> tapMomentIdNotifier =
       ValueNotifier<String?>(null);
+
+  /// V2-3: publiceert een inkomend videogesprek zodra een high-priority
+  /// data-FCM met `type: 'inkomend_gesprek'` binnenkomt (foreground-
+  /// pad). tablet_scherm (V2-5) luistert en opent het bel-scherm.
+  ///
+  /// Consumer-verantwoordelijkheid (zoals bij [tapMomentIdNotifier]):
+  /// reset naar null zodra het scherm de call heeft afgehandeld,
+  /// anders zou een re-emit hetzelfde scherm nogmaals openen.
+  ///
+  /// Background/terminated-pad wordt in V5 (full-screen intent) toe-
+  /// gevoegd — dan komt er een notification-block bij de FCM-payload
+  /// zodat Android het scherm ook op lock-screen kan wekken.
+  static final ValueNotifier<IncomingCall?> incomingCallNotifier =
+      ValueNotifier<IncomingCall?>(null);
 
   /// Roep één keer aan in main() ná Firebase.initializeApp().
   /// Idempotent — een tweede aanroep is een no-op.
@@ -143,12 +224,31 @@ class PushService {
         );
       }
 
-      // Foreground-handler: alleen loggen. De Firestore-listener in
-      // familie_scherm.dart toont de popup — een lokale notification
-      // hier zou een dubbel-tik geven.
+      // V2-3: gesprek-channel voor V5-full-screen-intent voorbereiding.
+      // Importance.max zodat Android hem straks als "calling"-priority
+      // behandelt (nodig voor de lock-screen-wake in V5). Geen expliciete
+      // sound — Android valt terug op default notification sound tot we
+      // in V5 een ringtone-raw-resource toevoegen.
+      await androidImpl?.createNotificationChannel(
+        const AndroidNotificationChannel(
+          gesprekChannelId,
+          'Ons Moment – Inkomend gesprek',
+          description: 'Inkomend videogesprek van familie',
+          importance: Importance.max,
+        ),
+      );
+
+      // Foreground-handler: alleen loggen voor de moment-flow (de
+      // Firestore-listener in familie_scherm.dart toont daar de popup —
+      // een lokale notification hier zou een dubbel-tik geven). Voor
+      // een inkomend-gesprek-payload publiceren we wél direct op
+      // [incomingCallNotifier] zodat tablet_scherm het scherm kan
+      // openen — daar is Firestore geen bron van waarheid want de
+      // callee-token zit in de FCM-data.
       FirebaseMessaging.onMessage.listen((msg) {
         debugPrint('🔔 FCM foreground: ${msg.messageId} '
             'data=${msg.data} notification=${msg.notification?.title}');
+        _publiceerInkomendGesprek(msg);
       });
 
       // Tap in background-state.
@@ -285,6 +385,24 @@ class PushService {
     final id = raw.trim();
     if (id.isEmpty) return;
     tapMomentIdNotifier.value = id;
+  }
+
+  /// V2-3: publiceert een inkomend gesprek als de FCM-data een geldig
+  /// `type: 'inkomend_gesprek'`-payload bevat. Onbekende types (bv.
+  /// moment-payloads die géén 'type'-veld hebben) worden overgeslagen —
+  /// die worden door de andere handlers of de Firestore-listener in
+  /// familie_scherm afgehandeld.
+  ///
+  /// Als het type wél matcht maar velden missen: waarschuwing loggen en
+  /// notifier ongemoeid laten. Beter dan een half-scherm met lege naam.
+  static void _publiceerInkomendGesprek(RemoteMessage msg) {
+    if (msg.data['type'] != 'inkomend_gesprek') return;
+    final call = IncomingCall.uitFcmData(msg.data);
+    if (call == null) {
+      debugPrint('⚠️ inkomend-gesprek FCM incompleet: ${msg.data}');
+      return;
+    }
+    incomingCallNotifier.value = call;
   }
 }
 
