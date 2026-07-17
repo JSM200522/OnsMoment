@@ -39,32 +39,57 @@ class VideoCallService {
   static final ValueNotifier<Room?> roomNotifier =
       ValueNotifier<Room?>(null);
 
+  /// Modus voor [haalToken]. Server valideert dat de bijbehorende
+  /// velden aanwezig zijn (kringId voor gesprek, apparaatId altijd).
+  static const String modusTest = 'test';
+  static const String modusGesprek = 'gesprek';
+
   /// Vraagt bij de Cloud Function [getVideoCallToken] (europe-west1) een
-  /// korte JWT op waarmee de client kan verbinden met [roomName]. De
-  /// identity wordt in de token gebrand zodat LiveKit deelnemers uniek
-  /// kan onderscheiden — meestal apparaatId (evt. met '_test'-suffix in
-  /// V1). Throwt bij netwerkfout, HttpsError of onverwacht antwoord;
-  /// caller (V1 test-scherm, V3 belflow) beslist over UI-feedback.
-  static Future<String> haalToken({
-    required String roomName,
-    required String identity,
+  /// korte JWT op waarmee de client kan verbinden met de door de server
+  /// bepaalde LiveKit-room. Sinds V2-0 bepaalt de server zowel [roomName]
+  /// als [identity] — de client kan zich niet meer als iemand anders
+  /// identificeren en kan geen tokens voor willekeurige rooms opvragen.
+  ///
+  /// Payload:
+  /// - [modus]: [modusTest] of [modusGesprek].
+  /// - [apparaatId]: altijd verplicht; server bindt hem aan de auth-uid
+  ///   voor de identity en verifieert dat het apparaat-doc bestaat.
+  /// - [kringId]: alleen verplicht bij [modusGesprek]; server checkt
+  ///   membership (leden-doc of eigenaar-fallback).
+  ///
+  /// Returnt een record met token/roomName/identity. Throwt bij netwerk-
+  /// fout, HttpsError of onverwacht antwoord; caller (V1 test-scherm,
+  /// V3+ belflow) beslist over UI-feedback.
+  static Future<({String token, String roomName, String identity})>
+      haalToken({
+    required String modus,
+    required String apparaatId,
+    String? kringId,
   }) async {
+    final payload = <String, dynamic>{
+      'modus': modus,
+      'apparaatId': apparaatId,
+    };
+    if (kringId != null && kringId.isNotEmpty) {
+      payload['kringId'] = kringId;
+    }
     final callable = FirebaseFunctions
         .instanceFor(region: 'europe-west1')
         .httpsCallable('getVideoCallToken');
-    final result = await callable.call<dynamic>(<String, dynamic>{
-      'roomName': roomName,
-      'identity': identity,
-    });
+    final result = await callable.call<dynamic>(payload);
     final data = result.data;
     if (data is! Map) {
       throw StateError('Cloud Function gaf onverwacht antwoord');
     }
     final token = data['token'];
-    if (token is! String || token.isEmpty) {
-      throw StateError('Cloud Function gaf geen token terug');
+    final roomName = data['roomName'];
+    final identity = data['identity'];
+    if (token is! String || token.isEmpty
+        || roomName is! String || roomName.isEmpty
+        || identity is! String || identity.isEmpty) {
+      throw StateError('Cloud Function gaf incompleet antwoord');
     }
-    return token;
+    return (token: token, roomName: roomName, identity: identity);
   }
 
   /// Runtime camera-permissie. Native: vraagt via [permission_handler] en

@@ -35,6 +35,10 @@ enum _Fase {
 class _VideobellenTestSchermState extends State<VideobellenTestScherm> {
   _Fase _fase = _Fase.camera;
   String _foutmelding = '';
+  /// Server-bepaalde roomName; wordt gezet zodra [haalToken] slaagt en
+  /// getoond in de TEST-badge zodat je in de test kunt controleren dat
+  /// de server hem correct opbouwt als `test_{uid}_{apparaatId}`.
+  String? _serverRoomName;
 
   @override
   void initState() {
@@ -52,13 +56,19 @@ class _VideobellenTestSchermState extends State<VideobellenTestScherm> {
       }
       setState(() => _fase = _Fase.token);
       final apparaatId = await DeviceModusService.krijgApparaatId();
-      final token = await VideoCallService.haalToken(
-        roomName: 'test_$apparaatId',
-        identity: '${apparaatId}_test',
+      // Sinds V2-0 bepaalt de server roomName + identity. De client
+      // geeft alleen modus + apparaatId door; kringId is null want
+      // dit is de test-route (per-apparaat unieke room).
+      final resultaat = await VideoCallService.haalToken(
+        modus: VideoCallService.modusTest,
+        apparaatId: apparaatId,
       );
       if (!mounted) return;
-      setState(() => _fase = _Fase.verbinden);
-      await VideoCallService.join(token);
+      setState(() {
+        _fase = _Fase.verbinden;
+        _serverRoomName = resultaat.roomName;
+      });
+      await VideoCallService.join(resultaat.token);
       if (!mounted) return;
       setState(() => _fase = _Fase.actief);
     } catch (e) {
@@ -152,8 +162,10 @@ class _VideobellenTestSchermState extends State<VideobellenTestScherm> {
                   decoration: BoxDecoration(
                       color: Colors.black54,
                       borderRadius: BorderRadius.circular(8)),
-                  child: const Text('TEST · self-view',
-                      style: TextStyle(color: Colors.white, fontSize: 12,
+                  child: Text(
+                      'TEST · self-view'
+                      '${_serverRoomName != null ? '\n${_serverRoomName!}' : ''}',
+                      style: const TextStyle(color: Colors.white, fontSize: 12,
                           fontWeight: FontWeight.w700)),
                 ),
               ),
