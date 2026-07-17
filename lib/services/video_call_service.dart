@@ -1,6 +1,8 @@
 import 'dart:async';
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter/foundation.dart';
 import 'package:livekit_client/livekit_client.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 /// VideoCallService — LiveKit-integratie voor de videobel-functie.
 ///
@@ -32,6 +34,47 @@ class VideoCallService {
   /// luisteren hierop om de juiste view te tonen (idle vs actief-gesprek).
   static final ValueNotifier<Room?> roomNotifier =
       ValueNotifier<Room?>(null);
+
+  /// Vraagt bij de Cloud Function [getVideoCallToken] (europe-west1) een
+  /// korte JWT op waarmee de client kan verbinden met [roomName]. De
+  /// identity wordt in de token gebrand zodat LiveKit deelnemers uniek
+  /// kan onderscheiden — meestal apparaatId (evt. met '_test'-suffix in
+  /// V1). Throwt bij netwerkfout, HttpsError of onverwacht antwoord;
+  /// caller (V1 test-scherm, V3 belflow) beslist over UI-feedback.
+  static Future<String> haalToken({
+    required String roomName,
+    required String identity,
+  }) async {
+    final callable = FirebaseFunctions
+        .instanceFor(region: 'europe-west1')
+        .httpsCallable('getVideoCallToken');
+    final result = await callable.call<dynamic>(<String, dynamic>{
+      'roomName': roomName,
+      'identity': identity,
+    });
+    final data = result.data;
+    if (data is! Map) {
+      throw StateError('Cloud Function gaf onverwacht antwoord');
+    }
+    final token = data['token'];
+    if (token is! String || token.isEmpty) {
+      throw StateError('Cloud Function gaf geen token terug');
+    }
+    return token;
+  }
+
+  /// Runtime camera-permissie. Native: vraagt via [permission_handler] en
+  /// returnt of de gebruiker het permitteerde. Web: no-op → true, want
+  /// de browser vraagt zelf om toestemming zodra LiveKit getUserMedia
+  /// aanroept (permission_handler is op web te beperkt om hier zinvol
+  /// te zijn). Als de gebruiker 'permanent geweigerd' heeft gekozen
+  /// laat deze method dat aan de caller — die kan dan
+  /// [openAppSettings] tonen als UX-vervolg.
+  static Future<bool> vraagCameraPermissie() async {
+    if (kIsWeb) return true;
+    final status = await Permission.camera.request();
+    return status.isGranted;
+  }
 
   /// Roep aan in main() na Firebase.initializeApp(). Web + flag-uit
   /// → no-op. Alle initialisatie zit in try/catch zodat een LiveKit-
