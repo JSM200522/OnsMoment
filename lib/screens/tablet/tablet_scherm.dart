@@ -14,6 +14,7 @@ import '../../data/kring.dart';
 import '../../widgets/pulserend_hart.dart';
 import '../../widgets/video_speler.dart';
 import 'inkomend_gesprek_scherm.dart';
+import '../videobellen/gesprek_scherm.dart';
 
 class TabletScherm extends StatefulWidget {
   const TabletScherm({super.key});
@@ -194,7 +195,6 @@ class _TabletSchermState extends State<TabletScherm>
     _inkomendGesprekOpen = true;
     try {
       final navigator = Navigator.of(context);
-      final messenger = ScaffoldMessenger.of(context);
       bool beantwoord = false;
       await navigator.push(MaterialPageRoute<void>(
         fullscreenDialog: true,
@@ -210,14 +210,18 @@ class _TabletSchermState extends State<TabletScherm>
         ),
       ));
       if (!mounted) return;
-      // V2 wacht-status: nette toast tot V3 de echte verbinding legt.
-      // Bij afwijzen geen toast — het gesprek verdwijnt gewoon.
       if (beantwoord) {
-        messenger.showSnackBar(SnackBar(
-          content: Text('Beantwoord — verbinding met '
-              '${call.callerName} volgt in V3'),
-          backgroundColor: kGreen,
-          duration: const Duration(seconds: 4),
+        // V3-2: doorstroom naar GesprekScherm. Dat scherm doet zelf
+        // VideoCallService.join(call.calleeToken) in initState en toont
+        // ondertussen een dementie-vriendelijke 'Verbinden met {naam}…'-
+        // status — geen leeg gat tussen tap en remote video. Fout tijdens
+        // join wordt in GesprekScherm zelf afgehandeld (fout-fase +
+        // sluiten-knop); tablet-side hoeft niet meer te reageren.
+        await navigator.push(MaterialPageRoute<void>(
+          builder: (_) => GesprekScherm(
+            remoteNaam: call.callerName,
+            tokenToJoin: call.calleeToken,
+          ),
         ));
       }
     } finally {
