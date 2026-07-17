@@ -206,15 +206,18 @@ Videobellen (Fase VB):
   LiveKit-room verdwijnt (te checken in LiveKit Cloud dashboard),
   (d) back-swipe verbreekt ook (dispose-pad), (e) tweede tap na ophangen
   werkt opnieuw (geen stale state).
-- **V2-vereiste — kring-membership check server-side**: getVideoCallToken
-  moet vóór token-uitgifte verifiëren dat `request.auth.uid` deel is van
-  de kring waar `roomName` bij hoort. Nu kan elke ingelogde user tokens
-  voor elke room vragen. Blocker voor productie-belflow.
-- **V2-vereiste — identity binden**: server bepaalt identity uit
-  (uid, apparaatId) i.p.v. deze uit client-payload over te nemen. Anders
-  kan client zich als iemand anders aanmelden in LiveKit.
-- **V2-vereiste — rate-limiting**: bv. max N token-requests per uid per
-  minuut, of App Check-integratie. Nu onbegrensd → potentieel misbruik.
+- **~~V2-vereiste — kring-membership check server-side~~**: opgelost in
+  VB-V2-0-A (leden-doc + eigenaar-fallback parallel-read).
+- **~~V2-vereiste — identity binden~~**: opgelost in VB-V2-0-A (identity
+  = `{uid}_{apparaatId}`, client-input genegeerd).
+- **~~V2-vereiste — rate-limiting~~**: opgelost in VB-V2-0-B (Firestore-
+  transactie op `rate_limits/{uid}`, 10/rollend 60s-venster).
+- **TTL-policy rate_limits/expireAt**: aanmaken zodra de collectie voor
+  het eerst wordt aangeschreven (Console laat alleen bestaande collecties
+  kiezen). Doe dit zodra iemand in productie voor het eerst
+  getVideoCallToken heeft geraakt en de collectie in Firestore verschijnt.
+  Zonder policy blijft elke uid ~50 bytes rate-limit-doc houden — geen
+  crisis, wél cleanup-schuld.
 - **LiveKit secret-rotatie**: procedure vastleggen (regenerate in LiveKit
   Cloud → `firebase functions:secrets:set` → redeploy). Documenteer.
 - **Play Store camera-verklaring (V9)**: bij store-release verklaren dat
