@@ -25,6 +25,7 @@ import '../../widgets/video_speler.dart';
 import '../../data/labels.dart';
 import 'kringleden_scherm.dart';
 import 'kring_aanmaken_scherm.dart';
+import 'videobellen_test_scherm.dart';
 import '../../data/kring.dart';
 import '../../data/kring_membership.dart';
 import '../../services/kring_service.dart';
@@ -3560,6 +3561,21 @@ class _InstellingenTabState extends State<InstellingenTab> {
           await DeviceModusService.wis();
           await FirebaseAuth.instance.signOut();
         }),
+        // Fase VB-V1: verborgen debug-ingang. Alleen zichtbaar als de
+        // master-flag aan staat (debug-builds) en de gebruiker in de
+        // familie-modus zit — de ontvanger heeft niets aan een test-
+        // scherm. Bij VB-V6 verhuist DEBUG_VIDEOBELLEN naar Firestore-
+        // config zodat we per kring kunnen uitrollen; dit blok blijft
+        // gated op dezelfde flag.
+        if (DEBUG_VIDEOBELLEN && !widget.alsOntvanger) ...[
+          const SizedBox(height: 20),
+          _sectie('ONTWIKKELING'),
+          _item('🎥', 'Test videobellen',
+              'Verbind met een test-room en zie jezelf', () {
+            Navigator.push(context, MaterialPageRoute(
+                builder: (c) => const VideobellenTestScherm()));
+          }),
+        ],
         const SizedBox(height: 30),
         Center(child: Opacity(opacity: 0.85,
             child: Image.asset('assets/images/logo.png', height: 48))),
