@@ -224,3 +224,9 @@ Videobellen (Fase VB):
   CAMERA gebruikt wordt voor familie-videobellen, dat USE_FULL_SCREEN_
   INTENT bij calling-functionaliteit hoort, en dat MODIFY_AUDIO_SETTINGS
   vereist is door WebRTC audio-routing.
+- **DEBUG_VIDEOBELLEN staat TIJDELIJK op true (build 1.0.9+11)** voor de
+  gesloten-test op eigen testtoestellen. MOET terug naar false (of, als
+  V6 tegen die tijd af is, vervangen door de Firestore-config-flag)
+  vóór elke bredere release. Zonder deze terugzet zou elke installer
+  onmiddellijk de videobel-UI zien terwijl backend en UX nog niet
+  productie-klaar zijn.

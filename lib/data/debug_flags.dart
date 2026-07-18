@@ -17,4 +17,4 @@ const bool DEBUG_TESTMODUS = false;
 /// flow. Zet op true in een debug-build om test-scherm en belflow te
 /// ontgrendelen. Bij V6 verhuist deze naar Firestore-config zodat we
 /// per kring kunnen uitrollen zonder release.
-const bool DEBUG_VIDEOBELLEN = false;
+const bool DEBUG_VIDEOBELLEN = true;
