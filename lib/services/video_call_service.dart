@@ -141,6 +141,37 @@ class VideoCallService {
     return (token: token, roomName: roomName, callId: callId);
   }
 
+  /// V3: annuleert een lopend uitgaand gesprek vóórdat de callee heeft
+  /// opgenomen. Roept de [cancelVideoCall] Cloud Function aan die een
+  /// data-FCM naar het doel-apparaat pusht met `type:
+  /// 'gesprek_geannuleerd'`; de tablet sluit het inkomend-scherm alleen
+  /// als de callId matcht met de openstaande call.
+  ///
+  /// Returnt of de FCM daadwerkelijk verzonden is. Bij false is er geen
+  /// probleem — de tablet valt terug op de 45s-timeout. Alleen security-
+  /// laag fouten worden ge-throwt (unauth, rate-limit, membership).
+  ///
+  /// Bewust fire-and-forget-vriendelijk: caller kan het resultaat
+  /// negeren en direct doorgaan met hangup(), want een falende cancel
+  /// mag de ophangen-UI niet blokkeren.
+  static Future<bool> cancelCall({
+    required String kringId,
+    required String callId,
+    required String doelApparaatId,
+  }) async {
+    final callable = FirebaseFunctions
+        .instanceFor(region: 'europe-west1')
+        .httpsCallable('cancelVideoCall');
+    final result = await callable.call<dynamic>(<String, dynamic>{
+      'kringId': kringId,
+      'callId': callId,
+      'doelApparaatId': doelApparaatId,
+    });
+    final data = result.data;
+    if (data is! Map) return false;
+    return data['verzonden'] == true;
+  }
+
   /// Runtime camera-permissie. Native: vraagt via [permission_handler] en
   /// returnt of de gebruiker het permitteerde. Web: no-op → true, want
   /// de browser vraagt zelf om toestemming zodra LiveKit getUserMedia

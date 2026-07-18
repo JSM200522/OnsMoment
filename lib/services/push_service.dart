@@ -169,6 +169,18 @@ class PushService {
   static final ValueNotifier<IncomingCall?> incomingCallNotifier =
       ValueNotifier<IncomingCall?>(null);
 
+  /// V3-5: publiceert de callId van een geannuleerd uitgaand gesprek.
+  /// Beller heeft opgehangen vóór callee opnam → server pusht data-FCM
+  /// `type: 'gesprek_geannuleerd'`. tablet_scherm luistert en sluit het
+  /// openstaande inkomend-scherm alleen als de callId matcht met de
+  /// huidig-getoonde call (voorkomt dat een stale/oude cancel-FCM het
+  /// verkeerde scherm sluit).
+  ///
+  /// Consumer-verantwoordelijkheid als bij [tapMomentIdNotifier] en
+  /// [incomingCallNotifier]: reset naar null na afhandeling.
+  static final ValueNotifier<String?> cancelledCallIdNotifier =
+      ValueNotifier<String?>(null);
+
   /// Roep één keer aan in main() ná Firebase.initializeApp().
   /// Idempotent — een tweede aanroep is een no-op.
   static Future<void> initApp() async {
@@ -249,6 +261,7 @@ class PushService {
         debugPrint('🔔 FCM foreground: ${msg.messageId} '
             'data=${msg.data} notification=${msg.notification?.title}');
         _publiceerInkomendGesprek(msg);
+        _publiceerGeannuleerdGesprek(msg);
       });
 
       // Tap in background-state.
@@ -403,6 +416,20 @@ class PushService {
       return;
     }
     incomingCallNotifier.value = call;
+  }
+
+  /// V3-5: publiceert de callId van een geannuleerd gesprek als de FCM-
+  /// data een geldig `type: 'gesprek_geannuleerd'`-payload bevat.
+  /// Missende callId → waarschuwing + notifier ongemoeid; tablet valt
+  /// dan terug op de 45s-timeout.
+  static void _publiceerGeannuleerdGesprek(RemoteMessage msg) {
+    if (msg.data['type'] != 'gesprek_geannuleerd') return;
+    final callId = msg.data['callId'];
+    if (callId is! String || callId.isEmpty) {
+      debugPrint('⚠️ gesprek_geannuleerd FCM zonder callId: ${msg.data}');
+      return;
+    }
+    cancelledCallIdNotifier.value = callId;
   }
 }
 

@@ -28,6 +28,9 @@ admin.initializeApp();
 export { getVideoCallToken } from './videocall';
 // Fase VB-V2: gesprek initiëren + callee bereiken via high-priority FCM.
 export { startVideoCall } from './start_call';
+// Fase VB-V3: beller cancelt vóór callee opneemt → data-FCM naar callee
+// zodat het inkomend-scherm sluit en de ringtone stopt.
+export { cancelVideoCall } from './cancel_call';
 
 /**
  * Spiegel van PushService.channelIdVoorGeluid in
