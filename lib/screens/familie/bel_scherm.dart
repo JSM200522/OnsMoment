@@ -49,6 +49,10 @@ class _BelSchermState extends State<BelScherm> {
   /// GesprekScherm. Dispose skipt dan de hangup want GesprekScherm
   /// heeft de room overgenomen en handelt hem zelf af.
   bool _doorstroomNaarGesprek = false;
+  /// V3-6: callId van het lopende gesprek (retour uit startCall).
+  /// Nodig om bij vroege hangup een cancel-FCM naar de tablet te
+  /// sturen. Null vóór startCall en na doorstroom of hangup.
+  String? _callId;
 
   @override
   void initState() {
@@ -71,6 +75,7 @@ class _BelSchermState extends State<BelScherm> {
         doelApparaatId: widget.doelApparaatId,
       );
       if (!mounted) return;
+      _callId = resultaat.callId;
       await VideoCallService.join(resultaat.token);
       if (!mounted) return;
       final room = VideoCallService.roomNotifier.value;
@@ -99,6 +104,26 @@ class _BelSchermState extends State<BelScherm> {
   }
 
   Future<void> _ophangen() async {
+    // V3-6: als de callee nog niet is doorgestroomd naar GesprekScherm
+    // (dus nog niet joined), sturen we een cancel-FCM zodat het inkomend-
+    // scherm op de tablet direct sluit i.p.v. tot de 45s-timeout te
+    // moeten wachten. Fire-and-forget met catchError zodat een falende
+    // cancel de ophangen-UX niet blokkeert — de LiveKit-hangup daarna
+    // is de bron van waarheid dat het gesprek daadwerkelijk stopt.
+    //
+    // Als callee wél al joined is (_doorstroomNaarGesprek==true), doen
+    // we geen cancel: dit scherm is dan al vervangen door GesprekScherm
+    // en de callee volgt via LiveKit's RoomDisconnectedEvent uit hangup.
+    final callId = _callId;
+    if (!_doorstroomNaarGesprek && callId != null) {
+      unawaited(
+        VideoCallService.cancelCall(
+          kringId: widget.kringId,
+          callId: callId,
+          doelApparaatId: widget.doelApparaatId,
+        ).catchError((_) => false),
+      );
+    }
     await VideoCallService.hangup();
     if (!mounted) return;
     Navigator.of(context).pop();
