@@ -32,9 +32,10 @@ if (keystorePropertiesFile.exists()) {
 
 android {
     namespace "nl.onsmoment.app"
-    // V9 Play Store-eis: minimaal target/compile SDK 35 (Android 15).
-    // Hardcoded i.p.v. flutter.compileSdkVersion zodat het niet afhangt van
-    // de Flutter SDK-versie op de Codemagic build-machine.
+    // Play Store-eis: targetSdk 36 (Android 16) verplicht per 31 aug 2026.
+    // compileSdk op 35 gehouden: AGP 8.6.0 + Gradle 8.7 schrijven de
+    // targetSdk in het manifest zonder SDK-36-platform nodig te hebben.
+    // compileSdk ophogen naar 36 pas als Codemagic SDK 36 beschikbaar heeft.
     compileSdk 35
     // Vast gepind: enkele plugins (o.a. wakelock_plus) eisen een hogere NDK
     // dan flutter.ndkVersion op de huidige Flutter-SDK levert. Codemagic
@@ -64,7 +65,7 @@ android {
         // You can update the following values to match your application needs.
         // For more information, see: https://docs.flutter.dev/deployment/android#reviewing-the-gradle-build-configuration.
         minSdkVersion 23
-        targetSdkVersion 35
+        targetSdkVersion 36
         versionCode flutterVersionCode.toInteger()
         versionName flutterVersionName
         multiDexEnabled true
