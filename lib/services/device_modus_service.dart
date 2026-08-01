@@ -211,7 +211,14 @@ class DeviceModusService {
   /// (membership zonder eigen kring) ondersteund.
   static Future<String?> huidigeKringIdMetFallback() async {
     final cached = await krijgActieveKring();
-    if (cached != null && cached.isNotEmpty) return cached;
+    if (cached != null && cached.isNotEmpty) {
+      // Notifier bijwerken zodat ValueListenableBuilder-consumers (bv.
+      // KringledenScherm) de kringId zien zonder opnieuw inloggen.
+      if (actieveKringNotifier.value != cached) {
+        actieveKringNotifier.value = cached;
+      }
+      return cached;
+    }
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null) return null;
     try {
