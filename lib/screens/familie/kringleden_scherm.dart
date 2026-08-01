@@ -10,6 +10,7 @@ import '../../services/device_modus_service.dart';
 import '../../services/kring_service.dart';
 import '../../services/uitnodiging_service.dart';
 import '../../theme/kleuren.dart';
+import '../../widgets/normaal_scaffold.dart';
 import '../../main.dart' show scaffoldMessengerKey;
 
 /// Kringleden-overzicht per ACTIEVE kring (V9 2.8-a-2).
@@ -28,7 +29,7 @@ class _KringledenSchermState extends State<KringledenScherm> {
   @override
   Widget build(BuildContext context) {
     final uid = FirebaseAuth.instance.currentUser?.uid;
-    return Scaffold(
+    return NormaalScaffold(
       backgroundColor: kCream,
       appBar: AppBar(backgroundColor: Colors.transparent, elevation: 0,
         iconTheme: const IconThemeData(color: kBrown),

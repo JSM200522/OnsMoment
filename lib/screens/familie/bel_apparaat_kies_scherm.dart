@@ -3,6 +3,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import '../../services/apparaat_service.dart';
 import '../../services/device_modus_service.dart';
 import '../../theme/kleuren.dart';
+import '../../widgets/normaal_scaffold.dart';
 import 'bel_scherm.dart';
 
 /// Verborgen debug-scherm (achter DEBUG_VIDEOBELLEN) — laat een familielid
@@ -93,7 +94,7 @@ class _BelApparaatKiesSchermState extends State<BelApparaatKiesScherm> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    return NormaalScaffold(
       backgroundColor: kCream,
       appBar: AppBar(
         title: const Text('Bel apparaat (debug)',
@@ -102,7 +103,7 @@ class _BelApparaatKiesSchermState extends State<BelApparaatKiesScherm> {
         foregroundColor: kBrown,
         elevation: 0,
       ),
-      body: SafeArea(child: _bouwInhoud()),
+      body: _bouwInhoud(),
     );
   }
 

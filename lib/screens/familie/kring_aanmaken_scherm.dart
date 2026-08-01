@@ -9,6 +9,7 @@ import '../../data/geluiden.dart';
 import '../../services/device_modus_service.dart';
 import '../../services/kring_service.dart';
 import '../../theme/kleuren.dart';
+import '../../widgets/normaal_scaffold.dart';
 
 /// Scherm waarmee een ingelogde gebruiker een EXTRA kring kan aanmaken
 /// vanuit Instellingen → "Nieuwe kring aanmaken" (V9 2.2a + 2.2a-fix).
@@ -187,7 +188,7 @@ class _KringAanmakenSchermState extends State<KringAanmakenScherm> {
   @override
   Widget build(BuildContext context) {
     final magOpslaan = _naamCtrl.text.trim().isNotEmpty && !_bezig;
-    return Scaffold(
+    return NormaalScaffold(
       backgroundColor: kCream,
       appBar: AppBar(
         backgroundColor: Colors.transparent,
@@ -196,7 +197,7 @@ class _KringAanmakenSchermState extends State<KringAanmakenScherm> {
         title: const Text('Nieuwe kring aanmaken',
             style: TextStyle(color: kBrown, fontWeight: FontWeight.w900)),
       ),
-      body: SafeArea(child: Padding(
+      body: Padding(
         padding: const EdgeInsets.all(20),
         child: ListView(children: [
           const Text('Vertel ons over je dierbare',
@@ -343,7 +344,7 @@ class _KringAanmakenSchermState extends State<KringAanmakenScherm> {
           ),
           const SizedBox(height: 24),
         ]),
-      )),
+      ),
     );
   }
 
