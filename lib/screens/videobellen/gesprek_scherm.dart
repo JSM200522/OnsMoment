@@ -108,6 +108,9 @@ class _GesprekSchermState extends State<GesprekScherm> {
 
   @override
   Widget build(BuildContext context) {
+    // Category 2 — bewust full-bleed: zwarte achtergrond loopt via
+    // edge-to-edge achter de systeem-balken. Alle bedieningselementen
+    // (ophangen-knop, local-video-thumbnail) zitten binnen SafeArea.
     return PopScope(
       canPop: false,
       child: Scaffold(

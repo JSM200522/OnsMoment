@@ -736,6 +736,11 @@ class _TabletSchermState extends State<TabletScherm>
                     ? naamUitDoc
                     : (_gecachteOntvangerNaam ?? ''));
 
+        // Category 2 — bewust full-bleed: foto-achtergrond en popup-overlay
+        // lopen via Positioned.fill achter de systeem-balken. Inhoud-laag
+        // zit in SafeArea (lijn ~788); popup-inhoud ook in SafeArea.
+        // Geen NormaalScaffold: het kiosk-scherm heeft geen AppBar en de
+        // achtergrond-foto MOET achter de balken doorlopen.
         return Scaffold(
           // V9 2.26: Stack in SizedBox.expand zodat hij tight body-hoogte
           // krijgt. Zonder dit krimpt de Stack naar de intrinsieke hoogte

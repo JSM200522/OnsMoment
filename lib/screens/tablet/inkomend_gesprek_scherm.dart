@@ -108,6 +108,10 @@ class _InkomendGesprekSchermState extends State<InkomendGesprekScherm> {
 
   @override
   Widget build(BuildContext context) {
+    // Category 2 — bewust full-bleed: crème-achtergrond vult het hele
+    // scherm incl. systeembalk-zones. Beantwoorden (100px) en Niet-nu
+    // (60px) zitten in SafeArea > Column > Padding(all(24)) — nooit
+    // achter een navigatie- of statusbalk.
     return PopScope(
       // Back-swipe/-knop mag het gesprek NIET stiekem laten wegvallen —
       // de dierbare moet een expliciete keuze maken. canPop:false

@@ -157,6 +157,9 @@ class _BelSchermState extends State<BelScherm> {
 
   @override
   Widget build(BuildContext context) {
+    // Category 2 — bewust full-bleed: zwarte achtergrond loopt via
+    // edge-to-edge achter de systeem-balken. Ophangen-knop
+    // (Positioned bottom:24) en self-view zitten binnen SafeArea.
     return Scaffold(
       backgroundColor: Colors.black,
       body: SafeArea(child: _bouwInhoud()),
