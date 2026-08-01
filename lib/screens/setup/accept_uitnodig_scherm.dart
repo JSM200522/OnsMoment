@@ -5,6 +5,7 @@ import '../../services/apparaat_service.dart';
 import '../../services/device_modus_service.dart';
 import '../../services/uitnodiging_service.dart';
 import '../../theme/kleuren.dart';
+import '../../widgets/normaal_scaffold.dart';
 import 'gast_signup_scherm.dart';
 
 /// Accept-flow voor een uitnodig-link of -code (V9 2.5-a-3-a).
@@ -181,7 +182,7 @@ class _AcceptUitnodigSchermState extends State<AcceptUitnodigScherm> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    return NormaalScaffold(
       backgroundColor: kCream,
       appBar: AppBar(
         backgroundColor: Colors.transparent,
@@ -190,14 +191,14 @@ class _AcceptUitnodigSchermState extends State<AcceptUitnodigScherm> {
         title: const Text('Uitnodiging',
             style: TextStyle(color: kBrown, fontWeight: FontWeight.w900)),
       ),
-      body: SafeArea(child: Padding(
+      body: Padding(
         padding: const EdgeInsets.all(20),
         child: ListView(children: [
           if (_uitnodiging == null) ..._tokenInvoerSectie()
           else ..._previewEnKeuzeSectie(_uitnodiging!),
           if (_toonInlogVelden) ..._inlogSectie(),
         ]),
-      )),
+      ),
     );
   }
 

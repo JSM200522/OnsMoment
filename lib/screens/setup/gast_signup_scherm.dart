@@ -6,6 +6,7 @@ import '../../services/apparaat_service.dart';
 import '../../services/device_modus_service.dart';
 import '../../services/uitnodiging_service.dart';
 import '../../theme/kleuren.dart';
+import '../../widgets/normaal_scaffold.dart';
 
 /// Signup-pad voor uitgenodigde gast zonder bestaand account (V9 2.5-a-3-b).
 ///
@@ -177,7 +178,7 @@ class _GastSignupSchermState extends State<GastSignupScherm> {
   @override
   Widget build(BuildContext context) {
     final u = widget.uitnodiging;
-    return Scaffold(
+    return NormaalScaffold(
       backgroundColor: kCream,
       appBar: AppBar(
         backgroundColor: Colors.transparent,
@@ -186,7 +187,7 @@ class _GastSignupSchermState extends State<GastSignupScherm> {
         title: const Text('Nieuw account',
             style: TextStyle(color: kBrown, fontWeight: FontWeight.w900)),
       ),
-      body: SafeArea(child: Padding(
+      body: Padding(
         padding: const EdgeInsets.all(20),
         child: ListView(children: [
           // Mini-preview van de kring waar gast lid van wordt.
@@ -281,7 +282,7 @@ class _GastSignupSchermState extends State<GastSignupScherm> {
               style: TextStyle(fontSize: 12, color: kTextMuted, height: 1.4)),
           ),
         ]),
-      )),
+      ),
     );
   }
 

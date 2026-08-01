@@ -11,6 +11,7 @@ import '../../services/kring_service.dart';
 import '../../theme/kleuren.dart';
 import '../../data/geluiden.dart';
 import '../../data/kring.dart';
+import '../../widgets/normaal_scaffold.dart';
 import 'accept_uitnodig_scherm.dart';
 
 class SetupWizard extends StatefulWidget {
@@ -78,21 +79,19 @@ class _SetupWizardState extends State<SetupWizard> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    return NormaalScaffold(
       backgroundColor: kCream,
-      body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(20),
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            if (_stap > 0) _topBalk(),
-            Expanded(child: SingleChildScrollView(child: _huidigeStap())),
-            const SizedBox(height: 12),
-            if (_stap > 0
-                && !(_rol == 'ontvanger' && _stap == 2)
-                && !(_rol == 'ontvanger' && _ontvangerKringen != null))
-              _knop(),
-          ]),
-        ),
+      body: Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          if (_stap > 0) _topBalk(),
+          Expanded(child: SingleChildScrollView(child: _huidigeStap())),
+          const SizedBox(height: 12),
+          if (_stap > 0
+              && !(_rol == 'ontvanger' && _stap == 2)
+              && !(_rol == 'ontvanger' && _ontvangerKringen != null))
+            _knop(),
+        ]),
       ),
     );
   }
