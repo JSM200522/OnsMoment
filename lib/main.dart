@@ -27,11 +27,18 @@ void main() async {
   // rest van de init óók worden gerapporteerd. Web-veilig (no-op) en
   // fail-soft — spiegelt het PushService-patroon.
   await CrashService.initApp();
-  // V9 API 35-compliance: vraag edge-to-edge expliciet aan zodat het gedrag
-  // deterministisch is over alle Android-versies (op API 35 wordt het toch
-  // afgedwongen). Schermen zijn al voorbereid met SafeArea op de juiste
-  // plekken — zie tablet_scherm.dart en familie_scherm.dart.
+  // A2: edge-to-edge + donkere iconen als standaard voor status- en
+  // navigatiebalk. Content-schermen draaien op crème-achtergrond; dark
+  // icons zijn daar leesbaar. Full-bleed video-schermen zijn te kort voor
+  // een eigen override — acceptabel. Insets worden 100% via OS geleverd
+  // (MediaQuery); nergens in de app staan hardcoded statusbar-hoogtes.
   SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+  SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
+    statusBarColor: Colors.transparent,
+    statusBarIconBrightness: Brightness.dark,
+    systemNavigationBarColor: Colors.transparent,
+    systemNavigationBarIconBrightness: Brightness.dark,
+  ));
   // Fase 1 push-meldingen: FCM-basis opzetten (background-handler,
   // notification channel, foreground/tap-listeners). No-op op web dankzij
   // kIsWeb-guard in PushService. Faalt silent bij Play Services-fouten —
