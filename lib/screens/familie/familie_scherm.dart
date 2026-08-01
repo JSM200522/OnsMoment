@@ -542,7 +542,11 @@ class _FamilieSchermState extends State<FamilieScherm>
       }
       final geplandOp = (d['geplandOp'] as Timestamp?)?.toDate();
       if (geplandOp == null) continue;
-      if (geplandOp.isBefore(nu) && geplandOp.isAfter(voor24uur)) {
+      // +30s tolerantie: dekt server-timestamp vs tablet-klok drift.
+      // Geplande momenten (uren in de toekomst) worden nooit voortijdig
+      // getoond door deze marge.
+      if (geplandOp.isBefore(nu.add(const Duration(seconds: 30)))
+          && geplandOp.isAfter(voor24uur)) {
         _toonPopup(doc.id, d);
         return;
       }
@@ -1795,7 +1799,7 @@ class _StuurTabState extends State<StuurTab> {
         'emoji': '💕',
         'mediaUrl': '',
         'bericht': '',
-        'geplandOp': Timestamp.now(),
+        'geplandOp': FieldValue.serverTimestamp(),
         'verstuurdOp': FieldValue.serverTimestamp(),
         'gezien': false,
         'testModus': _testModus,
@@ -1952,7 +1956,10 @@ class _StuurTabState extends State<StuurTab> {
         mediaUrl = await ref.getDownloadURL();
       }
 
-      final geplandTijd = _testModus ? DateTime.now() : DateTime(
+      // testModus-branch gebruikt FieldValue.serverTimestamp() als geplandOp
+      // (zie verderop) — geen phone-klok nodig. Niet-testModus gebruikt de
+      // door de gebruiker gekozen planningstijd.
+      final geplandTijd = DateTime(
           _datum.year, _datum.month, _datum.day, _tijd.hour, _tijd.minute);
 
       // V9 2.10-a-2: drie target-modes — iedereen / lid (userUid) /
@@ -1987,7 +1994,11 @@ class _StuurTabState extends State<StuurTab> {
         'type': _type,
         'mediaUrl': mediaUrl,
         'bericht': _berichtCtrl.text.trim(),
-        'geplandOp': Timestamp.fromDate(geplandTijd),
+        // testModus = direct versturen: server-timestamp voorkomt
+        // klokverschil met ontvanger. Gepland moment: user-gekozen tijd.
+        'geplandOp': _testModus
+            ? FieldValue.serverTimestamp()
+            : Timestamp.fromDate(geplandTijd),
         'verstuurdOp': FieldValue.serverTimestamp(),
         'gezien': false,
         'testModus': _testModus,

@@ -480,8 +480,11 @@ class _TabletSchermState extends State<TabletScherm>
       if (van != null && van == _mijnApparaatId) continue;
       final geplandOp = (d['geplandOp'] as Timestamp?)?.toDate();
       if (geplandOp == null) continue;
-      // Toon als gepland tijd al voorbij is en niet ouder dan 24 uur
-      if (geplandOp.isBefore(nu) && geplandOp.isAfter(voor24uur)) {
+      // +30s tolerantie: dekt server-timestamp vs tablet-klok drift.
+      // Geplande momenten (uren in de toekomst) worden nooit voortijdig
+      // getoond door deze marge.
+      if (geplandOp.isBefore(nu.add(const Duration(seconds: 30)))
+          && geplandOp.isAfter(voor24uur)) {
         _toonPopup(doc.id, d);
         return;
       }
