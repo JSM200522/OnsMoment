@@ -86,15 +86,18 @@ function callerNaamUit(
   return trimmed.length > 0 ? trimmed : 'Familie';
 }
 
+// Pure helper — key en secret komen als parameter zodat de handler
+// ze één keer valideert en de functie zelf geen module-globals leest.
 async function maakToken(
+  livekitKey: string,
+  livekitSecret: string,
   identity: string,
   roomName: string,
 ): Promise<string> {
-  const at = new AccessToken(
-    LIVEKIT_API_KEY.value(),
-    LIVEKIT_API_SECRET.value(),
-    { identity, ttl: TOKEN_TTL },
-  );
+  const at = new AccessToken(livekitKey, livekitSecret, {
+    identity,
+    ttl: TOKEN_TTL,
+  });
   at.addGrant({
     roomJoin: true,
     room: roomName,
@@ -176,7 +179,20 @@ export const startVideoCall = onCall(
         'Doel-apparaat is niet bereikbaar (geen actieve push-token)');
     }
 
-    // 5. Room-naam + tokens. Timestamp + rand-suffix maakt hem uniek
+    // 5. Secrets valideren. Expliciet binnen de handler lezen — garantie
+    //    dat Cloud Run ze al gemount heeft. Lege waarde is een
+    //    configuratiefout die we direct loggen zodat de oorzaak zichtbaar
+    //    is in Cloud Logging i.p.v. als cryptische LiveKit-fout.
+    const livekitKey = LIVEKIT_API_KEY.value();
+    const livekitSecret = LIVEKIT_API_SECRET.value();
+    if (!livekitKey || !livekitSecret) {
+      logger.error('LiveKit-secrets ontbreken', {
+        uid, kringId, hasKey: !!livekitKey, hasSecret: !!livekitSecret,
+      });
+      throw new HttpsError('internal', 'Server-configuratiefout');
+    }
+
+    // 6. Room-naam + tokens. Timestamp + rand-suffix maakt hem uniek
     //    per gesprek zodat gemiste oproepen niet in een oude sessie
     //    kunnen doorlekken.
     const nowMs = Date.now();
@@ -193,8 +209,8 @@ export const startVideoCall = onCall(
     let calleeToken: string;
     try {
       [callerToken, calleeToken] = await Promise.all([
-        maakToken(callerIdentity, roomName),
-        maakToken(calleeIdentity, roomName),
+        maakToken(livekitKey, livekitSecret, callerIdentity, roomName),
+        maakToken(livekitKey, livekitSecret, calleeIdentity, roomName),
       ]);
     } catch (e) {
       logger.error('token-generatie faalde', {
@@ -203,7 +219,7 @@ export const startVideoCall = onCall(
       throw new HttpsError('internal', 'Token-generatie faalde');
     }
 
-    // 6. FCM naar doel-apparaat — data-only, high-priority. Geen
+    // 7. FCM naar doel-apparaat — data-only, high-priority. Geen
     //    'notification'-block: het scherm-opent-flow gaat via de
     //    incomingCallNotifier in PushService (V2-3), niet via een
     //    tray-melding. Bij V5 (full-screen intent) komt daar een
