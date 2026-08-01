@@ -5207,7 +5207,7 @@ class _OntvangenBerichtenSchermState extends State<OntvangenBerichtenScherm> {
       // op ontvanger-kant.
       final results = await Future.wait([
         FirebaseFirestore.instance.collection('kringen').doc(kringId).get(),
-        ApparaatService.kringLeden(uid),
+        ApparaatService.kringLeden(uid, kringId),
         DeviceModusService.krijgApparaatId(),
       ]);
       final kringDoc = results[0] as DocumentSnapshot;

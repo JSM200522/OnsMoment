@@ -56,7 +56,7 @@ class _BelApparaatKiesSchermState extends State<BelApparaatKiesScherm> {
         });
         return;
       }
-      final leden = await ApparaatService.kringLeden(uid);
+      final leden = await ApparaatService.kringLeden(uid, kringId);
       if (!mounted) return;
       setState(() {
         _bezig = false;

@@ -108,22 +108,34 @@ class ApparaatService {
     } catch (_) {}
   }
 
-  /// Geeft alle apparaten in deze kring terug voor adres-keuze in stuur-UI.
-  /// Lege lijst bij fout (bv. permission-denied of nog geen apparaten).
-  static Future<List<Map<String, dynamic>>> kringLeden(String familieUid) async {
+  /// Geeft actieve apparaten in deze kring terug voor adres-keuze in stuur-UI.
+  /// Filter: fcmToken aanwezig + kringId klopt — sluit orphan-docs (testresten
+  /// zonder actieve push-verbinding) uit zodat ze nooit in de bellijst
+  /// verschijnen. Lege lijst bij fout (bv. permission-denied of geen apparaten).
+  static Future<List<Map<String, dynamic>>> kringLeden(
+      String familieUid, String kringId) async {
     try {
       final snap = await FirebaseFirestore.instance
           .collection('gebruikers').doc(familieUid)
           .collection('apparaten').get();
-      return snap.docs.map((doc) {
-        final d = doc.data();
-        return <String, dynamic>{
-          'apparaatId': doc.id,
-          'persoonsNaam': d['persoonsNaam'] as String? ?? '',
-          'apparaatLabel': d['apparaatLabel'] as String? ?? '',
-          'modus': d['modus'] as String? ?? '',
-        };
-      }).toList();
+      return snap.docs
+          .where((doc) {
+            final d = doc.data();
+            final token = d['fcmToken'] as String?;
+            final kring = d['kringId'] as String?;
+            return token != null && token.isNotEmpty
+                && kring == kringId;
+          })
+          .map((doc) {
+            final d = doc.data();
+            return <String, dynamic>{
+              'apparaatId': doc.id,
+              'persoonsNaam': d['persoonsNaam'] as String? ?? '',
+              'apparaatLabel': d['apparaatLabel'] as String? ?? '',
+              'modus': d['modus'] as String? ?? '',
+            };
+          })
+          .toList();
     } catch (_) {
       return [];
     }
