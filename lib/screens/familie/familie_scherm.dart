@@ -20,6 +20,7 @@ import '../../services/push_service.dart';
 import '../../theme/kleuren.dart';
 import '../../data/geluiden.dart';
 import '../../data/debug_flags.dart';
+import '../../widgets/normaal_scaffold.dart';
 import '../../widgets/pulserend_hart.dart';
 import '../../widgets/video_speler.dart';
 import '../../data/labels.dart';
@@ -3788,7 +3789,7 @@ class MomentenBeherenScherm extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final uid = FirebaseAuth.instance.currentUser?.uid;
-    return Scaffold(
+    return NormaalScaffold(
       backgroundColor: kCream,
       appBar: AppBar(backgroundColor: Colors.transparent, elevation: 0,
         iconTheme: const IconThemeData(color: kBrown),
@@ -4669,7 +4670,7 @@ class _OntvangerInfoSchermState extends State<OntvangerInfoScherm> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    return NormaalScaffold(
       backgroundColor: kCream,
       appBar: AppBar(backgroundColor: Colors.transparent, elevation: 0,
         iconTheme: const IconThemeData(color: kBrown),
@@ -5272,7 +5273,7 @@ class _OntvangenBerichtenSchermState extends State<OntvangenBerichtenScherm> {
     final leegLijstTekst = widget.alsOntvanger
         ? 'Nog geen berichten van je familie'
         : 'Nog geen berichten van $_toonNaam';
-    return Scaffold(
+    return NormaalScaffold(
       backgroundColor: kCream,
       appBar: AppBar(
         backgroundColor: Colors.transparent, elevation: 0,
