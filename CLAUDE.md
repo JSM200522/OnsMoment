@@ -183,6 +183,28 @@ NOOIT blind pushen — vandaag (15 mei 2026) heeft dat 10 rode builds opgeleverd
      recursie onmogelijk. Enige kosten: 1 invocation + JWT-CPU per call.
      Geen server-side rate-limiting → V2-punt.
   7. Openstaande punten geregistreerd in aparte sectie hieronder.
+- 1 augustus 2026: Android 16-compliance + structurele edge-to-edge afhandeling
+  code-compleet (commits A1 t/m A3, 6 commits, alle groen op CI). Build
+  1.0.10+12 klaar voor Codemagic-build en device-test. Wat er ligt:
+  - A1 (fc0e4e8): targetSdkVersion 35 → 36 voor Play Store-deadline 31 aug
+    2026 (verlengd tot 1 nov 2026). compileSdk blijft 35; AGP 8.6.0 +
+    Gradle 8.7 schrijven targetSdk 36 in manifest zonder SDK-36-platform.
+  - A2 (bd87b91 t/m dd6b1be): NormaalScaffold-wrapper geïntroduceerd
+    (lib/widgets/normaal_scaffold.dart). Logica: SafeArea(top: appBar==null)
+    — met AppBar handelt Scaffold+AppBar de statusbalk al af (top:false);
+    zonder AppBar doet SafeArea het zelf (top:true). Altijd bottom:true voor
+    de navigatiebalk. Aangesloten: setup_wizard, accept_uitnodig, gast_signup,
+    kring_aanmaken, kringleden (P1-fix), bel_apparaat_kies, MomentenBeheren
+    (P2), OntvangerProfiel (P3), MomentenLijst (P4). SystemUiOverlayStyle
+    toegevoegd in main.dart: transparante balken, donkere iconen als standaard.
+    Nul hardcoded inset-waarden in de hele app — alle insets via OS/MediaQuery.
+  - A3 (94baad4): Category 2-markers op alle full-bleed schermen. Geverifieerd
+    dat ophangen-knop (GesprekScherm bottom:32, BelScherm bottom:24),
+    Beantwoorden-knop (InkomendGesprekScherm in SafeArea > Padding(all(24)))
+    en TabletScherm-inhoud (SafeArea-laag boven Positioned.fill-foto) nooit
+    achter een systeembalk vallen.
+  - Openstaand: Codemagic-build + device-test checklist (zie boven).
+    16KB page-alignment risico blijft open (Flutter 3.19.6, fix = SDK-upgrade).
 
 ## Openstaande punten (niet vergeten)
 
@@ -224,9 +246,9 @@ Videobellen (Fase VB):
   CAMERA gebruikt wordt voor familie-videobellen, dat USE_FULL_SCREEN_
   INTENT bij calling-functionaliteit hoort, en dat MODIFY_AUDIO_SETTINGS
   vereist is door WebRTC audio-routing.
-- **DEBUG_VIDEOBELLEN staat TIJDELIJK op true (build 1.0.9+11)** voor de
-  gesloten-test op eigen testtoestellen. MOET terug naar false (of, als
-  V6 tegen die tijd af is, vervangen door de Firestore-config-flag)
+- **DEBUG_VIDEOBELLEN staat TIJDELIJK op true (nu build 1.0.10+12)** voor
+  de gesloten-test op eigen testtoestellen. MOET terug naar false (of,
+  als V6 tegen die tijd af is, vervangen door de Firestore-config-flag)
   vóór elke bredere release. Zonder deze terugzet zou elke installer
   onmiddellijk de videobel-UI zien terwijl backend en UX nog niet
   productie-klaar zijn.
