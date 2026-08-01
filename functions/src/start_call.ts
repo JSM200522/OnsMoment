@@ -183,8 +183,8 @@ export const startVideoCall = onCall(
     //    dat Cloud Run ze al gemount heeft. Lege waarde is een
     //    configuratiefout die we direct loggen zodat de oorzaak zichtbaar
     //    is in Cloud Logging i.p.v. als cryptische LiveKit-fout.
-    const livekitKey = LIVEKIT_API_KEY.value();
-    const livekitSecret = LIVEKIT_API_SECRET.value();
+    const livekitKey = LIVEKIT_API_KEY.value().trim();
+    const livekitSecret = LIVEKIT_API_SECRET.value().trim();
     if (!livekitKey || !livekitSecret) {
       logger.error('LiveKit-secrets ontbreken', {
         uid, kringId, hasKey: !!livekitKey, hasSecret: !!livekitSecret,
