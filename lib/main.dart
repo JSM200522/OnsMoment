@@ -80,16 +80,36 @@ class RouterScherm extends StatefulWidget {
   State<RouterScherm> createState() => _RouterSchermState();
 }
 
-class _RouterSchermState extends State<RouterScherm> {
+class _RouterSchermState extends State<RouterScherm>
+    with WidgetsBindingObserver {
   bool _initieelGeladen = false;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _laadInitieel();
   }
 
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  /// Wist lokale notificaties + badge zodra de app naar de voorgrond komt.
+  /// Identiek aan WhatsApp-gedrag: badge daalt bij openen, ongeacht of de
+  /// berichten al zijn gelezen.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      PushService.lokaleMeldingenWissen();
+    }
+  }
+
   Future<void> _laadInitieel() async {
+    // Wis badge + openstaande lokale notificaties bij cold start.
+    PushService.lokaleMeldingenWissen();
     await DeviceModusService.get()
         .timeout(const Duration(seconds: 5), onTimeout: () => null);
     await DeviceModusService.krijgWeergaveModus();

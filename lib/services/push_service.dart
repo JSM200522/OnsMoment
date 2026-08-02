@@ -1,8 +1,10 @@
 import 'dart:async';
+import 'dart:ui' show Color;
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'apparaat_service.dart';
 import 'device_modus_service.dart';
 import 'kring_service.dart';
@@ -135,6 +137,11 @@ class PushService {
   static bool _initGedaan = false;
   static StreamSubscription<String>? _tokenRefreshSub;
 
+  /// SharedPreferences-sleutel voor de oplopende badge-teller. Wordt
+  /// verhoogd door de achtergrond-handler (aparte isolate, via
+  /// SharedPreferences) en gereset naar 0 bij [lokaleMeldingenWissen].
+  static const String _kBadgeCount = 'badge_count';
+
   /// Gecacht zodat de onTokenRefresh-listener naar hetzelfde apparaat-doc
   /// kan schrijven zonder dat de aanroeper de ids opnieuw doorgeeft.
   static String? _huidigeFamilieUid;
@@ -202,7 +209,9 @@ class PushService {
           iOS: DarwinInitializationSettings(),
         ),
         onDidReceiveNotificationResponse: (resp) {
-          debugPrint('🔔 Local notification getikt: ${resp.payload}');
+          final payload = resp.payload?.trim() ?? '';
+          debugPrint('🔔 Lokale notificatie getikt: payload=$payload');
+          if (payload.isNotEmpty) tapMomentIdNotifier.value = payload;
         },
       );
       final androidImpl = _localNotifications
@@ -232,6 +241,7 @@ class PushService {
             description: 'Nieuwe berichten van je familie',
             importance: Importance.high,
             sound: RawResourceAndroidNotificationSound(channelId),
+            showBadge: true,
           ),
         );
       }
@@ -271,19 +281,45 @@ class PushService {
         _publiceerTapMomentId(msg);
       });
 
-      // Tap terwijl app volledig gesloten was. De schermen luisteren op
-      // tapMomentIdNotifier en pikken de waarde op zodra ze bouwen —
-      // main() await't initApp() vóór runApp(), dus de notifier is gezet
-      // vóór het eerste build.
+      // Tap terwijl app volledig gesloten was (via FCM-notificatie).
       final initial = await FirebaseMessaging.instance.getInitialMessage();
       if (initial != null) {
         debugPrint('🔔 FCM tap (terminated launch): ${initial.messageId} '
             'data=${initial.data}');
         _publiceerTapMomentId(initial);
       }
+
+      // Tap terwijl app volledig gesloten was (via lokale notificatie
+      // aangemaakt door de achtergrond-handler). Payload = momentId.
+      // Wordt afgehandeld vóór het eerste build (zie boven).
+      final launchDetails =
+          await _localNotifications.getNotificationAppLaunchDetails();
+      if (launchDetails?.didNotificationLaunchApp == true) {
+        final payload =
+            launchDetails!.notificationResponse?.payload?.trim() ?? '';
+        if (payload.isNotEmpty) {
+          debugPrint('🔔 Lokale notificatie launch: payload=$payload');
+          tapMomentIdNotifier.value = payload;
+        }
+      }
     } catch (e, st) {
       debugPrint('⚠️ PushService.initApp faalde: $e\n$st');
     }
+  }
+
+  /// Verwijdert alle zichtbare lokale notificaties en reset de badge-teller
+  /// naar 0. Aanroepen wanneer de gebruiker de app opent (resumed-state) —
+  /// identiek aan WhatsApp-gedrag: de telbadge daalt zodra de app wordt
+  /// geopend, ongeacht of de berichten al zijn gelezen.
+  ///
+  /// No-op op web (kIsWeb-guard). Fail-soft — een fout hier is niet blokkerend.
+  static Future<void> lokaleMeldingenWissen() async {
+    if (kIsWeb) return;
+    try {
+      await _localNotifications.cancelAll();
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setInt(_kBadgeCount, 0);
+    } catch (_) {}
   }
 
   /// Roep aan zodra een familieUid + apparaatId bekend zijn (via
@@ -434,16 +470,111 @@ class PushService {
 }
 
 /// Top-level FCM background handler. Draait in een aparte Dart-isolate;
-/// Firebase moet dus opnieuw worden geïnitialiseerd. Voor Fase 1 alleen
-/// loggen — het systeem toont pure-notification messages zelf via het
-/// channel dat in de manifest is gedeclareerd.
+/// Firebase + flutter_local_notifications moeten opnieuw worden geïni-
+/// tialiseerd. FCM-momenten zijn data-only (geen notification-block) zodat
+/// deze handler volledige controle heeft over de notificatie-weergave:
+/// largeIcon, BigTextStyle, accentkleur en badge-teller.
 @pragma('vm:entry-point')
 Future<void> _backgroundHandler(RemoteMessage message) async {
   try {
     await Firebase.initializeApp();
     debugPrint('🔔 FCM background: ${message.messageId} '
-        'data=${message.data} notification=${message.notification?.title}');
+        'type=${message.data["type"]}');
+    if (message.data['type'] == 'nieuw_moment') {
+      await _achtergrondMomentNotificatie(message.data);
+    }
   } catch (e) {
     debugPrint('⚠️ FCM background handler faalde: $e');
   }
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// Top-level helpers — zichtbaar vanuit de achtergrond-isolate.
+// Geen toegang tot PushService-static-state uit de hoofd-isolate; elke
+// isolate heeft zijn eigen exemplaar. Kanalen zijn wél persistent (OS-
+// niveau) en hoeven hier niet opnieuw aangemaakt te worden.
+// ────────────────────────────────────────────────────────────────────────────
+
+String _achtergrondStrUit(
+    Map<String, dynamic> data, String key, String fallback) {
+  final v = data[key];
+  return (v is String && v.isNotEmpty) ? v : fallback;
+}
+
+/// Verhoogt de badge-teller in SharedPreferences en retourneert de nieuwe
+/// waarde. Bij elke fout (rechten, read-only mode) valt terug op 1.
+Future<int> _achtergrondVerhoogBadge() async {
+  try {
+    final prefs = await SharedPreferences.getInstance();
+    final next = (prefs.getInt(PushService._kBadgeCount) ?? 0) + 1;
+    await prefs.setInt(PushService._kBadgeCount, next);
+    return next;
+  } catch (_) {
+    return 1;
+  }
+}
+
+/// Maakt een volledig gestijlde lokale notificatie voor een binnenkomend
+/// moment. Wordt aangeroepen vanuit [_backgroundHandler] in de achtergrond-
+/// isolate.
+///
+/// Bewijs per eis:
+/// - accentkleur  → color: const Color(0xFFFF9B71) (#FF9B71 peach/oranje)
+/// - largeIcon    → DrawableResourceAndroidBitmap('ons_moment_logo')
+///                  (android/app/src/main/res/drawable/ons_moment_logo.png)
+/// - BigTextStyle → BigTextStyleInformation(body, contentTitle: titel)
+/// - badge        → number: badge (oplopend via SharedPreferences)
+/// - channelId    → uit FCM-data, bepaalt herkenningsgeluid (cloud-functie
+///                  schrijft 'ons_moment_twinkel' / 'ons_moment_bel' etc.)
+/// - payload      → momentId, zodat tik de juiste popup opent
+Future<void> _achtergrondMomentNotificatie(
+    Map<String, dynamic> data) async {
+  final titel     = _achtergrondStrUit(data, 'title',     'Ons Moment');
+  final body      = _achtergrondStrUit(data, 'body',      'Een nieuw bericht van je familie');
+  final channelId = _achtergrondStrUit(data, 'channelId', 'ons_moment_twinkel');
+  final momentId  = _achtergrondStrUit(data, 'momentId',  '');
+
+  final badge = await _achtergrondVerhoogBadge();
+
+  final plugin = FlutterLocalNotificationsPlugin();
+  await plugin.initialize(
+    const InitializationSettings(
+      android: AndroidInitializationSettings('ic_stat_ons_moment'),
+    ),
+  );
+
+  // Uniek notificatie-ID per moment zodat elk nieuw bericht als
+  // losse kaart in het meldingenscherm staat (geen overwrite).
+  final notifId = momentId.isNotEmpty
+      ? momentId.hashCode.abs() % 2000000000
+      : DateTime.now().millisecondsSinceEpoch % 2000000000;
+
+  await plugin.show(
+    notifId,
+    titel,
+    body,
+    NotificationDetails(
+      android: AndroidNotificationDetails(
+        channelId,
+        channelId,
+        importance: Importance.high,
+        priority: Priority.high,
+        // Kleuren logo rechts in de melding (via Android largeIcon-slot).
+        largeIcon: const DrawableResourceAndroidBitmap('ons_moment_logo'),
+        // Volledig zichtbare tekst bij uitklappen (BigTextStyle).
+        styleInformation: BigTextStyleInformation(body,
+            contentTitle: titel),
+        // Peach-accentkleur op het monochrome icoon in de notificatiebalk.
+        color: const Color(0xFFFF9B71),
+        icon: 'ic_stat_ons_moment',
+        ticker: 'Nieuw bericht van je familie',
+        // Badge-teller op het app-icoon. Oplopend per bericht.
+        // Pixel Launcher: toont een stip (dot). Samsung One UI: toont het
+        // getal. Nova Launcher en andere custom launchers: varieert.
+        number: badge,
+        showWhen: true,
+      ),
+    ),
+    payload: momentId,
+  );
 }
