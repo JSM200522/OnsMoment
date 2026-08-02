@@ -304,3 +304,13 @@ Videobellen (Fase VB):
   vóór elke bredere release. Zonder deze terugzet zou elke installer
   onmiddellijk de videobel-UI zien terwijl backend en UX nog niet
   productie-klaar zijn.
+- **V4 auto-answer**: tablet neemt gesprek automatisch op (zonder
+  inkomend-gesprek-scherm). Nog niet gebouwd; gepland na gesloten test.
+- **Orphan-cleanup dry-run**: 17 orphan-docs geïdentificeerd; 2 echte
+  apparaten beschermd (1781110668656_c561d9e1 = telefoon "j",
+  1782995516100_6fef1080 = tablet "Madeira"). Wachten op expliciete
+  akkoord voor verwijdering. Adresboek-filter (FIX-2) maakt de
+  bellijst al schoon zonder verwijdering.
+- **Structurele device-id**: apparaat-ID gebaseerd op timestamp (niet
+  stabiel bij reinstall). Structurele fix (vaste hardware-ID of
+  server-side UUID) is een V5-punt — nu geblokkeerd door andere prioriteiten.
