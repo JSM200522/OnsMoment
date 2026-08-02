@@ -205,6 +205,58 @@ NOOIT blind pushen — vandaag (15 mei 2026) heeft dat 10 rode builds opgeleverd
     achter een systeembalk vallen.
   - Openstaand: Codemagic-build + device-test checklist (zie boven).
     16KB page-alignment risico blijft open (Flutter 3.19.6, fix = SDK-upgrade).
+- 2 augustus 2026: Videobel-fixes + push-melding-overhaul code-compleet.
+  Build 1.0.11+13 klaar voor Codemagic. Commits (alle groen op CI):
+  - FIX-1 (bd00f09 + f2ea312): LiveKit secrets expliciet valideren + .trim()
+    zodat trailing whitespace/newline in Secret Manager geen "invalid API key"
+    geeft. Cloud Functions gedeployed.
+  - FIX-2 (d8f3853): kringLeden filtert nu op fcmToken != null + kringId ==
+    actieveKring. Orphan-apparaten (geen FCM-token) verdwijnen uit de bellijst.
+  - FIX-3 (c611890): eerste-bericht-timing — onmiddellijk sturen gebruikt nu
+    FieldValue.serverTimestamp() i.p.v. Timestamp.now() (telefoonklok);
+    _verwerkMomenten() heeft +30s tolerantie.
+  - FIX-4 (4fd9a9c): kringleden zichtbaar zonder opnieuw inloggen — cache-hit
+    pad synct nu actieveKringNotifier.
+  - VB-V3-7 (67753f9): incomingCall-listener verplaatst van TabletScherm naar
+    _OntvangerRouterState (main.dart) zodat beide ontvanger-modi (vergrendeld
+    + meldingen) het inkomend-gesprek-scherm tonen.
+  - VB-V3-8 (0952a50): ringback-toon op BelScherm — bel.mp3 loopt in lus
+    zodra verbinding actief is. Status-tekst "Gaat over bij {naam}…".
+  - Push-melding overhaul (1014d96 + ae32945 + deployed):
+    Overgestapt op data-only FCM voor moment-meldingen. Achtergrond-handler
+    (push_service.dart / _achtergrondMomentNotificatie) bouwt de notificatie
+    zelf met: largeIcon=ons_moment_logo (drawable), BigTextStyleInformation,
+    color=#FF9B71, number=badge (SharedPreferences-teller). Channels hebben
+    expliciet showBadge:true. Badge wordt gewist bij cold-start + app-resumed
+    (WidgetsBindingObserver in RouterScherm). Tap-payload (momentId) aangesloten
+    op tapMomentIdNotifier via onDidReceiveNotificationResponse +
+    getNotificationAppLaunchDetails(). Cloud Function (onNieuwMoment) stuurt
+    nu type/title/body/channelId in data i.p.v. notification-block.
+
+## Bekende grenzen push-meldingen (eerlijk vastgelegd)
+
+- **Badge-getal vs. badge-stip**: Android AOSP / Pixel Launcher toont een stip
+  (dot) op het app-icoon, geen getal. Samsung One UI toont het getal (via
+  setNumber). Nova Launcher en soortgelijke launchers: varieert.
+  Dit is een launcher-beperking, niet een app-fout.
+- **Badge bij volledig afgesloten app (force-stop)**: als de gebruiker de app
+  expliciet via Instellingen → Apps → Geforceerd stoppen heeft gestopt, levert
+  Android geen enkele FCM-bericht (ook geen van WhatsApp, Signal, enzovoort).
+  Onze badge-teller (SharedPreferences in de achtergrond-handler) loopt dan
+  ook niet op. Acceptabel: dit is een bewuste gebruikershandeling en treft
+  alle messaging-apps gelijk.
+- **android.notification.notification_count (FCM notification-block)**: alleen
+  bruikbaar als er ook een notification-block is. Met data-only FCM (onze
+  aanpak voor largeIcon + BigTextStyle) is dit veld niet toepasbaar zonder
+  dubbele meldingen te veroorzaken. Bovendien zou de server altijd een
+  benadering (getal 1) sturen — de echte oplopende teller zit in
+  SharedPreferences op de client. Niet geïmplementeerd; SharedPreferences-
+  aanpak dekt alle praktische scenario's.
+- **Kanaalmigratie voor showBadge**: showBadge=true is de standaardwaarde
+  voor AndroidNotificationChannel — bestaande kanalen hebben het al. Bij
+  toekomstige wijziging van een immutable channel-instelling: patroon is
+  deleteNotificationChannel(id) gevolgd door createNotificationChannel(zelfde
+  id, nieuwe instellingen). Gebruikersaanpassingen worden dan gereset.
 
 ## Openstaande punten (niet vergeten)
 
@@ -246,7 +298,7 @@ Videobellen (Fase VB):
   CAMERA gebruikt wordt voor familie-videobellen, dat USE_FULL_SCREEN_
   INTENT bij calling-functionaliteit hoort, en dat MODIFY_AUDIO_SETTINGS
   vereist is door WebRTC audio-routing.
-- **DEBUG_VIDEOBELLEN staat TIJDELIJK op true (nu build 1.0.10+12)** voor
+- **DEBUG_VIDEOBELLEN staat TIJDELIJK op true (nu build 1.0.11+13)** voor
   de gesloten-test op eigen testtoestellen. MOET terug naar false (of,
   als V6 tegen die tijd af is, vervangen door de Firestore-config-flag)
   vóór elke bredere release. Zonder deze terugzet zou elke installer
