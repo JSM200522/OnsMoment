@@ -8,6 +8,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'screens/setup/setup_wizard.dart';
 import 'screens/familie/familie_scherm.dart';
 import 'screens/tablet/tablet_scherm.dart';
+import 'screens/tablet/inkomend_gesprek_scherm.dart';
+import 'screens/videobellen/gesprek_scherm.dart';
 import 'services/apparaat_service.dart';
 import 'services/device_modus_service.dart';
 import 'services/crash_service.dart';
@@ -178,6 +180,10 @@ class _OntvangerRouter extends StatefulWidget {
 
 class _OntvangerRouterState extends State<_OntvangerRouter> {
   StreamSubscription<DocumentSnapshot>? _sub;
+  VoidCallback? _incomingCallListener;
+  VoidCallback? _cancelledCallListener;
+  bool _inkomendGesprekOpen = false;
+  String? _huidigeInkomendCallId;
 
   @override
   void initState() {
@@ -192,6 +198,8 @@ class _OntvangerRouterState extends State<_OntvangerRouter> {
           const [DeviceOrientation.portraitUp]);
     }
     _startListener();
+    _startIncomingCallListener();
+    _startCancelledCallListener();
   }
 
   Future<void> _startListener() async {
@@ -213,6 +221,15 @@ class _OntvangerRouterState extends State<_OntvangerRouter> {
   @override
   void dispose() {
     _sub?.cancel();
+    if (_incomingCallListener != null) {
+      PushService.incomingCallNotifier.removeListener(_incomingCallListener!);
+      _incomingCallListener = null;
+    }
+    if (_cancelledCallListener != null) {
+      PushService.cancelledCallIdNotifier
+          .removeListener(_cancelledCallListener!);
+      _cancelledCallListener = null;
+    }
     // Reset naar alle richtingen zodat de familie-kant vrij kan draaien
     // zodra iemand de modus terugzet naar familie.
     if (!kIsWeb) {
@@ -224,6 +241,75 @@ class _OntvangerRouterState extends State<_OntvangerRouter> {
       ]);
     }
     super.dispose();
+  }
+
+  void _startIncomingCallListener() {
+    if (!DEBUG_VIDEOBELLEN) return;
+    void cb() {
+      _verwerkInkomendGesprek(PushService.incomingCallNotifier.value);
+    }
+    PushService.incomingCallNotifier.addListener(cb);
+    _incomingCallListener = cb;
+    if (PushService.incomingCallNotifier.value != null) cb();
+  }
+
+  Future<void> _verwerkInkomendGesprek(IncomingCall? call) async {
+    if (call == null) return;
+    // Consumeer synchroon vóór de scherm-push: voorkomt dat een re-emit
+    // tijdens het scherm een tweede exemplaar opent.
+    PushService.incomingCallNotifier.value = null;
+    if (_inkomendGesprekOpen) return;
+    if (!mounted) return;
+    _inkomendGesprekOpen = true;
+    _huidigeInkomendCallId = call.callId;
+    try {
+      final navigator = Navigator.of(context);
+      bool beantwoord = false;
+      // fullscreenDialog: true zorgt dat de Android back-swipe een
+      // slide-down geeft in plaats van slide-right — intuïtiever voor
+      // een inkomend-gesprek-scherm. canPop: false in InkomendGesprekScherm
+      // zorgt dat alleen de twee knoppen de uitweg zijn.
+      await navigator.push(MaterialPageRoute<void>(
+        fullscreenDialog: true,
+        builder: (_) => InkomendGesprekScherm(
+          call: call,
+          onBeantwoord: () {
+            beantwoord = true;
+            Navigator.of(navigator.context).pop();
+          },
+          onAfgewezen: () {
+            Navigator.of(navigator.context).pop();
+          },
+        ),
+      ));
+      _huidigeInkomendCallId = null;
+      if (!mounted) return;
+      if (beantwoord) {
+        await navigator.push(MaterialPageRoute<void>(
+          builder: (_) => GesprekScherm(
+            remoteNaam: call.callerName,
+            tokenToJoin: call.calleeToken,
+          ),
+        ));
+      }
+    } finally {
+      _inkomendGesprekOpen = false;
+    }
+  }
+
+  void _startCancelledCallListener() {
+    if (!DEBUG_VIDEOBELLEN) return;
+    void cb() {
+      final geannuleerdId = PushService.cancelledCallIdNotifier.value;
+      if (geannuleerdId == null) return;
+      PushService.cancelledCallIdNotifier.value = null;
+      if (_huidigeInkomendCallId != geannuleerdId) return;
+      if (!mounted) return;
+      Navigator.of(context).maybePop();
+    }
+    PushService.cancelledCallIdNotifier.addListener(cb);
+    _cancelledCallListener = cb;
+    if (PushService.cancelledCallIdNotifier.value != null) cb();
   }
 
   @override

@@ -13,8 +13,6 @@ import '../../data/debug_flags.dart';
 import '../../data/kring.dart';
 import '../../widgets/pulserend_hart.dart';
 import '../../widgets/video_speler.dart';
-import 'inkomend_gesprek_scherm.dart';
-import '../videobellen/gesprek_scherm.dart';
 
 class TabletScherm extends StatefulWidget {
   const TabletScherm({super.key});
@@ -51,20 +49,6 @@ class _TabletSchermState extends State<TabletScherm>
   /// Fase 2c: callback op [PushService.tapMomentIdNotifier]. Gecached
   /// zodat we bij dispose netjes remove-listener kunnen doen.
   VoidCallback? _tapMomentListener;
-  /// V2-5: callback op [PushService.incomingCallNotifier]. Alleen
-  /// geattacht als [DEBUG_VIDEOBELLEN] aan staat — met flag uit blijft
-  /// deze null en wordt de belflow op deze tablet nergens bereikbaar.
-  VoidCallback? _incomingCallListener;
-  /// V3-5: callback op [PushService.cancelledCallIdNotifier]. Zelfde
-  /// flag-gate.
-  VoidCallback? _cancelledCallListener;
-  /// Reentrancy-guard: voorkomt dat een re-emit van de notifier tijdens
-  /// een openstaand inkomend-gesprek-scherm nogmaals een scherm opent.
-  bool _inkomendGesprekOpen = false;
-  /// V3-5: callId van het inkomend-scherm dat momenteel open staat.
-  /// Bij cancel-FCM alleen sluiten als callId matcht — voorkomt dat
-  /// een oude/retry cancel-FCM het verkeerde scherm sluit.
-  String? _huidigeInkomendCallId;
   String? _mijnApparaatId;
   String? _kringId;
   // V9 2.4-a-2: kring-doc als primaire bron; _gebruikerSub blijft als
@@ -155,8 +139,6 @@ class _TabletSchermState extends State<TabletScherm>
       });
     });
     _startTapMomentListener();
-    _startIncomingCallListener();
-    _startCancelledCallListener();
   }
 
   /// Fase 2c: luistert op de tap-notifier van PushService. Wordt getriggerd
@@ -175,96 +157,6 @@ class _TabletSchermState extends State<TabletScherm>
     // initApp getInitialMessage al heeft gepubliceerd vóór dit scherm
     // bouwde), triggeren we de callback zelf — addListener doet dat niet.
     if (PushService.tapMomentIdNotifier.value != null) cb();
-  }
-
-  /// V2-5: attach de incomingCall-listener alleen als DEBUG_VIDEOBELLEN
-  /// aan staat. Met flag uit blijft [PushService.incomingCallNotifier]
-  /// eventueel wél op waarde staan (want PushService is niet flag-
-  /// gated), maar niemand luistert dus er verandert niets aan het
-  /// gedrag van de tablet.
-  void _startIncomingCallListener() {
-    if (!DEBUG_VIDEOBELLEN) return;
-    void cb() { _verwerkInkomendGesprek(PushService.incomingCallNotifier.value); }
-    PushService.incomingCallNotifier.addListener(cb);
-    _incomingCallListener = cb;
-    // Initial: als er al een call gepubliceerd is voordat dit scherm
-    // bouwde (bv. FCM binnengekomen tijdens app-startup), triggeren we
-    // de callback zelf — addListener doet dat niet.
-    if (PushService.incomingCallNotifier.value != null) cb();
-  }
-
-  Future<void> _verwerkInkomendGesprek(IncomingCall? call) async {
-    if (call == null) return;
-    // Consumeer synchroon vóór de scherm-push zodat een re-emit tijdens
-    // het scherm geen tweede scherm opent.
-    PushService.incomingCallNotifier.value = null;
-    if (_inkomendGesprekOpen) return;
-    if (!mounted) return;
-    _inkomendGesprekOpen = true;
-    _huidigeInkomendCallId = call.callId;
-    try {
-      final navigator = Navigator.of(context);
-      bool beantwoord = false;
-      await navigator.push(MaterialPageRoute<void>(
-        fullscreenDialog: true,
-        builder: (_) => InkomendGesprekScherm(
-          call: call,
-          onBeantwoord: () {
-            beantwoord = true;
-            Navigator.of(navigator.context).pop();
-          },
-          onAfgewezen: () {
-            Navigator.of(navigator.context).pop();
-          },
-        ),
-      ));
-      // V3-5: reset callId zodra het inkomend-scherm gesloten is (via
-      // knop, timeout OF externe cancel-pop). Een cancel-FCM die híerna
-      // binnenkomt matcht niet meer en wordt genegeerd.
-      _huidigeInkomendCallId = null;
-      if (!mounted) return;
-      if (beantwoord) {
-        // V3-2: doorstroom naar GesprekScherm. Dat scherm doet zelf
-        // VideoCallService.join(call.calleeToken) in initState en toont
-        // ondertussen een dementie-vriendelijke 'Verbinden met {naam}…'-
-        // status — geen leeg gat tussen tap en remote video. Fout tijdens
-        // join wordt in GesprekScherm zelf afgehandeld (fout-fase +
-        // sluiten-knop); tablet-side hoeft niet meer te reageren.
-        await navigator.push(MaterialPageRoute<void>(
-          builder: (_) => GesprekScherm(
-            remoteNaam: call.callerName,
-            tokenToJoin: call.calleeToken,
-          ),
-        ));
-      }
-    } finally {
-      _inkomendGesprekOpen = false;
-    }
-  }
-
-  /// V3-5: sluit het openstaande inkomend-scherm als de beller cancelt
-  /// vóór de callee opneemt. callId-match is de belangrijkste guard:
-  /// zonder match zou een oude/retry cancel-FCM een vers-getoond
-  /// inkomend-scherm van een ander gesprek onbedoeld sluiten.
-  void _startCancelledCallListener() {
-    if (!DEBUG_VIDEOBELLEN) return;
-    void cb() {
-      final geannuleerdId = PushService.cancelledCallIdNotifier.value;
-      if (geannuleerdId == null) return;
-      // Consumeer synchroon zodat een re-emit hetzelfde effect niet
-      // herhaalt.
-      PushService.cancelledCallIdNotifier.value = null;
-      if (_huidigeInkomendCallId != geannuleerdId) return;
-      if (!mounted) return;
-      // Pop het inkomend-scherm. Zijn dispose zorgt voor ringtone-
-      // stop + timer-cancel. In _verwerkInkomendGesprek is beantwoord
-      // false (want geen tap), dus we skippen de doorstroom naar
-      // GesprekScherm — precies wat we willen bij een cancel.
-      Navigator.of(context).maybePop();
-    }
-    PushService.cancelledCallIdNotifier.addListener(cb);
-    _cancelledCallListener = cb;
-    if (PushService.cancelledCallIdNotifier.value != null) cb();
   }
 
   Future<void> _verwerkTapMomentId(String? id) async {
@@ -293,15 +185,6 @@ class _TabletSchermState extends State<TabletScherm>
     if (_tapMomentListener != null) {
       PushService.tapMomentIdNotifier.removeListener(_tapMomentListener!);
       _tapMomentListener = null;
-    }
-    if (_incomingCallListener != null) {
-      PushService.incomingCallNotifier.removeListener(_incomingCallListener!);
-      _incomingCallListener = null;
-    }
-    if (_cancelledCallListener != null) {
-      PushService.cancelledCallIdNotifier
-          .removeListener(_cancelledCallListener!);
-      _cancelledCallListener = null;
     }
     _autoSluitTimer?.cancel();
     _checkTimer?.cancel();
