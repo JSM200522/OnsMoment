@@ -65,12 +65,12 @@ const geplandeSkipMs = 5 * 60 * 1000;
  */
 function bodyVoorType(type: unknown, vanNaam: string): string {
   switch (type) {
-    case 'foto':   return `Een foto van ${vanNaam}`;
-    case 'video':  return `Een video van ${vanNaam}`;
-    case 'stem':   return `Een stemmetje van ${vanNaam}`;
-    case 'lied':   return `Een liedje van ${vanNaam}`;
-    case 'hartje': return `Een hartje van ${vanNaam} 💕`;
-    default:       return `Een bericht van ${vanNaam}`;
+    case 'foto':   return `📷 Een foto van ${vanNaam}`;
+    case 'video':  return `🎥 Een video van ${vanNaam}`;
+    case 'stem':   return `🎤 Een stemmetje van ${vanNaam}`;
+    case 'lied':   return `🎵 Een liedje van ${vanNaam}`;
+    case 'hartje': return `💕 Een hartje van ${vanNaam}`;
+    default:       return `💬 Een bericht van ${vanNaam}`;
   }
 }
 
@@ -185,7 +185,8 @@ export const onNieuwMoment = onDocumentCreated(
     const vanNaam =
       ((moment.vanNaam as string | undefined) ?? '').trim() || 'Iemand';
     const kringNaam = ((kring.naam as string | undefined) ?? '').trim();
-    const titel = kringNaam.length > 0 ? kringNaam : 'Ons Moment';
+    const kringLabel = kringNaam.length > 0 ? ` — ${kringNaam}` : '';
+    const titel = `Ons Moment${kringLabel}`;
     const body = bodyVoorType(moment.type, vanNaam);
 
     const message: admin.messaging.MulticastMessage = {
