@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:just_audio/just_audio.dart';
 import 'package:livekit_client/livekit_client.dart';
 import 'package:permission_handler/permission_handler.dart';
 import '../../services/video_call_service.dart';
@@ -45,6 +46,7 @@ class _BelSchermState extends State<BelScherm> {
   _Fase _fase = _Fase.camera;
   String _foutmelding = '';
   EventsListener<RoomEvent>? _roomListener;
+  final AudioPlayer _ringbackPlayer = AudioPlayer();
   /// V3-3: gezet op true zodra we pushReplacement doen naar
   /// GesprekScherm. Dispose skipt dan de hangup want GesprekScherm
   /// heeft de room overgenomen en handelt hem zelf af.
@@ -94,6 +96,7 @@ class _BelSchermState extends State<BelScherm> {
         }
       }
       setState(() => _fase = _Fase.actief);
+      unawaited(_startRingback());
     } catch (e) {
       if (!mounted) return;
       setState(() {
@@ -101,6 +104,20 @@ class _BelSchermState extends State<BelScherm> {
         _foutmelding = e.toString();
       });
     }
+  }
+
+  Future<void> _startRingback() async {
+    try {
+      await _ringbackPlayer.setAsset('assets/sounds/bel.mp3');
+      await _ringbackPlayer.setLoopMode(LoopMode.one);
+      await _ringbackPlayer.play();
+    } catch (_) {}
+  }
+
+  Future<void> _stopRingback() async {
+    try {
+      await _ringbackPlayer.stop();
+    } catch (_) {}
   }
 
   Future<void> _ophangen() async {
@@ -114,6 +131,7 @@ class _BelSchermState extends State<BelScherm> {
     // Als callee wél al joined is (_doorstroomNaarGesprek==true), doen
     // we geen cancel: dit scherm is dan al vervangen door GesprekScherm
     // en de callee volgt via LiveKit's RoomDisconnectedEvent uit hangup.
+    unawaited(_stopRingback());
     final callId = _callId;
     if (!_doorstroomNaarGesprek && callId != null) {
       unawaited(
@@ -137,6 +155,7 @@ class _BelSchermState extends State<BelScherm> {
     if (!mounted) return;
     if (_doorstroomNaarGesprek) return;
     _doorstroomNaarGesprek = true;
+    unawaited(_stopRingback());
     Navigator.of(context).pushReplacement(MaterialPageRoute<void>(
       builder: (_) => GesprekScherm(remoteNaam: widget.doelNaam),
     ));
@@ -145,6 +164,7 @@ class _BelSchermState extends State<BelScherm> {
   @override
   void dispose() {
     unawaited(_roomListener?.dispose());
+    unawaited(_ringbackPlayer.dispose());
     // Alleen hangen als we NIET doorstromen naar GesprekScherm.
     // Bij doorstroom heeft dat scherm de room overgenomen en handelt
     // hij zelf de hangup af (in zijn eigen dispose). Doe je hier toch
@@ -216,7 +236,7 @@ class _BelSchermState extends State<BelScherm> {
                 _naarGesprekScherm();
               });
             }
-            final status = 'Wachten tot ${widget.doelNaam} opneemt…';
+            final status = 'Gaat over bij ${widget.doelNaam}…';
             return Stack(children: [
               Positioned.fill(
                 child: track == null
