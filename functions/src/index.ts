@@ -181,7 +181,23 @@ export const onNieuwMoment = onDocumentCreated(
       return;
     }
 
-    // 5. Message opbouwen — payload-conventie matcht Fase 1/2.
+    // 5. Message opbouwen — data-only (geen notification-block).
+    //
+    // Data-only FCM geeft de achtergrond-handler (push_service.dart /
+    // _achtergrondMomentNotificatie) volledige controle over de notificatie:
+    // largeIcon, BigTextStyle, accentkleur, badge-teller. Een notification-
+    // block zou het systeem de melding laten renderen zonder largeIcon of
+    // BigTextStyle — dat levert juist de "kleine, grijze" melding op.
+    //
+    // android.priority 'high' is verplicht voor data-only FCM zodat het
+    // apparaat ook in Doze-mode wordt gewekt (FCM high-priority bypass).
+    //
+    // Velden in data:
+    //   type      → 'nieuw_moment', zodat de handler het herkent
+    //   title     → 'Ons Moment — {kring}' (kring als context)
+    //   body      → type-specifieke tekst met emoji (📷🎥🎤🎵💕💬)
+    //   channelId → bepaalt het herkenningsgeluid op de client
+    //   momentId  → payload voor tap → popup
     const vanNaam =
       ((moment.vanNaam as string | undefined) ?? '').trim() || 'Iemand';
     const kringNaam = ((kring.naam as string | undefined) ?? '').trim();
@@ -191,20 +207,16 @@ export const onNieuwMoment = onDocumentCreated(
 
     const message: admin.messaging.MulticastMessage = {
       tokens,
-      notification: { title: titel, body },
       android: {
         priority: 'high',
-        notification: {
-          channelId,
-          // Monochroom statusbar-icoon uit android/app/src/main/res/drawable-*
-          // (Fase 1: ic_stat_ons_moment, 5 densities). Zonder expliciete
-          // 'icon' pakt Android het launcher-icoon wit-op-wit in de statusbar.
-          icon: 'ic_stat_ons_moment',
-          // Peach-tint (matcht app-huisstijl) op het monochrome icoon.
-          color: '#FF9B71',
-        },
       },
-      data: { momentId },
+      data: {
+        momentId,
+        type: 'nieuw_moment',
+        title: titel,
+        body,
+        channelId,
+      },
     };
 
     // 6. Versturen.
