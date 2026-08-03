@@ -284,6 +284,18 @@ class _OntvangerRouterState extends State<_OntvangerRouter> {
     _huidigeInkomendCallId = call.callId;
     try {
       final navigator = Navigator.of(context);
+      // V4: autoAnswer — kiosk-hoofdpad. Tablet neemt direct op zonder
+      // InkomendGesprekScherm. Waarde komt van de server (kring-doc),
+      // kan niet door de beller worden gemanipuleerd.
+      if (call.autoAnswer) {
+        await navigator.push(MaterialPageRoute<void>(
+          builder: (_) => GesprekScherm(
+            remoteNaam: call.callerName,
+            tokenToJoin: call.calleeToken,
+          ),
+        ));
+        return;
+      }
       bool beantwoord = false;
       // fullscreenDialog: true zorgt dat de Android back-swipe een
       // slide-down geeft in plaats van slide-right — intuïtiever voor
@@ -313,6 +325,7 @@ class _OntvangerRouterState extends State<_OntvangerRouter> {
         ));
       }
     } finally {
+      _huidigeInkomendCallId = null;
       _inkomendGesprekOpen = false;
     }
   }
