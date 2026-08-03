@@ -121,15 +121,15 @@ class PushService {
   /// bij bestaande installs.
   static const String _oudDefaultChannelId = 'ons_moment_default';
 
-  /// V2-3: eigen channel voor inkomend videogesprek. Aparte channel
+  /// V2-3 / FIX-D: eigen channel voor inkomend videogesprek. Aparte channel
   /// (buiten de zes moment-channels) zodat de gebruiker in Android →
   /// App-meldingen het gesprek-geluid en de importance apart kan zetten
   /// zonder de moment-meldingen te beïnvloeden.
   ///
-  /// Nu nog niet in FCM-payload gebruikt (startVideoCall stuurt data-
-  /// only, screen-open gaat via [incomingCallNotifier]). Bij V5 (full-
-  /// screen intent op lock-screen) komt hier de notification-block bij
-  /// die dit channel gebruikt.
+  /// Gebruikt door [_achtergrondGesprekNotificatie] als channel-id voor de
+  /// hoge-prioriteit lokale notificatie (fullScreenIntent, category.call).
+  /// startVideoCall stuurt data-only FCM → dit channel wordt via de lokale
+  /// notificatie bereikt, niet direct via de FCM-payload.
   static const String gesprekChannelId = 'ons_moment_gesprek';
 
   static final FlutterLocalNotificationsPlugin _localNotifications =
@@ -163,17 +163,23 @@ class PushService {
   static final ValueNotifier<String?> tapMomentIdNotifier =
       ValueNotifier<String?>(null);
 
-  /// V2-3: publiceert een inkomend videogesprek zodra een high-priority
-  /// data-FCM met `type: 'inkomend_gesprek'` binnenkomt (foreground-
-  /// pad). tablet_scherm (V2-5) luistert en opent het bel-scherm.
+  /// FIX-D: publiceert een inkomend videogesprek. Drie paden:
+  /// (a) terminated-app: [_achtergrondGesprekNotificatie] toont full-screen-
+  ///     intent; gebruiker tikt → [_verwerkLokaalNotificatieTik] zet deze
+  ///     notifier; [_OntvangerRouterState._startIncomingCallListener]
+  ///     controleert huidige waarde direct na listener-attach (line 273).
+  /// (b) foreground-app: [_publiceerInkomendGesprek] zet direct vanuit
+  ///     onMessage.listen() — geen lokale notificatie nodig.
+  /// (c) background-app (meldingen): [_achtergrondGesprekNotificatie] toont
+  ///     notificatie; tik → [_verwerkLokaalNotificatieTik]; listener vuurt.
   ///
-  /// Consumer-verantwoordelijkheid (zoals bij [tapMomentIdNotifier]):
-  /// reset naar null zodra het scherm de call heeft afgehandeld,
-  /// anders zou een re-emit hetzelfde scherm nogmaals openen.
+  /// De-duplication: callId-check in [_publiceerInkomendGesprek] en
+  /// [_verwerkLokaalNotificatieTik] voorkomt dat twee paden dezelfde call
+  /// dubbel publiceren. Fallback: _inkomendGesprekOpen-vlag in
+  /// [_OntvangerRouterState] garandeert dat nooit twee schermen worden
+  /// gepusht ook als de notifier twee keer met dezelfde call wordt gezet.
   ///
-  /// Background/terminated-pad wordt in V5 (full-screen intent) toe-
-  /// gevoegd — dan komt er een notification-block bij de FCM-payload
-  /// zodat Android het scherm ook op lock-screen kan wekken.
+  /// Consumer-verantwoordelijkheid: reset naar null na afhandeling.
   static final ValueNotifier<IncomingCall?> incomingCallNotifier =
       ValueNotifier<IncomingCall?>(null);
 
@@ -601,10 +607,16 @@ Future<void> _achtergrondMomentNotificatie(
 }
 
 /// Toont een hoge-prioriteit lokale notificatie voor een inkomend videogesprek
-/// wanneer de app op de achtergrond of in meldingen-modus staat.
+/// wanneer de app op de achtergrond of volledig gesloten is (FIX-D).
 /// Payload = jsonEncode(data) zodat [PushService._verwerkLokaalNotificatieTik]
 /// de IncomingCall kan reconstrueren als de gebruiker de notificatie tikt.
-/// Full-screen intent (lock-screen wake) volgt in V5/FIX-D.
+///
+/// [fullScreenIntent] wekt het scherm ook op lock-screen (USE_FULL_SCREEN_INTENT
+/// staat al in AndroidManifest). Op API 34+ (Android 14+) is dit een beperkte
+/// toestemming: bij nieuwe installs auto-granted voor apps die category 'call'
+/// gebruiken; bij weigering degradeert de melding naar normale Importance.max.
+/// [NotificationVisibility.public] zorgt dat de melding zichtbaar is zonder
+/// ontgrendelen.
 Future<void> _achtergrondGesprekNotificatie(
     Map<String, dynamic> data) async {
   final callerName = _achtergrondStrUit(data, 'callerName', 'Familie');
@@ -632,6 +644,11 @@ Future<void> _achtergrondGesprekNotificatie(
         ticker: 'Inkomend videogesprek',
         showWhen: true,
         autoCancel: true,
+        // FIX-D: wekt scherm op lock-screen; degradeert gracefully als
+        // USE_FULL_SCREEN_INTENT niet is verleend (toont normale melding).
+        fullScreenIntent: true,
+        category: AndroidNotificationCategory.call,
+        visibility: NotificationVisibility.public,
       ),
     ),
     payload: jsonEncode(data),
