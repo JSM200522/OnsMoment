@@ -238,6 +238,18 @@ class _FamilieSchermState extends State<FamilieScherm>
       _huidigPopup    = null;
       _huidigPopupId  = null;
     });
+    // FIX B: wacht op _mijnApparaatId (mirror van huidigeKringIdMetFallback-pad).
+    // Zonder deze wacht start de listener met _mijnApparaatId == null; de
+    // initiële snapshot wordt dan overgeslagen door _verwerkMomenten en door
+    // Firestore niet opnieuw gestuurd → eerste bericht verdwijnt.
+    if (_mijnApparaatId == null) {
+      _debugLog('⏳ Wacht op apparaatId voor herstart-listener');
+      final apparaatId = await DeviceModusService.krijgApparaatId();
+      if (!mounted) return;
+      if (_mijnApparaatId == null) {
+        setState(() => _mijnApparaatId = apparaatId);
+      }
+    }
     _startMomentenListener();
     if (widget.alsOntvanger) {
       _startDagelijksListener();
@@ -314,6 +326,10 @@ class _FamilieSchermState extends State<FamilieScherm>
   void _startMomentenListener() {
     final kringId = _kringId;
     if (kringId == null) return;
+    // FIX B: cancel vorige subscription vóór overwrite — voorkomt ghost-
+    // listener als _herstartListeners én huidigeKringIdMetFallback.then()
+    // beide _startMomentenListener aanroepen bij dezelfde kringId.
+    _momentenListener?.cancel();
     _momentenListener = FirebaseFirestore.instance.collection('momenten')
         .where('kringId', isEqualTo: kringId)
         .where('gezien', isEqualTo: false)

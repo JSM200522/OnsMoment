@@ -267,7 +267,9 @@ class _TabletSchermState extends State<TabletScherm>
   void _startMomentenListener() {
     final kringId = _kringId;
     if (kringId == null) return;
-    // Realtime listener — pakt nieuwe momenten direct op
+    // FIX B: cancel vorige subscription vóór overwrite (defensief, mirror
+    // van familie_scherm — voorkomt ghost-listener bij dubbele aanroep).
+    _momentenListener?.cancel();
     _momentenListener = FirebaseFirestore.instance.collection('momenten')
         .where('kringId', isEqualTo: kringId)
         .where('gezien', isEqualTo: false)
@@ -326,6 +328,10 @@ class _TabletSchermState extends State<TabletScherm>
   void _verwerkMomenten(QuerySnapshot snap) {
     _debugLog('📨 Snap: ${snap.docs.length} momenten');
     if (_huidigPopupId != null) return;
+    // FIX B: defensieve null-guard (mirror van familie_scherm). De V9-2.13-a
+    // wacht in huidigeKringIdMetFallback.then() is het primaire schild; deze
+    // guard vangt edge-cases af waarbij de listener toch eerder start.
+    if (_mijnApparaatId == null) return;
     final nu = DateTime.now();
     final voor24uur = nu.subtract(const Duration(hours: 24));
     for (final doc in snap.docs) {
