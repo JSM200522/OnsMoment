@@ -19,6 +19,10 @@
          extra runtime-check die V5 zal toevoegen. Ons Moment kwalificeert
          als 'calling app' zodat het gebruik gerechtvaardigd is. -->
     <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT"/>
+    <!-- K-3: auto-herstart naar vergrendelde rustige modus na reboot/stroomuitval.
+         Vereist op Samsung/Xiaomi dat de gebruiker de app handmatig toevoegt
+         aan de fabrikant-specifieke autostart-lijst. -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
 
     <application
         android:label="Ons Moment"
@@ -58,6 +62,18 @@
              (Fase 3) zet notification.android.channel_id per bericht op
              basis van kring.herkenningsgeluid via PushService.
              channelIdVoorGeluid. -->
+        <!-- K-3: BOOT_COMPLETED receiver voor auto-herstart vergrendelde rustige
+             modus na reboot/stroomuitval. Android 10+: start via fullScreenIntent-
+             notificatie (directe Activity-start vanuit BroadcastReceiver verboden). -->
+        <receiver
+            android:name=".BootReceiver"
+            android:exported="true"
+            android:enabled="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED"/>
+            </intent-filter>
+        </receiver>
+
         <meta-data
             android:name="com.google.firebase.messaging.default_notification_channel_id"
             android:value="ons_moment_twinkel"/>
