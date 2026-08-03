@@ -18,3 +18,12 @@ const bool DEBUG_TESTMODUS = false;
 /// ontgrendelen. Bij V6 verhuist deze naar Firestore-config zodat we
 /// per kring kunnen uitrollen zonder release.
 const bool DEBUG_VIDEOBELLEN = true;
+
+/// Kiosk-hardening: vergrendelt de rustige modus via Android Screen
+/// Pinning (startLockTask zonder device-owner). Alleen actief als de
+/// weergaveModus 'vergrendeld' is. De eigenaar heft de lock op door de
+/// modus te wisselen naar 'meldingen' via de bestaande instelling —
+/// dat pad is gegarandeerd en wordt nooit door deze flag geblokkeerd.
+/// Zet op false als de testresultaten negatief zijn; bij false gedraagt
+/// de app zich exact als vóór deze feature.
+const bool DEBUG_KIOSK = true;
