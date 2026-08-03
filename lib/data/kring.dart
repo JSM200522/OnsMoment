@@ -33,6 +33,9 @@ class Kring {
   final DateTime laatsteUpdate;
   final String type;
   final String modus;
+  /// V4: automatisch opnemen bij inkomend videogesprek. Default false.
+  /// Alleen de kring-eigenaar mag dit zetten (Firestore-regel + UI-gate).
+  final bool autoAnswer;
 
   Kring({
     required this.id,
@@ -48,6 +51,7 @@ class Kring {
     required this.laatsteUpdate,
     this.type = TYPE_FAMILIE,
     this.modus = MODUS_VERGRENDELD,
+    this.autoAnswer = false,
   });
 
   /// Leest een kring-doc uit Firestore. Robuust tegen ontbrekende velden
@@ -70,6 +74,7 @@ class Kring {
           ?? DateTime.fromMillisecondsSinceEpoch(0),
       type: data['type'] as String? ?? TYPE_FAMILIE,
       modus: data['modus'] as String? ?? MODUS_VERGRENDELD,
+      autoAnswer: data['autoAnswer'] as bool? ?? false,
     );
   }
 
@@ -94,6 +99,7 @@ class Kring {
           : Timestamp.fromDate(laatsteUpdate),
       'type': type,
       'modus': modus,
+      'autoAnswer': autoAnswer,
     };
   }
 }
