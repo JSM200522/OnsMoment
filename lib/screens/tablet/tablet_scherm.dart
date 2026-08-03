@@ -3,8 +3,10 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:just_audio/just_audio.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:wakelock_plus/wakelock_plus.dart';
 import '../../services/device_modus_service.dart';
+import '../../services/kiosk_service.dart';
 import '../../services/kring_service.dart';
 import '../../services/push_service.dart';
 import '../../theme/kleuren.dart';
@@ -66,6 +68,11 @@ class _TabletSchermState extends State<TabletScherm>
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     WakelockPlus.enable();
+    // K-1c: onTaskUnpinned-callback registreren zodat de failsafe-herpin
+    // klaarstaat. startLockTask komt in K-2; hier alleen de uitgang wiren.
+    if (DEBUG_KIOSK && !kIsWeb) {
+      KioskService.init(_onTaskUnpinnedDoorGebruiker);
+    }
     // Listeners pas starten ná apparaatId-load zodat _verwerkMomenten nooit
     // triggert met _mijnApparaatId == null (voorkomt off-by-one delay).
     DeviceModusService.krijgApparaatId().then((id) {
@@ -195,8 +202,40 @@ class _TabletSchermState extends State<TabletScherm>
     _eenmaligSub?.cancel();
     _audioPlayer.dispose();
     _geluidPlayer.dispose();
+    // K-1c eigenaar-uitgang: callback EERST wissen zodat een onTaskUnpinned-
+    // event dat na stopLockTask() arriveert nooit een herpin triggert op een
+    // al-disposed widget. Daarna UI herstel + stopLockTask (no-op als er
+    // geen lock actief is — veilig om altijd aan te roepen).
+    if (DEBUG_KIOSK && !kIsWeb) {
+      KioskService.wis();
+      KioskService.herstelSysteemUI();
+      KioskService.stop();
+    }
     WakelockPlus.disable();
     super.dispose();
+  }
+
+  /// K-1c failsafe-herpin: geroepen als de gebruiker het Android unpin-gebaar
+  /// gebruikt terwijl de vergrendelde rustige modus actief is.
+  ///
+  /// Eigenaar-uitgang NIET geblokkeerd: als de eigenaar de modus via zijn
+  /// telefoon naar 'meldingen' heeft gezet, disposes TabletScherm en wist
+  /// de callback vóórdat onTaskUnpinned arriveert — de Future.delayed vindt
+  /// dan !mounted of MELDINGEN en herpint NIET.
+  ///
+  /// Dubbele check (direct + na delay) dekt de race waarbij de Firestore-
+  /// update tijdens het 1-seconde venster binnenkomt.
+  void _onTaskUnpinnedDoorGebruiker() {
+    if (!mounted) return;
+    final modus = DeviceModusService.weergaveModusNotifier.value;
+    if (modus == DeviceModusService.MELDINGEN) return;
+    Future.delayed(const Duration(milliseconds: 1000), () {
+      if (!mounted) return; // TabletScherm al disposed → eigenaar-uitgang, NIET herpin
+      if (DeviceModusService.weergaveModusNotifier.value
+          == DeviceModusService.MELDINGEN) return; // Eigenaar-switch won
+      KioskService.verbergSysteemUI();
+      KioskService.start();
+    });
   }
 
   void _debugLog(String msg) {
