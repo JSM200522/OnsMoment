@@ -380,3 +380,25 @@ Videobellen (Fase VB):
 - **Structurele device-id**: apparaat-ID gebaseerd op timestamp (niet
   stabiel bij reinstall). Structurele fix (vaste hardware-ID of
   server-side UUID) is een V5-punt — nu geblokkeerd door andere prioriteiten.
+- **KIOSK-HARDENING rustige modus** (voorwaarde voor 100% betrouwbare
+  auto-answer): de ontvanger-tablet is een TOEGEWIJD apparaat, uitsluitend
+  voor Ons Moment. Vergrendeling moet stevig zijn: home-knop, recent-apps,
+  terug én veeg-gebaar allemaal geblokkeerd; niet weg te vegen; app-proces
+  blijft altijd draaien.
+  HARDE EIS: er is ALTIJD een weg terug — de kring-eigenaar kan via de
+  bestaande instelling (modus aanpassen) de vergrendeling opheffen. Dit
+  switch-mechanisme moet 100% betrouwbaar zijn en failsafe gedocumenteerd;
+  er mag NOOIT een situatie ontstaan waarin niemand de tablet meer uit de
+  vergrendelde modus kan halen.
+  Bij het bouwen uitwerken:
+  - Android Lock Task Mode (geschikt voor toegewijd apparaat); eerlijk
+    uitleggen wat de eigenaar eenmalig moet doen bij het klaarmaken van de
+    tablet (device-owner/provisioning indien nodig), of screen pinning als
+    dat de eigenaar-uitgang betrouwbaarder maakt — kies wat de onwrikbare
+    eigenaar-switch het best garandeert.
+  - Auto-herstart in vergrendelde rustige modus na reboot/stroomuitval
+    (BOOT_COMPLETED receiver + auto-start).
+  - Eigenaar-switch grondig testen als kritiek pad.
+  - Restrisico's per fabrikant (Samsung/Xiaomi) eerlijk benoemen.
+  Vervangt het onmogelijke foreground-service-idee (camera vanuit achtergrond
+  is een harde Android-grens). Nu nog NIET bouwen.
