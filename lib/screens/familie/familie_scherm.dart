@@ -3283,6 +3283,8 @@ class _InstellingenTabState extends State<InstellingenTab> {
   List<Kring>? _kringen;
   String? _huidigeKringId;
   StreamSubscription<Kring?>? _actieveKringSub;
+  // V4: auto-answer toggle — gespiegeld van kring-doc, eigenaar-only schrijven.
+  bool _autoAnswer = false;
   // V9 2.12-a-2: e-mailverificatie-status (zacht — alleen tonen).
   bool _emailVerified = false;
   bool _bezigVerstuur = false;
@@ -3349,6 +3351,7 @@ class _InstellingenTabState extends State<InstellingenTab> {
         _kringNaam = (kring != null && kring.naam.isNotEmpty)
             ? kring.naam : null;
         _benIkEigenaar = eigenaar;
+        _autoAnswer = kring?.autoAnswer ?? false;
         if (!eigenaar) _huidigeOntvangerModus = null;
       });
       if (eigenaar) {
@@ -3603,6 +3606,21 @@ class _InstellingenTabState extends State<InstellingenTab> {
             Navigator.push(context, MaterialPageRoute(
                 builder: (c) => const BelApparaatKiesScherm()));
           }),
+          // V4: eigenaar-only toggle. Gast ziet dit blok niet (_benIkEigenaar).
+          if (_benIkEigenaar)
+            SwitchListTile(
+              title: const Text('Automatisch opnemen',
+                  style: TextStyle(color: kBrown, fontWeight: FontWeight.w700,
+                      fontSize: 15)),
+              subtitle: const Text(
+                  'Tablet neemt automatisch op bij videogesprek',
+                  style: TextStyle(color: kTextMuted, fontSize: 12)),
+              value: _autoAnswer,
+              activeColor: kGreen,
+              onChanged: _zetAutoAnswer,
+              contentPadding:
+                  const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+            ),
         ],
         const SizedBox(height: 30),
         Center(child: Opacity(opacity: 0.85,
@@ -3726,6 +3744,20 @@ class _InstellingenTabState extends State<InstellingenTab> {
       backgroundColor: ok ? Colors.green : Colors.red,
       duration: const Duration(seconds: 4),
     ));
+  }
+
+  Future<void> _zetAutoAnswer(bool waarde) async {
+    final kringId = DeviceModusService.actieveKringNotifier.value;
+    if (kringId == null || kringId.isEmpty) return;
+    // Optimistic update — zet direct terug bij Firestore-fout.
+    setState(() => _autoAnswer = waarde);
+    try {
+      await FirebaseFirestore.instance
+          .collection('kringen').doc(kringId)
+          .update({'autoAnswer': waarde});
+    } catch (_) {
+      if (mounted) setState(() => _autoAnswer = !waarde);
+    }
   }
 
   Widget _sectie(String t) => Padding(
