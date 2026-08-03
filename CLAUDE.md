@@ -268,6 +268,32 @@ NOOIT blind pushen — vandaag (15 mei 2026) heeft dat 10 rode builds opgeleverd
     (meldingen, app gebackgrounded), volledig gesloten (full-screen intent).
   - DEBUG_VIDEOBELLEN staat op true voor gesloten test (build 1.0.12+14).
     V4 auto-answer blijft apart later traject — bevestigd.
+- 3 augustus 2026: V4 auto-answer volledig gebouwd. Build 1.0.13+15 klaar
+  voor Codemagic. Commits (alle groen op CI):
+  - V4-1 (kring.dart): autoAnswer bool veld toegevoegd aan Kring-model
+    (fromFirestore + toFirestoreMap) — default false, backward-compat.
+  - V4-2 (push_service.dart): IncomingCall krijgt autoAnswer bool veld;
+    uitFcmData leest data['autoAnswer'] == 'true' (FCM strings, backward-compat).
+  - V4-3 (start_call.ts + deploy): startVideoCall leest kring.autoAnswer
+    uit kringSnap (al in memory, geen extra read) en stuurt het als
+    'true'/'false' string in FCM-payload. Server-authoritative: beller kan
+    de waarde niet manipuleren. Gedeployed naar europe-west1.
+  - V4-4 (main.dart): _verwerkInkomendGesprek springt bij autoAnswer==true
+    direct naar GesprekScherm, slaat InkomendGesprekScherm over. Kiosk-
+    hoofdpad (app altijd open) is 100% betrouwbaar. Volledig afgesloten app
+    valt terug op handmatig opnemen via FIX D (full-screen notificatie +
+    InkomendGesprekScherm) — Android-privacygrens, acceptabel. Tevens
+    _huidigeInkomendCallId naar finally verplaatst (altijd gereset).
+  - V4-5 (bel_apparaat_kies_scherm.dart): laadt kring.autoAnswer bij
+    _laad(). Als aan: _bel() toont AlertDialog 'Let op: {naam} neemt
+    automatisch op.' — beller moet bevestigen vóór gesprek wordt opgezet.
+    Annuleer stopt stil zonder foutmelding.
+  - V4-6 (familie_scherm.dart): eigenaar-only SwitchListTile 'Automatisch
+    opnemen' in instellingen, achter DEBUG_VIDEOBELLEN && _benIkEigenaar.
+    Optimistic update met Firestore-fallback. _actieveKringSub leest
+    autoAnswer live mee bij kring-switch.
+  - Resterende V4-stap: Firestore-rule handmatig toevoegen in Console
+    (zie openstaande punten).
 
 ## Bekende grenzen push-meldingen (eerlijk vastgelegd)
 
@@ -334,14 +360,18 @@ Videobellen (Fase VB):
   CAMERA gebruikt wordt voor familie-videobellen, dat USE_FULL_SCREEN_
   INTENT bij calling-functionaliteit hoort, en dat MODIFY_AUDIO_SETTINGS
   vereist is door WebRTC audio-routing.
-- **DEBUG_VIDEOBELLEN staat TIJDELIJK op true (nu build 1.0.12+14)** voor
+- **DEBUG_VIDEOBELLEN staat TIJDELIJK op true (nu build 1.0.13+15)** voor
   de gesloten-test op eigen testtoestellen. MOET terug naar false (of,
   als V6 tegen die tijd af is, vervangen door de Firestore-config-flag)
   vóór elke bredere release. Zonder deze terugzet zou elke installer
   onmiddellijk de videobel-UI zien terwijl backend en UX nog niet
   productie-klaar zijn.
-- **V4 auto-answer**: tablet neemt gesprek automatisch op (zonder
-  inkomend-gesprek-scherm). Nog niet gebouwd; gepland na gesloten test.
+- **V4 auto-answer Firestore-rule** (enige openstaande stap): handmatig
+  toevoegen in Firebase Console → Firestore → Rules. Regel: alleen
+  eigenaarUid mag autoAnswer schrijven op kring-doc. Zolang deze regel
+  ontbreekt kan elke ingelogde gebruiker autoAnswer zetten (client-side
+  toggle is al eigenaar-only, maar server-side afdwinging ontbreekt).
+  Prioriteit: doen vóór bredere release.
 - **Orphan-cleanup dry-run**: 17 orphan-docs geïdentificeerd; 2 echte
   apparaten beschermd (1781110668656_c561d9e1 = telefoon "j",
   1782995516100_6fef1080 = tablet "Madeira"). Wachten op expliciete
