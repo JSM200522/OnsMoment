@@ -340,7 +340,16 @@ class PushService {
       final data = jsonDecode(payload) as Map<String, dynamic>;
       if (data['type'] == 'inkomend_gesprek') {
         final call = IncomingCall.uitFcmData(data);
-        if (call != null) incomingCallNotifier.value = call;
+        if (call != null) {
+          // De-dup laag 1: sla over als dit gesprek al in de notifier staat.
+          // Geval (a) terminated → enig actief pad, geen race verwacht.
+          // Geval (c) grensgeval → voorkomt dubbele emit als beide paden
+          // bijna tegelijk vuren voor dezelfde callId. Fallback: de
+          // _inkomendGesprekOpen-vlag in _OntvangerRouterState.
+          if (incomingCallNotifier.value?.callId != call.callId) {
+            incomingCallNotifier.value = call;
+          }
+        }
         return;
       }
     } catch (_) {}
@@ -476,6 +485,12 @@ class PushService {
       debugPrint('⚠️ inkomend-gesprek FCM incompleet: ${msg.data}');
       return;
     }
+    // De-dup laag 1: sla over als dit gesprek al in de notifier staat.
+    // Geval (b) foreground → enig actief pad, geen race verwacht.
+    // Geval (c) grensgeval → voorkomt dubbele emit als ook
+    // _verwerkLokaalNotificatieTik al vuurde voor dezelfde callId.
+    // Fallback: _inkomendGesprekOpen-vlag in _OntvangerRouterState.
+    if (incomingCallNotifier.value?.callId == call.callId) return;
     incomingCallNotifier.value = call;
   }
 
