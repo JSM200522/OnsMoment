@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../services/apparaat_service.dart';
 import '../../services/device_modus_service.dart';
 import '../../theme/kleuren.dart';
@@ -32,6 +33,7 @@ class _BelApparaatKiesSchermState extends State<BelApparaatKiesScherm> {
   List<Map<String, dynamic>> _apparaten = const [];
   String? _mijnApparaatId;
   String? _kringId;
+  bool _autoAnswer = false;
 
   @override
   void initState() {
@@ -56,12 +58,17 @@ class _BelApparaatKiesSchermState extends State<BelApparaatKiesScherm> {
         });
         return;
       }
-      final leden = await ApparaatService.kringLeden(uid, kringId);
+      final ledenFuture = ApparaatService.kringLeden(uid, kringId);
+      final kringSnap = await FirebaseFirestore.instance
+          .collection('kringen').doc(kringId).get();
+      final leden = await ledenFuture;
       if (!mounted) return;
+      final autoAnswer = kringSnap.data()?['autoAnswer'] == true;
       setState(() {
         _bezig = false;
         _mijnApparaatId = mijnAppId;
         _kringId = kringId;
+        _autoAnswer = autoAnswer;
         _apparaten = leden
             .where((a) => a['apparaatId'] != mijnAppId)
             .toList();
@@ -72,7 +79,7 @@ class _BelApparaatKiesSchermState extends State<BelApparaatKiesScherm> {
     }
   }
 
-  void _bel(Map<String, dynamic> apparaat) {
+  Future<void> _bel(Map<String, dynamic> apparaat) async {
     final kringId = _kringId;
     final bellerApparaatId = _mijnApparaatId;
     if (kringId == null || bellerApparaatId == null) return;
@@ -82,6 +89,36 @@ class _BelApparaatKiesSchermState extends State<BelApparaatKiesScherm> {
     final weergaveNaam = doelNaam.isNotEmpty
         ? doelNaam
         : (label.isNotEmpty ? label : 'Onbekend apparaat');
+
+    // V4: als automatisch opnemen aan staat, eerst bevestigen bij de beller.
+    // Zo weet de beller dat de ontvanger meteen zichtbaar en hoorbaar is.
+    if (_autoAnswer && mounted) {
+      final bevestigd = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Let op'),
+          content: Text(
+            '$weergaveNaam neemt automatisch op. '
+            'Zorg dat je klaar bent om te worden gezien en gehoord.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(false),
+              child: const Text('Annuleer'),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.of(ctx).pop(true),
+              style: ElevatedButton.styleFrom(
+                  backgroundColor: kGreen, foregroundColor: kWhite),
+              child: const Text('Bel toch'),
+            ),
+          ],
+        ),
+      );
+      if (bevestigd != true) return;
+    }
+
+    if (!mounted) return;
     Navigator.of(context).push(MaterialPageRoute<void>(
       builder: (_) => BelScherm(
         kringId: kringId,
