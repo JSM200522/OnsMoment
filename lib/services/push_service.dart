@@ -29,6 +29,11 @@ class IncomingCall {
   final String calleeToken;
   final String kringId;
   final DateTime ontvangenOp;
+  /// V4: true als de kring-eigenaar "Automatisch opnemen" heeft aangezet.
+  /// Gezaghebbend: ingevuld door de Cloud Function op bel-moment vanuit
+  /// het kring-doc — niet client-side op te stellen door de beller.
+  /// Default false bij ontbrekend veld (backward-compat met pre-V4 FCM).
+  final bool autoAnswer;
 
   const IncomingCall({
     required this.roomName,
@@ -37,6 +42,7 @@ class IncomingCall {
     required this.calleeToken,
     required this.kringId,
     required this.ontvangenOp,
+    this.autoAnswer = false,
   });
 
   /// Bouwt uit een FCM-data-map. Returnt null als één van de vereiste
@@ -62,6 +68,9 @@ class IncomingCall {
       calleeToken: calleeToken,
       kringId: kringId,
       ontvangenOp: DateTime.now(),
+      // FCM-waarden zijn altijd strings; 'true' is de enige truthy waarde.
+      // Ontbrekend veld → false (backward-compat).
+      autoAnswer: data['autoAnswer'] == 'true',
     );
   }
 }
