@@ -224,7 +224,12 @@ export const startVideoCall = onCall(
     //    incomingCallNotifier in PushService (V2-3), niet via een
     //    tray-melding. Bij V5 (full-screen intent) komt daar een
     //    minimale notification-block bij met channel ons_moment_gesprek.
+    //
+    // V4: autoAnswer wordt op bel-moment uit het kring-doc gelezen (al
+    //    beschikbaar via kringSnap) en als string meegestuurd. De tablet
+    //    vertrouwt deze server-waarde — de beller kan hem niet manipuleren.
     const callerName = callerNaamUit(bellerSnap);
+    const autoAnswer: boolean = kringSnap.data()?.autoAnswer === true;
     const message: admin.messaging.Message = {
       token: doelFcmToken,
       data: {
@@ -234,6 +239,7 @@ export const startVideoCall = onCall(
         callerName,
         calleeToken,
         kringId,
+        autoAnswer: autoAnswer ? 'true' : 'false',
       },
       android: {
         priority: 'high',
