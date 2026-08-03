@@ -294,6 +294,38 @@ NOOIT blind pushen — vandaag (15 mei 2026) heeft dat 10 rode builds opgeleverd
     autoAnswer live mee bij kring-switch.
   - Resterende V4-stap: Firestore-rule handmatig toevoegen in Console
     (zie openstaande punten).
+- 4 augustus 2026: Kiosk-hardening gebouwd + geïntegreerd. Build 1.0.14+16
+  klaar voor Codemagic. Dit is de eerste build waarbij alles samenkomt:
+  volledige belfunctie V0-V4 (bellen, auto-answer, alle FIX A/B/C/D),
+  push-meldingen met badge/largeIcon/BigText, kringleden-filter, EN
+  kiosk-hardening rustige modus. Commits K-1a t/m K-3 (6667e01…2b346ce):
+  - K-1a: DEBUG_KIOSK flag (debug_flags.dart, standaard true voor test)
+  - K-1b: KioskService (lib/services/kiosk_service.dart) + MainActivity.kt
+    method channel voor startKiosk/stopKiosk/onTaskUnpinned.
+  - K-1c (FASE 1): eigenaar-uitgang + failsafe-herpin in TabletScherm.
+    dispose(): wis callback → herstelSysteemUI → stopLockTask (eigenaar-
+    uitgang, altijd veilig). _onTaskUnpinnedDoorGebruiker(): dubbele
+    mounted+modus-check + 1s delay — eigenaar-switch nooit geblokkeerd.
+  - K-2 (FASE 2): startLockTask + immersiveSticky in TabletScherm.initState
+    als weergaveModus != 'meldingen' (null = backwards compat = vergrendeld).
+  - K-3 (FASE 3): BootReceiver.kt + RECEIVE_BOOT_COMPLETED in manifest.
+    Na reboot: leest SharedPrefs flutter.ons_moment_weergave_modus →
+    fullScreenIntent-notificatie (Android 10+ verbiedt directe Activity-
+    start). Samsung/Xiaomi: autostart handmatig inschakelen vereist.
+  Openstaande device-testpunten voor deze build:
+  - Kiosk eigenaar-uitgang (KRITIEK): eigenaar wisselt modus → lock opheft,
+    geen herpin.
+  - Kiosk failsafe-herpin: onbedoeld unpin-gebaar → herpin binnen ~1s.
+  - Home+recents-ontsnapping: bewuste handgreep kan niet 100% dicht op
+    niet-beheerde tablets — failsafe-herpin is de vangnet.
+  - V4 auto-answer in vergrendelde modus: gesprek komt direct binnen zonder
+    InkomendGesprekScherm.
+  - Bellen bij weggeveegde app: graceful fallback naar handmatig opnemen
+    (FIX D full-screen intent).
+  - BOOT_COMPLETED: na herstart notificatie ontvangen, tap opent vergrendelde
+    modus. Samsung/Xiaomi: autostart inschakelen vereist.
+  DEBUG_VIDEOBELLEN=true en DEBUG_KIOSK=true — BEIDEN terug naar false vóór
+  bredere release.
 
 ## Bekende grenzen push-meldingen (eerlijk vastgelegd)
 
