@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:ui' show Color;
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
@@ -211,7 +212,7 @@ class PushService {
         onDidReceiveNotificationResponse: (resp) {
           final payload = resp.payload?.trim() ?? '';
           debugPrint('🔔 Lokale notificatie getikt: payload=$payload');
-          if (payload.isNotEmpty) tapMomentIdNotifier.value = payload;
+          _verwerkLokaalNotificatieTik(payload);
         },
       );
       final androidImpl = _localNotifications
@@ -299,7 +300,7 @@ class PushService {
             launchDetails!.notificationResponse?.payload?.trim() ?? '';
         if (payload.isNotEmpty) {
           debugPrint('🔔 Lokale notificatie launch: payload=$payload');
-          tapMomentIdNotifier.value = payload;
+          _verwerkLokaalNotificatieTik(payload);
         }
       }
     } catch (e, st) {
@@ -320,6 +321,24 @@ class PushService {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setInt(_kBadgeCount, 0);
     } catch (_) {}
+  }
+
+  /// Verwerkt de payload van een aangetikte lokale notificatie.
+  /// Gespreks-notificaties bevatten een JSON-payload met alle IncomingCall-
+  /// velden (type/roomName/callId/callerName/calleeToken/kringId).
+  /// Moment-notificaties bevatten een kale momentId-string.
+  /// Onbekende of lege payloads worden genegeerd (fail-safe).
+  static void _verwerkLokaalNotificatieTik(String payload) {
+    if (payload.isEmpty) return;
+    try {
+      final data = jsonDecode(payload) as Map<String, dynamic>;
+      if (data['type'] == 'inkomend_gesprek') {
+        final call = IncomingCall.uitFcmData(data);
+        if (call != null) incomingCallNotifier.value = call;
+        return;
+      }
+    } catch (_) {}
+    tapMomentIdNotifier.value = payload;
   }
 
   /// Roep aan zodra een familieUid + apparaatId bekend zijn (via
@@ -482,6 +501,8 @@ Future<void> _backgroundHandler(RemoteMessage message) async {
         'type=${message.data["type"]}');
     if (message.data['type'] == 'nieuw_moment') {
       await _achtergrondMomentNotificatie(message.data);
+    } else if (message.data['type'] == 'inkomend_gesprek') {
+      await _achtergrondGesprekNotificatie(message.data);
     }
   } catch (e) {
     debugPrint('⚠️ FCM background handler faalde: $e');
@@ -576,5 +597,43 @@ Future<void> _achtergrondMomentNotificatie(
       ),
     ),
     payload: momentId,
+  );
+}
+
+/// Toont een hoge-prioriteit lokale notificatie voor een inkomend videogesprek
+/// wanneer de app op de achtergrond of in meldingen-modus staat.
+/// Payload = jsonEncode(data) zodat [PushService._verwerkLokaalNotificatieTik]
+/// de IncomingCall kan reconstrueren als de gebruiker de notificatie tikt.
+/// Full-screen intent (lock-screen wake) volgt in V5/FIX-D.
+Future<void> _achtergrondGesprekNotificatie(
+    Map<String, dynamic> data) async {
+  final callerName = _achtergrondStrUit(data, 'callerName', 'Familie');
+
+  final plugin = FlutterLocalNotificationsPlugin();
+  await plugin.initialize(
+    const InitializationSettings(
+      android: AndroidInitializationSettings('ic_stat_ons_moment'),
+    ),
+  );
+
+  await plugin.show(
+    1001,
+    'Inkomend videogesprek',
+    '$callerName wil videobellen',
+    const NotificationDetails(
+      android: AndroidNotificationDetails(
+        PushService.gesprekChannelId,
+        'Ons Moment – Inkomend gesprek',
+        importance: Importance.max,
+        priority: Priority.high,
+        icon: 'ic_stat_ons_moment',
+        color: Color(0xFFFF9B71),
+        largeIcon: DrawableResourceAndroidBitmap('ons_moment_logo'),
+        ticker: 'Inkomend videogesprek',
+        showWhen: true,
+        autoCancel: true,
+      ),
+    ),
+    payload: jsonEncode(data),
   );
 }
