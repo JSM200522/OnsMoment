@@ -232,6 +232,42 @@ NOOIT blind pushen — vandaag (15 mei 2026) heeft dat 10 rode builds opgeleverd
     op tapMomentIdNotifier via onDidReceiveNotificationResponse +
     getNotificationAppLaunchDetails(). Cloud Function (onNieuwMoment) stuurt
     nu type/title/body/channelId in data i.p.v. notification-block.
+- 3 augustus 2026: Videobel-bugs + ringtone gefixed, belfunctie nu volledig
+  dekkend. Build 1.0.12+14 klaar voor Codemagic. Commits (alle groen op CI):
+  - FIX A (a9b0484): inkomend gesprek bereikt ontvanger in meldingen-modus.
+    Root cause: _backgroundHandler had geen 'inkomend_gesprek'-tak — FCM
+    viel stil bij achtergrondse app. Oplossing: _achtergrondGesprekNotificatie
+    (Importance.max, gesprekChannelId) toegevoegd; _verwerkLokaalNotificatieTik
+    parst payload — JSON → incomingCallNotifier, kale string → tapMomentIdNotifier.
+    Eén luisteraar (_OntvangerRouterState) handelt gesprek af in beide modi.
+  - FIX B (7f444cd): eerste-bericht-race definitief opgelost. Root cause:
+    _herstartListeners (getriggerd door actieveKringNotifier tijdens
+    huidigeKringIdMetFallback) startte de listener met _mijnApparaatId == null;
+    initiële snapshot werd overgeslagen en door Firestore niet opnieuw gestuurd.
+    Drie fixes: (1) _herstartListeners wacht op _mijnApparaatId vóór listener-
+    start (familie_scherm); (2) cancel() vorige subscription vóór overwrite in
+    beide schermen (familie + tablet); (3) defensieve null-guard in
+    tablet_scherm._verwerkMomenten. Dekt alle scenario's: familie, ontvanger
+    normaal/rustig, beide apps open, alle types.
+  - FIX C (0d00d98): bel.mp3 (geping) vervangen door vogel.mp3 (vogelgezang)
+    — zachter, warmer belgeluid voor doelgroep. Toegepast op bel_scherm
+    (ringback beller-kant) + inkomend_gesprek_scherm (ringtone callee-kant).
+  - FIX D-1 (067dec0): full-screen intent voor inkomend gesprek op lock-screen.
+    _achtergrondGesprekNotificatie krijgt fullScreenIntent: true +
+    category: AndroidNotificationCategory.call + visibility: public.
+    USE_FULL_SCREEN_INTENT stond al in manifest (V1-audit). Degradeert
+    gracefully op API 34+ als toestemming niet verleend.
+  - FIX D-2 (cb9b2fa): callId de-dup — twee lagen garanderen nooit twee,
+    nooit nul inkomend-gesprek-scherm. Laag 1: callId-check in
+    _publiceerInkomendGesprek + _verwerkLokaalNotificatieTik (geval a/b/c).
+    Laag 2: _inkomendGesprekOpen-vlag in _OntvangerRouterState (bestaand).
+    Terminated-app-pad al afgedekt door lijn 273 in main.dart (check huidige
+    notifier-waarde direct na listener-attach).
+  - Belfunctie nu dekkend in alle situaties: rustig (vergrendeld, app altijd
+    voorgrond), normaal actief (meldingen, voorgrond), normaal achtergrond
+    (meldingen, app gebackgrounded), volledig gesloten (full-screen intent).
+  - DEBUG_VIDEOBELLEN staat op true voor gesloten test (build 1.0.12+14).
+    V4 auto-answer blijft apart later traject — bevestigd.
 
 ## Bekende grenzen push-meldingen (eerlijk vastgelegd)
 
@@ -298,7 +334,7 @@ Videobellen (Fase VB):
   CAMERA gebruikt wordt voor familie-videobellen, dat USE_FULL_SCREEN_
   INTENT bij calling-functionaliteit hoort, en dat MODIFY_AUDIO_SETTINGS
   vereist is door WebRTC audio-routing.
-- **DEBUG_VIDEOBELLEN staat TIJDELIJK op true (nu build 1.0.11+13)** voor
+- **DEBUG_VIDEOBELLEN staat TIJDELIJK op true (nu build 1.0.12+14)** voor
   de gesloten-test op eigen testtoestellen. MOET terug naar false (of,
   als V6 tegen die tijd af is, vervangen door de Firestore-config-flag)
   vóór elke bredere release. Zonder deze terugzet zou elke installer
