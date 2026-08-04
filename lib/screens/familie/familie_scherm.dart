@@ -1352,8 +1352,18 @@ class _StuurTabState extends State<StuurTab> {
               labelText: _type == 'tekst' ? 'Bericht' : 'Optioneel bijschrift',
               hintText: _type == 'tekst' ? 'Wat wil je zeggen?'
                   : 'Bijv. "Een leuke foto van de kleinkinderen!"',
-              border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
-              filled: true, fillColor: kWhite),
+              border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(14),
+                  borderSide: BorderSide(
+                      color: kPeachLight.withOpacity(0.6), width: 1.5)),
+              enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(14),
+                  borderSide: BorderSide(
+                      color: kPeachLight.withOpacity(0.6), width: 1.5)),
+              focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(14),
+                  borderSide: const BorderSide(color: kPeach, width: 2)),
+              filled: true, fillColor: kCard),
           ),
           if (!_testModus) ...[
             const SizedBox(height: 16),
@@ -1383,11 +1393,10 @@ class _StuurTabState extends State<StuurTab> {
             onTap: _bezig ? null : _verstuur,
             child: Container(width: double.infinity,
               padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                gradient: const LinearGradient(colors: [kPeach, kRose]),
-                borderRadius: BorderRadius.circular(16),
-                boxShadow: [BoxShadow(color: kPeach.withOpacity(0.35),
-                    blurRadius: 20, offset: const Offset(0, 8))]),
+              decoration: const BoxDecoration(
+                gradient: LinearGradient(colors: [kPeach, kRose]),
+                borderRadius: BorderRadius.all(Radius.circular(22)),
+                boxShadow: [kPeachShadow]),
               child: Center(child: !_bezig
                 ? Text(
                     _testModus
@@ -2207,9 +2216,11 @@ class _StuurTabState extends State<StuurTab> {
       }),
       child: Container(padding: const EdgeInsets.symmetric(vertical: 20),
         decoration: BoxDecoration(
-          color: _type == waarde ? kPeach : kWhite,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: kPeachLight, width: 2)),
+          color: _type == waarde ? kPeach : kCard,
+          borderRadius: BorderRadius.circular(18),
+          boxShadow: _type == waarde
+              ? const [kPeachShadow]
+              : const [kCardShadow]),
         child: Column(children: [
           Text(emoji, style: const TextStyle(fontSize: 28)),
           const SizedBox(height: 4),
@@ -2228,10 +2239,10 @@ class _StuurTabState extends State<StuurTab> {
     Expanded(child: GestureDetector(
       onTap: onTap,
       child: Container(padding: const EdgeInsets.symmetric(vertical: 20),
-        decoration: BoxDecoration(
-          color: kWhite,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: kPeachLight, width: 2)),
+        decoration: const BoxDecoration(
+          color: kCard,
+          borderRadius: BorderRadius.all(Radius.circular(18)),
+          boxShadow: [kCardShadow]),
         child: Column(children: [
           icoon,
           const SizedBox(height: 4),
@@ -2244,9 +2255,10 @@ class _StuurTabState extends State<StuurTab> {
   Widget _tijdDatumKnop(String emoji, String tekst, VoidCallback onTap) =>
     GestureDetector(onTap: onTap, child: Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-      decoration: BoxDecoration(color: kWhite,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: kPeachLight, width: 2)),
+      decoration: const BoxDecoration(
+          color: kCard,
+          borderRadius: BorderRadius.all(Radius.circular(14)),
+          boxShadow: [kCardShadow]),
       child: Row(children: [
         Text(emoji, style: const TextStyle(fontSize: 18)),
         const SizedBox(width: 8),
