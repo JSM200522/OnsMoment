@@ -152,6 +152,60 @@ class _TabletSchermState extends State<TabletScherm>
       });
     });
     _startTapMomentListener();
+    // FSI-2: check USE_FULL_SCREEN_INTENT toestemming (Android 14+).
+    // Alleen relevant als videobellen actief is. Pas na de eerste frame
+    // zodat het dialoogje boven een volledig opgebouwd scherm zweeft.
+    if (DEBUG_VIDEOBELLEN && !kIsWeb) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _checkFullScreenIntentToestemming();
+      });
+    }
+  }
+
+  Future<void> _checkFullScreenIntentToestemming() async {
+    if (!mounted) return;
+    final heeftToestemming = await KioskService.kanFullScreenIntent();
+    if (!mounted || heeftToestemming) return;
+    _toonFullScreenIntentDialog();
+  }
+
+  void _toonFullScreenIntentDialog() {
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20)),
+        title: const Text('Gesprek op volledig scherm',
+            style: TextStyle(fontWeight: FontWeight.w900,
+                color: kBrown, fontSize: 17)),
+        content: const Text(
+            'Geef toestemming zodat een videogesprek groot in beeld '
+            'komt — ook als het scherm uit staat.\n\n'
+            'Zonder deze instelling verschijnt het gesprek als een '
+            'kleine melding bovenaan.',
+            style: TextStyle(fontSize: 14, color: kBrown)),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('Later',
+                style: TextStyle(color: kTextMuted)),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+                backgroundColor: kPeach, foregroundColor: kWhite,
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12))),
+            onPressed: () {
+              Navigator.of(ctx).pop();
+              KioskService.vraagFullScreenIntent();
+            },
+            child: const Text('Instelling openen',
+                style: TextStyle(fontWeight: FontWeight.w800)),
+          ),
+        ],
+      ),
+    );
   }
 
   /// Fase 2c: luistert op de tap-notifier van PushService. Wordt getriggerd
