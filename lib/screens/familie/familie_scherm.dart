@@ -981,6 +981,18 @@ class _FamilieSchermState extends State<FamilieScherm>
           ),
         ),
       ])),
+      floatingActionButton: (DEBUG_VIDEOBELLEN && !widget.alsOntvanger)
+          ? FloatingActionButton(
+              backgroundColor: kPeach,
+              foregroundColor: kWhite,
+              tooltip: 'Videobellen',
+              onPressed: () => Navigator.push(
+                  context,
+                  MaterialPageRoute<void>(
+                      builder: (_) => const BelApparaatKiesScherm())),
+              child: const Icon(Icons.videocam_rounded, size: 28),
+            )
+          : null,
       bottomNavigationBar: Container(
         decoration: BoxDecoration(color: kWhite,
             boxShadow: [BoxShadow(color: kBrown.withOpacity(0.08),
