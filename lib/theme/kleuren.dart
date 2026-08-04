@@ -12,3 +12,23 @@ const Color kWhite      = Color(0xFFFFFFFF);
 const Color kGreen      = Color(0xFF4CAF82);
 const Color kBlue       = Color(0xFF4A90E2);
 const Color kRood       = Color(0xFFE74C3C);
+
+// Warme kaartvlak-kleur — iets warmer dan zuiver wit, koeler dan kCream.
+// Gebruik als achtergrond voor kaarten, tegels en invoervelden.
+const Color kCard = Color(0xFFFFFBF8);
+
+// Zachte kaartschaduw — warm bruin, ~7% opacity. Geeft kaarten lichte diepte
+// zonder harde randen. Gebruik als [kCardShadow] in boxShadow.
+const BoxShadow kCardShadow = BoxShadow(
+  color: Color(0x12C27B4E),
+  blurRadius: 14,
+  offset: Offset(0, 4),
+);
+
+// Peach-schaduw voor actieve / geselecteerde interactieve elementen.
+// Gebruik als [kPeachShadow] in boxShadow.
+const BoxShadow kPeachShadow = BoxShadow(
+  color: Color(0x3DFF9B71),
+  blurRadius: 18,
+  offset: Offset(0, 6),
+);
