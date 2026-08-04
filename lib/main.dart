@@ -284,9 +284,23 @@ class _OntvangerRouterState extends State<_OntvangerRouter> {
     _huidigeInkomendCallId = call.callId;
     try {
       final navigator = Navigator.of(context);
-      // V4: autoAnswer — kiosk-hoofdpad. Tablet neemt direct op zonder
-      // InkomendGesprekScherm. Waarde komt van de server (kring-doc),
-      // kan niet door de beller worden gemanipuleerd.
+      // autoAnswer=true via drie paden:
+      //   (1) Kiosk/rustige modus — app altijd voorgrond: FCM-foreground
+      //       → _publiceerInkomendGesprek → hier → direct GesprekScherm.
+      //       100% betrouwbaar, geen Android-beperkingen.
+      //   (2) Normale modus, 'Opnemen'-knop in melding getikt:
+      //       _verwerkLokaalNotificatieTik(actionId:'accept') zet
+      //       autoAnswer=true ongeacht kring-instelling → hier → direct
+      //       GesprekScherm. Werkt bij app achtergrond én gesloten.
+      //   (3) Normale modus, gesloten app, scherm UIT: fullScreenIntent
+      //       kan Android triggeren om de app automatisch te starten.
+      //       Als getNotificationAppLaunchDetails() de payload meelevert
+      //       (afhankelijk van Android-versie/OEM), vuurt dit pad.
+      //       ANDROID-GRENS: bij scherm AAN toont fullScreenIntent als
+      //       heads-up; app wordt niet auto-gelauncht — gebruiker tikt
+      //       'Opnemen' (pad 2). Nooit een stille/verwarrende toestand:
+      //       de melding blijft zichtbaar met actieknoppen tot tik of
+      //       45s-timeout.
       if (call.autoAnswer) {
         await navigator.push(MaterialPageRoute<void>(
           builder: (_) => GesprekScherm(
