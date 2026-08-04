@@ -108,7 +108,7 @@ class _BelSchermState extends State<BelScherm> {
 
   Future<void> _startRingback() async {
     try {
-      await _ringbackPlayer.setAsset('assets/sounds/vogel.mp3');
+      await _ringbackPlayer.setAsset('assets/sounds/marimba.wav');
       await _ringbackPlayer.setLoopMode(LoopMode.one);
       await _ringbackPlayer.play();
     } catch (_) {}

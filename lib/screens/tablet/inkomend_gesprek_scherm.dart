@@ -59,7 +59,7 @@ class _InkomendGesprekSchermState extends State<InkomendGesprekScherm> {
 
   Future<void> _startRingtone() async {
     try {
-      await _ringtone.setAsset('assets/sounds/vogel.mp3');
+      await _ringtone.setAsset('assets/sounds/marimba.wav');
       await _ringtone.setLoopMode(LoopMode.one);
       await _ringtone.play();
     } catch (_) {

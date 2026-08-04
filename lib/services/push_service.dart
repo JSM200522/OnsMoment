@@ -226,19 +226,30 @@ class PushService {
         ),
         onDidReceiveNotificationResponse: (resp) {
           final payload = resp.payload?.trim() ?? '';
-          debugPrint('🔔 Lokale notificatie getikt: payload=$payload');
-          _verwerkLokaalNotificatieTik(payload);
+          debugPrint('🔔 Lokale notificatie getikt: payload=$payload '
+              'actionId=${resp.actionId}');
+          _verwerkLokaalNotificatieTik(payload, actionId: resp.actionId);
         },
+        // Vereist door flutter_local_notifications zodra er een action met
+        // showsUserInterface:false bestaat ('Weigeren'). Draait in een aparte
+        // isolate; voor onze 'Weigeren'-actie is geen verdere afhandeling
+        // nodig — cancelNotification:true ruimt de notificatie al op.
+        onDidReceiveBackgroundNotificationResponse: _achtergrondNotificatieActie,
       );
       final androidImpl = _localNotifications
           .resolvePlatformSpecificImplementation<
               AndroidFlutterLocalNotificationsPlugin>();
 
-      // Cleanup: verwijder het Fase-1 channel zodat het niet als weeskind
-      // in Android-instellingen achterblijft. Silent fail als niet aanwezig
-      // (nieuwe installs of al eerder verwijderd).
+      // Cleanup: verwijder verouderde/immutable channels zodat ze niet als
+      // weeskind achterblijven en zodat we sound/audioAttributes kunnen
+      // updaten (Android channels zijn immutable na eerste aanmaak).
+      // Silent fail als niet aanwezig (nieuwe installs of al eerder verwijderd).
       try {
         await androidImpl?.deleteNotificationChannel(_oudDefaultChannelId);
+        // P2: ons_moment_gesprek werd eerder aangemaakt zonder sound en zonder
+        // audioAttributesUsage → stille melding op meldingsvolume. Verwijder
+        // zodat we hieronder opnieuw aanmaken met ringtone + STREAM_RING.
+        await androidImpl?.deleteNotificationChannel(gesprekChannelId);
       } catch (_) {}
 
       // Zes channels registreren, één per herkenningsgeluid. Elk channel
@@ -262,17 +273,30 @@ class PushService {
         );
       }
 
-      // V2-3: gesprek-channel voor V5-full-screen-intent voorbereiding.
-      // Importance.max zodat Android hem straks als "calling"-priority
-      // behandelt (nodig voor de lock-screen-wake in V5). Geen expliciete
-      // sound — Android valt terug op default notification sound tot we
-      // in V5 een ringtone-raw-resource toevoegen.
+      // P2: gesprek-channel als echte oproep — ringtone + beltoonvolume.
+      //
+      // audioAttributesUsage: notificationRingtone → Android stuurt het
+      // geluid naar STREAM_RING (beltoonvolume). Op Pixel en Samsung One UI
+      // volgt dit de fysieke beltoon-volumeknop, identiek aan een telefoon-
+      // oproep. Samsung-caveat: One UI kapt notification sounds af op ~15s
+      // ongeacht bestandslengte — binnen Android-OS-grens, niet omzeilbaar.
+      //
+      // importance: max + category call (gezet op de notificatie zelf) geven
+      // op Android 13+ het recht om door DND heen te breken als calling app.
+      //
+      // sound: ons_moment_gesprek → res/raw/ons_moment_gesprek.wav
+      // (marimba-ringtone, ~26s). Android speelt het eenmalig bij verschijnen;
+      // in-app looping via just_audio in InkomendGesprekScherm.
       await androidImpl?.createNotificationChannel(
         const AndroidNotificationChannel(
           gesprekChannelId,
           'Ons Moment – Inkomend gesprek',
           description: 'Inkomend videogesprek van familie',
           importance: Importance.max,
+          sound: RawResourceAndroidNotificationSound('ons_moment_gesprek'),
+          audioAttributesUsage: AudioAttributesUsage.notificationRingtone,
+          enableVibration: true,
+          playSound: true,
         ),
       );
 
@@ -305,17 +329,19 @@ class PushService {
         _publiceerTapMomentId(initial);
       }
 
-      // Tap terwijl app volledig gesloten was (via lokale notificatie
-      // aangemaakt door de achtergrond-handler). Payload = momentId.
-      // Wordt afgehandeld vóór het eerste build (zie boven).
+      // Tap (of fullScreenIntent auto-launch) terwijl app volledig gesloten
+      // was. Payload bevat het gesprek-JSON of een momentId.
+      // actionId: 'accept' als de gebruiker de 'Opnemen'-knop tikte →
+      // direct naar GesprekScherm zonder InkomendGesprekScherm.
       final launchDetails =
           await _localNotifications.getNotificationAppLaunchDetails();
       if (launchDetails?.didNotificationLaunchApp == true) {
-        final payload =
-            launchDetails!.notificationResponse?.payload?.trim() ?? '';
+        final resp = launchDetails!.notificationResponse;
+        final payload = resp?.payload?.trim() ?? '';
         if (payload.isNotEmpty) {
-          debugPrint('🔔 Lokale notificatie launch: payload=$payload');
-          _verwerkLokaalNotificatieTik(payload);
+          debugPrint('🔔 Lokale notificatie launch: payload=$payload '
+              'actionId=${resp?.actionId}');
+          _verwerkLokaalNotificatieTik(payload, actionId: resp?.actionId);
         }
       }
     } catch (e, st) {
@@ -343,13 +369,32 @@ class PushService {
   /// velden (type/roomName/callId/callerName/calleeToken/kringId).
   /// Moment-notificaties bevatten een kale momentId-string.
   /// Onbekende of lege payloads worden genegeerd (fail-safe).
-  static void _verwerkLokaalNotificatieTik(String payload) {
+  ///
+  /// [actionId]: 'accept' als de gebruiker de 'Opnemen'-actieknop tikte —
+  /// dan wordt autoAnswer geforceerd op true zodat [_verwerkInkomendGesprek]
+  /// altijd direct naar GesprekScherm springt, ook als de kring autoAnswer
+  /// normaal uit heeft staan. De gebruiker heeft immers bewust getikt.
+  static void _verwerkLokaalNotificatieTik(String payload,
+      {String? actionId}) {
     if (payload.isEmpty) return;
     try {
       final data = jsonDecode(payload) as Map<String, dynamic>;
       if (data['type'] == 'inkomend_gesprek') {
-        final call = IncomingCall.uitFcmData(data);
+        var call = IncomingCall.uitFcmData(data);
         if (call != null) {
+          // 'Opnemen'-knop getikt → forceer autoAnswer zodat het gesprek
+          // direct opent zonder InkomendGesprekScherm tussendoor.
+          if (actionId == 'accept' && !call.autoAnswer) {
+            call = IncomingCall(
+              roomName: call.roomName,
+              callId: call.callId,
+              callerName: call.callerName,
+              calleeToken: call.calleeToken,
+              kringId: call.kringId,
+              ontvangenOp: call.ontvangenOp,
+              autoAnswer: true,
+            );
+          }
           // De-dup laag 1: sla over als dit gesprek al in de notifier staat.
           // Geval (a) terminated → enig actief pad, geen race verwacht.
           // Geval (c) grensgeval → voorkomt dubbele emit als beide paden
@@ -631,16 +676,26 @@ Future<void> _achtergrondMomentNotificatie(
 }
 
 /// Toont een hoge-prioriteit lokale notificatie voor een inkomend videogesprek
-/// wanneer de app op de achtergrond of volledig gesloten is (FIX-D).
-/// Payload = jsonEncode(data) zodat [PushService._verwerkLokaalNotificatieTik]
-/// de IncomingCall kan reconstrueren als de gebruiker de notificatie tikt.
+/// wanneer de app op de achtergrond of volledig gesloten is (FIX-D / P3).
 ///
-/// [fullScreenIntent] wekt het scherm ook op lock-screen (USE_FULL_SCREEN_INTENT
-/// staat al in AndroidManifest). Op API 34+ (Android 14+) is dit een beperkte
-/// toestemming: bij nieuwe installs auto-granted voor apps die category 'call'
-/// gebruiken; bij weigering degradeert de melding naar normale Importance.max.
-/// [NotificationVisibility.public] zorgt dat de melding zichtbaar is zonder
-/// ontgrendelen.
+/// Payload = jsonEncode(data) zodat [PushService._verwerkLokaalNotificatieTik]
+/// de IncomingCall kan reconstrueren bij tik of action-knop.
+///
+/// Action buttons (P3):
+/// - 'Opnemen' (showsUserInterface:true): brengt app naar voorgrond,
+///   triggert onDidReceiveNotificationResponse met actionId:'accept' →
+///   _verwerkLokaalNotificatieTik zet autoAnswer=true → direct GesprekScherm.
+/// - 'Weigeren' (showsUserInterface:false): dismisst de notificatie stil,
+///   app blijft dicht. Beller ziet de 45s-timeout.
+///
+/// fullScreenIntent wekt het scherm op lock-screen (USE_FULL_SCREEN_INTENT
+/// in manifest). Op API 34+ degradeert het naar heads-up als toestemming
+/// niet verleend — nooit een stille/onzichtbare toestand.
+/// NotificationVisibility.public: melding zichtbaar zonder ontgrendelen.
+///
+/// ANDROID-GRENS: notification sound speelt éénmalig (~26s marimba).
+/// In-app looping via just_audio in InkomendGesprekScherm. Looping via
+/// notificatie-channel is niet mogelijk zonder native foreground service.
 Future<void> _achtergrondGesprekNotificatie(
     Map<String, dynamic> data) async {
   final callerName = _achtergrondStrUit(data, 'callerName', 'Familie');
@@ -666,15 +721,41 @@ Future<void> _achtergrondGesprekNotificatie(
         color: Color(0xFFFF9B71),
         largeIcon: DrawableResourceAndroidBitmap('ons_moment_logo'),
         ticker: 'Inkomend videogesprek',
-        showWhen: true,
-        autoCancel: true,
-        // FIX-D: wekt scherm op lock-screen; degradeert gracefully als
-        // USE_FULL_SCREEN_INTENT niet is verleend (toont normale melding).
+        showWhen: false,
+        autoCancel: false,
         fullScreenIntent: true,
         category: AndroidNotificationCategory.call,
         visibility: NotificationVisibility.public,
+        actions: [
+          AndroidNotificationAction(
+            'accept',
+            'Opnemen',
+            showsUserInterface: true,
+            cancelNotification: true,
+          ),
+          AndroidNotificationAction(
+            'decline',
+            'Weigeren',
+            showsUserInterface: false,
+            cancelNotification: true,
+          ),
+        ],
       ),
     ),
     payload: jsonEncode(data),
   );
+}
+
+/// Top-level handler voor notificatie-acties die worden getikt terwijl de
+/// app NIET in de voorgrond staat (vereist door flutter_local_notifications
+/// zodra er een action met showsUserInterface:false bestaat).
+///
+/// Voor 'Weigeren' is geen actie nodig: cancelNotification:true heeft de
+/// notificatie al verwijderd. 'Opnemen' (showsUserInterface:true) bereikt
+/// dit pad nooit — die brengt de app naar de voorgrond en triggert
+/// onDidReceiveNotificationResponse in de hoofd-isolate.
+@pragma('vm:entry-point')
+void _achtergrondNotificatieActie(NotificationResponse response) {
+  // Geen verdere afhandeling — 'Weigeren' is via cancelNotification:true
+  // al afgehandeld op OS-niveau.
 }
