@@ -326,6 +326,55 @@ NOOIT blind pushen — vandaag (15 mei 2026) heeft dat 10 rode builds opgeleverd
     modus. Samsung/Xiaomi: autostart inschakelen vereist.
   DEBUG_VIDEOBELLEN=true en DEBUG_KIOSK=true — BEIDEN terug naar false vóór
   bredere release.
+- 4 augustus 2026: Belfixes + MainActivity K-fix code-compleet. Build 1.0.15+17
+  klaar voor Codemagic-build en device-test. flutter analyze: geen issues.
+  Alle commits groen op CI en gepusht naar main. Wat er ligt:
+  - Fix K (7a571be): MainActivity.kt compileerfout opgelost. onTaskUnpinned()
+    bestond niet — vervangen door onWindowFocusChanged(hasFocus: Boolean) +
+    ActivityManager.getLockTaskModeState() (API 23+, ≥ minSdk). kioskActief-
+    boolean voorkomt false positive bij eigenaar-initiated stopLockTask().
+  - P2+P4+P3 (a9f03d2, gebundeld): marimba-ringtone — mixkit-marimba-
+    ringtone-1359.wav gekopieerd naar assets/sounds/marimba.wav (in-app loop
+    via just_audio) én android/app/src/main/res/raw/ons_moment_gesprek.wav
+    (notification sound). Gesprek-channel verwijderd (immutable) + opnieuw
+    aangemaakt met RawResourceAndroidNotificationSound('ons_moment_gesprek')
+    + audioAttributesUsage: notificationRingtone → STREAM_RING (beltoonvolume).
+    Samsung-caveat: notification sounds afgekapt op ~15s (OS-grens). P3
+    gebundeld: Opnemen (showsUserInterface:true, cancelNotification:true) en
+    Weigeren (showsUserInterface:false, cancelNotification:true) action buttons
+    in _achtergrondGesprekNotificatie. actionId=='accept' in
+    _verwerkLokaalNotificatieTik zet autoAnswer=true → direct GesprekScherm.
+    _achtergrondNotificatieActie als top-level @pragma('vm:entry-point').
+    getNotificationAppLaunchDetails() leest actionId bij terminated-start.
+    Vogel.mp3 vervangen door marimba.wav in BelScherm + InkomendGesprekScherm.
+    Versie-bump 1.0.15+17 in dezelfde commit.
+  - P1 (039d721): drie auto-answer-paden gedocumenteerd in main.dart als
+    inline comments. Android-grens expliciet benoemd: scherm AAN + gesloten
+    app = heads-up notificatie, geen auto-launch — gebruiker tikt Opnemen
+    (pad 2, actionId='accept'). Geen functie-wijziging.
+  Openstaande testpunten voor 1.0.15+17:
+  - Marimba luid bij gesloten app (beltoonvolume = STREAM_RING)
+  - Opnemen/Weigeren knoppen zichtbaar in melding bij gesloten app
+  - Opnemen → direct GesprekScherm (zonder InkomendGesprekScherm)
+  - Weigeren → melding verdwijnt, geen actie
+  - Kiosk eigenaar-uitgang (KRITIEK): modus wisselen → lock opheft
+  - Kiosk failsafe-herpin: onbedoeld unpin → herpin binnen ~1s
+  - BOOT_COMPLETED na reboot (Samsung: autostart inschakelen)
+  DEBUG_VIDEOBELLEN=true en DEBUG_KIOSK=true — BEIDEN terug naar false vóór
+  bredere release.
+- 4 augustus 2026: Veiligheidsaudit 10-punten afgerond + geautomatiseerd
+  security-traject gepland. Start NA belfunctie-test. Kritieke bevindingen:
+  - Firestore rules: allow read, write: if request.auth != null op alle
+    collecties → BLOCKER. Elke ingelogde gebruiker kan alle families' data
+    lezen via Firestore REST API. Aanpak: isKringEigenaar(kringId) helper
+    met get(/kringen/$(kringId)).eigenaarUid == request.auth.uid. Geen
+    Flutter-code-aanpassingen nodig (alle queries filteren al op kringId;
+    geen familieUid-veld in content-documenten — koppeling alleen via kringId).
+  - Storage rules: staat onbekend (niet in repo). Controleer Console → Storage
+    → Rules vóór activatie.
+  - Cloud Functions: groen. Auth ✓, kring-membership ✓, rate-limiting ✓,
+    apparaat-verify ✓, secrets in Secret Manager ✓. Geen actie vereist.
+  Zie sectie "Security hardening" in Openstaande punten voor het complete plan.
 
 ## Bekende grenzen push-meldingen (eerlijk vastgelegd)
 
@@ -392,7 +441,7 @@ Videobellen (Fase VB):
   CAMERA gebruikt wordt voor familie-videobellen, dat USE_FULL_SCREEN_
   INTENT bij calling-functionaliteit hoort, en dat MODIFY_AUDIO_SETTINGS
   vereist is door WebRTC audio-routing.
-- **DEBUG_VIDEOBELLEN staat TIJDELIJK op true (nu build 1.0.13+15)** voor
+- **DEBUG_VIDEOBELLEN staat TIJDELIJK op true (nu build 1.0.15+17)** voor
   de gesloten-test op eigen testtoestellen. MOET terug naar false (of,
   als V6 tegen die tijd af is, vervangen door de Firestore-config-flag)
   vóór elke bredere release. Zonder deze terugzet zou elke installer
@@ -424,3 +473,53 @@ Videobellen (Fase VB):
   100% dicht; failsafe-herpin vangt dit op — MOET op echt toestel
   geverifieerd worden. Samsung/Xiaomi: autostart handmatig inschakelen
   vereist voor BOOT_COMPLETED-betrouwbaarheid.
+
+Security hardening (geprioriteerd traject — start NA belfunctie-test 1.0.15+17):
+- **KRITIEK BLOCKER — Firestore rules aanscherpen** (vóór open test/launch):
+  Huidige rules: allow read, write: if request.auth != null → elke ingelogde
+  gebruiker kan alle families' data lezen/schrijven via Firestore REST API.
+  Correcte aanpak: isKringEigenaar(kringId)-helper met get()-call op
+  kringen/{kringId}.eigenaarUid == request.auth.uid. Geldt voor momenten,
+  dagelijkse_momenten, gepland_momenten, notities. Kringen: eigenaarUid-check
+  direct. Gebruikers/{uid}: uid-check direct. Leden subcollectie: lidUid-check.
+  GEEN Flutter-code-aanpassingen nodig — alle queries filteren al op kringId;
+  er is geen familieUid-veld in content-documenten (koppeling uitsluitend via
+  kringId, bevestigd in code-audit).
+- **KRITIEK BLOCKER — Storage rules controleren** (vóór open test/launch):
+  Huidige staat onbekend — niet in repo, beheerd in Console. Open Console →
+  Storage → Rules en controleer. Indien permissief: aanscherpen vóór activatie
+  Firestore-rules. Structuur bepaalt de regels (zie sessielog 4 aug audit).
+- **GATE — Geautomatiseerde testset EERST bouwen, dan deployen**:
+  Locatie: firestore-tests/ (nieuw Node.js/TypeScript project in projectroot).
+  Packages: @firebase/rules-unit-testing ^3.0.0, jest, ts-jest, typescript.
+  Vereiste: Java JRE voor Firebase Emulator (controleer met `java -version`).
+  Bestanden: firestore.rules (lokale kopie), helpers.ts (seed + contexts),
+  legitiem.test.ts (alle app-handelingen → assertSucceeds),
+  aanval.test.ts (cross-family / crafted docs / unauthenticated → assertFails).
+  Commando: firebase emulators:exec --only firestore "cd firestore-tests && npm test"
+  Rules worden NOOIT geactiveerd zolang tests niet 100% groen zijn.
+  Rollback bij problemen: Console → Firestore → Rules → History → Revert.
+- **Veilige uitrolstrategie** (NIET tijdens actieve testperiode 1.0.15+17):
+  1. firestore-tests/ bouwen + java-check + npm install
+  2. firestore.rules lokaal schrijven (complete tekst klaarstaan in sessie)
+  3. firebase emulators:exec → alle tests groen
+  4. Storage-rules verifiëren in Console
+  5. Rules activeren in Console (na afsluiting gesloten test)
+  6. 30 min monitor Cloud Function logs na activatie
+  7. Rollback indien nodig (< 1 min via Console History)
+- **BELANGRIJK — E-mailverificatie server-side** (vóór launch):
+  request.auth.token.email_verified == true toevoegen aan Firestore rules.
+  Eerst bestaande accounts verifiëren; dan rule activeren. Voorkomt
+  subscription-bypass via nep-accounts bij betaallancering.
+- **BELANGRIJK — AVG/Privacy** (vóór launch):
+  Privacy Policy schrijven + in-app tonen (AVG art. 13, wettelijk verplicht).
+  Right to erasure implementeren (AVG art. 17, verwijderAccount()-flow).
+  Data retention policy. Bijzondere persoonsgegevens (dementie/zorgcontext)
+  vereisen expliciete toestemming (AVG art. 9).
+- **BELANGRIJK — Git + API-key restricties** (na rules-fix):
+  .gitignore uitbreiden: lib/firebase_options.dart + google-services.json.
+  Web API key restricties in Google Cloud Console (HTTP-referer:
+  jsm200522.github.io). Sleutelrotatie NIET nodig — Firebase API keys zijn
+  semi-publiek bedoeld; bescherming zit in rules, niet in geheimhouding.
+- **Cloud Functions**: groen bevonden in audit (auth ✓, membership ✓,
+  rate-limiting ✓, apparaat-verify ✓, secrets in Secret Manager ✓). Geen actie.
