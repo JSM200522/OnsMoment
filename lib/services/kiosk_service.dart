@@ -61,4 +61,22 @@ class KioskService {
     if (kIsWeb) return;
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
   }
+
+  /// Android 14+ (API 34): true als de app USE_FULL_SCREEN_INTENT heeft.
+  /// Op oudere versies is de toestemming automatisch — altijd true.
+  static Future<bool> kanFullScreenIntent() async {
+    if (kIsWeb) return false;
+    try {
+      return await _channel.invokeMethod<bool>('checkFullScreenIntent') ?? true;
+    } catch (_) {
+      return true;
+    }
+  }
+
+  /// Opent de Android-instelling waarmee de gebruiker USE_FULL_SCREEN_INTENT
+  /// kan verlenen. No-op op API < 34 (toestemming al automatisch verleend).
+  static Future<void> vraagFullScreenIntent() async {
+    if (kIsWeb) return;
+    try { await _channel.invokeMethod<void>('requestFullScreenIntent'); } catch (_) {}
+  }
 }
