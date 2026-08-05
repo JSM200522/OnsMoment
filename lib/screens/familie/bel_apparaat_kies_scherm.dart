@@ -52,14 +52,18 @@ class _BelApparaatKiesSchermState extends State<BelApparaatKiesScherm> {
         });
         return;
       }
-      final ledenFuture = ApparaatService.kringLeden(uid, kringId);
+      // Kring-doc eerst: eigenaarUid is nodig voor kringLeden zodat een
+      // gast met eigen account de apparaten van de eigenaar ziet, niet
+      // zijn eigen (lege) collectie. In de huidige shared-account situatie
+      // is uid == eigenaarUid — geen enkel verschil in gedrag.
       final kringSnap = await FirebaseFirestore.instance
           .collection('kringen').doc(kringId).get();
-      final leden = await ledenFuture;
-      if (!mounted) return;
       final data = kringSnap.data();
+      final eigenaarUid = (data?['eigenaarUid'] as String? ?? '').trim();
+      final effectiefUid = eigenaarUid.isNotEmpty ? eigenaarUid : uid;
+      final leden = await ApparaatService.kringLeden(effectiefUid, kringId);
+      if (!mounted) return;
       final autoAnswer = data?['autoAnswer'] == true;
-      final eigenaarUid = data?['eigenaarUid'] as String? ?? '';
       setState(() {
         _bezig = false;
         _mijnApparaatId = mijnAppId;
