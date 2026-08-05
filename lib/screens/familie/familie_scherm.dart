@@ -4031,10 +4031,12 @@ class MomentenBeherenScherm extends StatelessWidget {
       {QueryDocumentSnapshot? bestaand}) async {
     if (uid == null) return;
     final initial = bestaand?.data() as Map<String, dynamic>?;
-    final result = await showDialog<Map<String, dynamic>>(
-      context: context,
-      builder: (ctx) => _NieuwMomentDialog(
-          initial: initial, bestaand: bestaand));
+    final result = await Navigator.push<Map<String, dynamic>>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => MomentInvulScherm(
+            eenmalig: false, initial: initial, bestaand: bestaand)),
+    );
     if (result == null) return;
     if (bestaand != null) {
       await bestaand.reference.update({
@@ -4063,10 +4065,12 @@ class MomentenBeherenScherm extends StatelessWidget {
       {QueryDocumentSnapshot? bestaand}) async {
     if (uid == null) return;
     final initial = bestaand?.data() as Map<String, dynamic>?;
-    final result = await showDialog<Map<String, dynamic>>(
-      context: context,
-      builder: (ctx) => _EenmaligMomentDialog(
-          initial: initial, bestaand: bestaand));
+    final result = await Navigator.push<Map<String, dynamic>>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => MomentInvulScherm(
+            eenmalig: true, initial: initial, bestaand: bestaand)),
+    );
     if (result == null) return;
     if (bestaand != null) {
       // Update alleen de bewerkbare velden — kringId/actief/getoond/aangemaakt
@@ -4395,6 +4399,332 @@ class _EenmaligMomentDialogState extends State<_EenmaligMomentDialog> {
           ]))));
   }
 }
+
+// ── Moment invulscherm (FASE 2) ─────────────────────────────────────────────
+
+class MomentInvulScherm extends StatefulWidget {
+  final bool eenmalig;
+  final Map<String, dynamic>? initial;
+  final QueryDocumentSnapshot? bestaand;
+
+  const MomentInvulScherm({
+    super.key,
+    required this.eenmalig,
+    this.initial,
+    this.bestaand,
+  });
+
+  @override
+  State<MomentInvulScherm> createState() => _MomentInvulSchermState();
+}
+
+class _MomentInvulSchermState extends State<MomentInvulScherm> {
+  late String _emoji;
+  late final TextEditingController _labelCtrl;
+  late TimeOfDay _tijd;
+  late DateTime _datum;
+
+  static const _emojis = [
+    '⭐', '☀️', '☕', '🍽️', '🌙', '💕',
+    '🎵', '🌸', '🌳', '📚', '🐦', '🍰',
+  ];
+
+  @override
+  void initState() {
+    super.initState();
+    final i = widget.initial;
+    _emoji = i?['emoji'] as String? ?? '⭐';
+    _labelCtrl = TextEditingController(text: i?['label'] as String? ?? '');
+    final geplandOp = (i?['geplandOp'] as Timestamp?)?.toDate();
+    if (widget.eenmalig) {
+      _datum = geplandOp ?? DateTime.now().add(const Duration(days: 1));
+      _tijd = geplandOp != null
+          ? TimeOfDay(hour: geplandOp.hour, minute: geplandOp.minute)
+          : const TimeOfDay(hour: 12, minute: 0);
+    } else {
+      _datum = DateTime.now();
+      _tijd = TimeOfDay(
+          hour: i?['uur'] as int? ?? 15,
+          minute: i?['minuut'] as int? ?? 0);
+    }
+  }
+
+  @override
+  void dispose() {
+    _labelCtrl.dispose();
+    super.dispose();
+  }
+
+  String _tijdLabel() =>
+      '${_tijd.hour.toString().padLeft(2, '0')}:'
+      '${_tijd.minute.toString().padLeft(2, '0')}';
+
+  String _datumLabel() =>
+      '${_datum.day.toString().padLeft(2, '0')}-'
+      '${_datum.month.toString().padLeft(2, '0')}-${_datum.year}';
+
+  Future<void> _kiesTijd() async {
+    final t = await showTimePicker(
+      context: context,
+      initialTime: _tijd,
+      builder: (c, child) => MediaQuery(
+        data: MediaQuery.of(c).copyWith(alwaysUse24HourFormat: true),
+        child: child!,
+      ),
+    );
+    if (t != null) setState(() => _tijd = t);
+  }
+
+  Future<void> _kiesDatum() async {
+    final d = await showDatePicker(
+      context: context,
+      initialDate: _datum,
+      firstDate: DateTime.now(),
+      lastDate: DateTime.now().add(const Duration(days: 365)),
+    );
+    if (d != null) setState(() => _datum = d);
+  }
+
+  void _opslaan() {
+    final naam = _labelCtrl.text.trim();
+    if (naam.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('Vul een naam in'),
+          backgroundColor: Colors.red));
+      return;
+    }
+    if (widget.eenmalig) {
+      final gepland = DateTime(
+          _datum.year, _datum.month, _datum.day, _tijd.hour, _tijd.minute);
+      if (!gepland.isAfter(DateTime.now())) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text('Kies een tijdstip in de toekomst'),
+            backgroundColor: Colors.red));
+        return;
+      }
+      Navigator.pop(context, {
+        'emoji': _emoji,
+        'label': naam,
+        'uur': _tijd.hour,
+        'minuut': _tijd.minute,
+        'geplandOp': gepland,
+      });
+    } else {
+      Navigator.pop(context, {
+        'emoji': _emoji,
+        'label': naam,
+        'uur': _tijd.hour,
+        'minuut': _tijd.minute,
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isBestaand = widget.bestaand != null;
+    final titel = isBestaand
+        ? 'Moment aanpassen'
+        : (widget.eenmalig ? 'Eenmalig gepland moment' : 'Dagelijks moment');
+
+    return NormaalScaffold(
+      backgroundColor: kCream,
+      appBar: AppBar(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        iconTheme: const IconThemeData(color: kBrown),
+        title: Text(titel,
+            style: const TextStyle(
+                color: kBrown, fontWeight: FontWeight.w900)),
+      ),
+      body: Column(children: [
+        Expanded(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.fromLTRB(24, 20, 24, 0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _sectieLabel('EMOJI'),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: _emojis.map((e) {
+                    final sel = _emoji == e;
+                    return GestureDetector(
+                      onTap: () => setState(() => _emoji = e),
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 150),
+                        width: 48,
+                        height: 48,
+                        decoration: BoxDecoration(
+                          color: sel ? kPeach : kPeachPale,
+                          borderRadius: BorderRadius.circular(12),
+                          border: sel
+                              ? Border.all(color: kBrown, width: 2)
+                              : Border.all(color: kPeachLight, width: 1.5),
+                        ),
+                        alignment: Alignment.center,
+                        child: Text(e,
+                            style: const TextStyle(fontSize: 22)),
+                      ),
+                    );
+                  }).toList(),
+                ),
+                const SizedBox(height: 24),
+                _sectieLabel('NAAM'),
+                TextField(
+                  controller: _labelCtrl,
+                  textCapitalization: TextCapitalization.sentences,
+                  style: const TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w600,
+                      color: kBrown),
+                  decoration: InputDecoration(
+                    hintText: widget.eenmalig
+                        ? 'Bijv. Verjaardag oma'
+                        : 'Bijv. Goedemorgenglaasje',
+                    hintStyle: const TextStyle(
+                        color: kTextMuted,
+                        fontWeight: FontWeight.normal),
+                    filled: true,
+                    fillColor: kPeachPale,
+                    contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 16, vertical: 14),
+                    border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide:
+                            const BorderSide(color: kPeachLight, width: 1.5)),
+                    enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide:
+                            const BorderSide(color: kPeachLight, width: 1.5)),
+                    focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide:
+                            const BorderSide(color: kPeach, width: 2)),
+                  ),
+                ),
+                const SizedBox(height: 24),
+                if (widget.eenmalig) ...[
+                  _sectieLabel('DATUM'),
+                  _kiesKnop(
+                      _datumLabel(), Icons.calendar_today_rounded, _kiesDatum),
+                  const SizedBox(height: 16),
+                ],
+                _sectieLabel('TIJDSTIP'),
+                _kiesKnop(
+                    _tijdLabel(), Icons.access_time_rounded, _kiesTijd),
+                const SizedBox(height: 24),
+                if (isBestaand)
+                  GestureDetector(
+                    onTap: () => showDialog(
+                        context: context,
+                        builder: (_) =>
+                            _AudioInstelDialog(doc: widget.bestaand!)),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 16, vertical: 12),
+                      decoration: BoxDecoration(
+                          color: kPeachPale,
+                          borderRadius: BorderRadius.circular(12),
+                          border:
+                              Border.all(color: kPeach, width: 1.5)),
+                      child: const Row(children: [
+                        Text('🎤',
+                            style: TextStyle(fontSize: 20)),
+                        SizedBox(width: 10),
+                        Expanded(
+                            child: Text('Eigen stem of liedje',
+                                style: TextStyle(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w800,
+                                    color: kBrown))),
+                        Icon(Icons.chevron_right_rounded,
+                            color: kPeach),
+                      ]),
+                    ),
+                  )
+                else
+                  Container(
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                        color: kPeachPale,
+                        borderRadius: BorderRadius.circular(12)),
+                    child: const Text(
+                      '💡 Je kunt je eigen stem of een liedje toevoegen '
+                      'nadat je dit moment hebt opgeslagen.',
+                      style: TextStyle(
+                          fontSize: 12, color: kBrownLight, height: 1.5),
+                    ),
+                  ),
+                const SizedBox(height: 24),
+              ],
+            ),
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
+          child: SizedBox(
+            width: double.infinity,
+            height: 52,
+            child: ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: kPeach,
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14)),
+                elevation: 0,
+              ),
+              onPressed: _opslaan,
+              child: Text(
+                isBestaand
+                    ? 'Opslaan'
+                    : (widget.eenmalig ? 'Plannen' : 'Toevoegen'),
+                style: const TextStyle(
+                    fontSize: 17,
+                    fontWeight: FontWeight.w800,
+                    color: kWhite),
+              ),
+            ),
+          ),
+        ),
+      ]),
+    );
+  }
+
+  Widget _sectieLabel(String tekst) => Padding(
+    padding: const EdgeInsets.only(bottom: 10),
+    child: Text(tekst,
+        style: const TextStyle(
+            fontSize: 11,
+            color: kTextMuted,
+            fontWeight: FontWeight.w700,
+            letterSpacing: 1.2)),
+  );
+
+  Widget _kiesKnop(String label, IconData icoon, VoidCallback onTap) =>
+      GestureDetector(
+        onTap: onTap,
+        child: Container(
+          padding:
+              const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          decoration: BoxDecoration(
+            color: kPeachPale,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: kPeach, width: 1.5),
+          ),
+          child: Row(children: [
+            Icon(icoon, color: kPeach, size: 20),
+            const SizedBox(width: 10),
+            Text(label,
+                style: const TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w800,
+                    color: kBrown)),
+          ]),
+        ),
+      );
+}
+
+// ────────────────────────────────────────────────────────────────────────────
 
 class _AccountWijzigDialog extends StatefulWidget {
   const _AccountWijzigDialog();
