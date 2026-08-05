@@ -578,13 +578,16 @@ class _TabletSchermState extends State<TabletScherm>
   Future<void> _toonDagelijksPopup(
       String id, Map<String, dynamic> d) async {
     final aangepasteAudio = d['aangepasteAudioUrl'] as String? ?? '';
+    final mediaType = d['mediaType'] as String? ?? '';
+    final mediaUrl = d['mediaUrl'] as String? ?? '';
     _debugLog('▶️ Dagelijks: ${d['label']} '
-        '(eigenAudio=${aangepasteAudio.isNotEmpty})');
+        '(eigenAudio=${aangepasteAudio.isNotEmpty}, mediaType=$mediaType)');
+    final heeftFoto = mediaType == 'foto' && mediaUrl.isNotEmpty;
     final synthetic = <String, dynamic>{
-      'type': 'dagelijks',
+      'type': heeftFoto ? 'foto' : 'dagelijks',
       'emoji': d['emoji'],
       'label': d['label'],
-      'mediaUrl': aangepasteAudio,
+      'mediaUrl': heeftFoto ? mediaUrl : aangepasteAudio,
       'geplandOp': Timestamp.now(),
       'heeftAangepasteAudio': aangepasteAudio.isNotEmpty,
     };
@@ -593,14 +596,15 @@ class _TabletSchermState extends State<TabletScherm>
 
   Future<void> _toonEenmaligPopup(
       String id, Map<String, dynamic> d) async {
-    // Hergebruik 'dagelijks' popup-rendering + audio-flow: emoji + label,
-    // standaard geluid of eigen audio. Identiek aan dagelijks moment.
     final aangepasteAudio = d['aangepasteAudioUrl'] as String? ?? '';
+    final mediaType = d['mediaType'] as String? ?? '';
+    final mediaUrl = d['mediaUrl'] as String? ?? '';
+    final heeftFoto = mediaType == 'foto' && mediaUrl.isNotEmpty;
     final synthetic = <String, dynamic>{
-      'type': 'dagelijks',
+      'type': heeftFoto ? 'foto' : 'dagelijks',
       'emoji': d['emoji'],
       'label': d['label'],
-      'mediaUrl': aangepasteAudio,
+      'mediaUrl': heeftFoto ? mediaUrl : aangepasteAudio,
       'geplandOp': Timestamp.now(),
       'heeftAangepasteAudio': aangepasteAudio.isNotEmpty,
     };
