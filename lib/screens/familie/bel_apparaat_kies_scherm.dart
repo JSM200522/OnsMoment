@@ -257,8 +257,9 @@ class _BelApparaatKiesSchermState extends State<BelApparaatKiesScherm> {
                     style: TextStyle(color: kBrown,
                         fontWeight: FontWeight.w700, fontSize: 15)),
                 subtitle: const Text(
-                    'De tablet neemt videogesprekken vanzelf aan, '
-                    'zodat je dierbare niets hoeft te doen.',
+                    'Als het apparaat van je dierbare aanstaat en Ons Moment '
+                    'openstaat, wordt een videogesprek automatisch beantwoord '
+                    '— je dierbare hoeft niets te doen.',
                     style: TextStyle(color: kTextMuted, fontSize: 12,
                         height: 1.4)),
                 value: _autoAnswer,
