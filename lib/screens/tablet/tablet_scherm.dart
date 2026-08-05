@@ -580,17 +580,11 @@ class _TabletSchermState extends State<TabletScherm>
     final aangepasteAudio = d['aangepasteAudioUrl'] as String? ?? '';
     final mediaType = d['mediaType'] as String? ?? '';
     final mediaUrl = d['mediaUrl'] as String? ?? '';
+    final tekstBericht = d['tekstBericht'] as String? ?? '';
     _debugLog('▶️ Dagelijks: ${d['label']} '
         '(eigenAudio=${aangepasteAudio.isNotEmpty}, mediaType=$mediaType)');
-    final heeftFoto = mediaType == 'foto' && mediaUrl.isNotEmpty;
-    final synthetic = <String, dynamic>{
-      'type': heeftFoto ? 'foto' : 'dagelijks',
-      'emoji': d['emoji'],
-      'label': d['label'],
-      'mediaUrl': heeftFoto ? mediaUrl : aangepasteAudio,
-      'geplandOp': Timestamp.now(),
-      'heeftAangepasteAudio': aangepasteAudio.isNotEmpty,
-    };
+    final synthetic = _maakSyntheticDoc(
+        d, mediaType, mediaUrl, tekstBericht, aangepasteAudio);
     await _toonPopup('dagelijks_$id', synthetic);
   }
 
@@ -599,16 +593,74 @@ class _TabletSchermState extends State<TabletScherm>
     final aangepasteAudio = d['aangepasteAudioUrl'] as String? ?? '';
     final mediaType = d['mediaType'] as String? ?? '';
     final mediaUrl = d['mediaUrl'] as String? ?? '';
-    final heeftFoto = mediaType == 'foto' && mediaUrl.isNotEmpty;
-    final synthetic = <String, dynamic>{
-      'type': heeftFoto ? 'foto' : 'dagelijks',
-      'emoji': d['emoji'],
-      'label': d['label'],
-      'mediaUrl': heeftFoto ? mediaUrl : aangepasteAudio,
-      'geplandOp': Timestamp.now(),
-      'heeftAangepasteAudio': aangepasteAudio.isNotEmpty,
-    };
+    final tekstBericht = d['tekstBericht'] as String? ?? '';
+    final synthetic = _maakSyntheticDoc(
+        d, mediaType, mediaUrl, tekstBericht, aangepasteAudio);
     await _toonPopup('eenmalig_$id', synthetic);
+  }
+
+  Map<String, dynamic> _maakSyntheticDoc(
+      Map<String, dynamic> d,
+      String mediaType,
+      String mediaUrl,
+      String tekstBericht,
+      String aangepasteAudio) {
+    if (mediaType == 'foto' && mediaUrl.isNotEmpty) {
+      return {
+        'type': 'foto',
+        'emoji': d['emoji'],
+        'label': d['label'],
+        'mediaUrl': mediaUrl,
+        'geplandOp': Timestamp.now(),
+        'heeftAangepasteAudio': false,
+      };
+    } else if (mediaType == 'video' && mediaUrl.isNotEmpty) {
+      return {
+        'type': 'video',
+        'emoji': d['emoji'],
+        'label': d['label'],
+        'mediaUrl': mediaUrl,
+        'geplandOp': Timestamp.now(),
+        'heeftAangepasteAudio': false,
+      };
+    } else if (mediaType == 'tekst' && tekstBericht.isNotEmpty) {
+      return {
+        'type': 'tekst',
+        'emoji': d['emoji'],
+        'label': d['label'],
+        'mediaUrl': '',
+        'bericht': tekstBericht,
+        'geplandOp': Timestamp.now(),
+        'heeftAangepasteAudio': false,
+      };
+    } else if (mediaType == 'stem' && mediaUrl.isNotEmpty) {
+      return {
+        'type': 'stem',
+        'emoji': d['emoji'],
+        'label': d['label'],
+        'mediaUrl': mediaUrl,
+        'geplandOp': Timestamp.now(),
+        'heeftAangepasteAudio': false,
+      };
+    } else if (mediaType == 'lied' && mediaUrl.isNotEmpty) {
+      return {
+        'type': 'lied',
+        'emoji': d['emoji'],
+        'label': d['label'],
+        'mediaUrl': mediaUrl,
+        'geplandOp': Timestamp.now(),
+        'heeftAangepasteAudio': false,
+      };
+    } else {
+      return {
+        'type': 'dagelijks',
+        'emoji': d['emoji'],
+        'label': d['label'],
+        'mediaUrl': aangepasteAudio,
+        'geplandOp': Timestamp.now(),
+        'heeftAangepasteAudio': aangepasteAudio.isNotEmpty,
+      };
+    }
   }
 
   Future<void> _toonPopup(String id, Map<String, dynamic> d) async {

@@ -4044,8 +4044,9 @@ class MomentenBeherenScherm extends StatelessWidget {
         'label': result['label'],
         'uur': result['uur'],
         'minuut': result['minuut'],
-        if (result.containsKey('mediaType')) 'mediaType': result['mediaType'],
-        if (result.containsKey('mediaUrl')) 'mediaUrl': result['mediaUrl'],
+        'mediaType': result['mediaType'] ?? '',
+        'mediaUrl': result['mediaUrl'] ?? '',
+        'tekstBericht': result['tekstBericht'] ?? '',
       });
     } else {
       final kringId = await DeviceModusService.huidigeKringIdMetFallback();
@@ -4058,7 +4059,7 @@ class MomentenBeherenScherm extends StatelessWidget {
         'minuut': result['minuut'],
         'mediaType': result['mediaType'] ?? '',
         'mediaUrl': result['mediaUrl'] ?? '',
-        'tekstBericht': '',
+        'tekstBericht': result['tekstBericht'] ?? '',
         'actief': true,
         'aangemaaktOp': FieldValue.serverTimestamp(),
       });
@@ -4085,8 +4086,9 @@ class MomentenBeherenScherm extends StatelessWidget {
         'uur': result['uur'],
         'minuut': result['minuut'],
         'geplandOp': Timestamp.fromDate(result['geplandOp'] as DateTime),
-        if (result.containsKey('mediaType')) 'mediaType': result['mediaType'],
-        if (result.containsKey('mediaUrl')) 'mediaUrl': result['mediaUrl'],
+        'mediaType': result['mediaType'] ?? '',
+        'mediaUrl': result['mediaUrl'] ?? '',
+        'tekstBericht': result['tekstBericht'] ?? '',
       });
     } else {
       final kringId = await DeviceModusService.huidigeKringIdMetFallback();
@@ -4100,6 +4102,7 @@ class MomentenBeherenScherm extends StatelessWidget {
         'geplandOp': Timestamp.fromDate(result['geplandOp'] as DateTime),
         'mediaType': result['mediaType'] ?? '',
         'mediaUrl': result['mediaUrl'] ?? '',
+        'tekstBericht': result['tekstBericht'] ?? '',
         'actief': true,
         'getoond': false,
         'aangemaakt': FieldValue.serverTimestamp(),
@@ -4432,10 +4435,23 @@ class _MomentInvulSchermState extends State<MomentInvulScherm> {
   late TimeOfDay _tijd;
   late DateTime _datum;
 
-  // Foto
-  Uint8List? _fotoBytes;
-  String _bestaandeFotoUrl = '';
-  String _originalMediaType = '';
+  // Media
+  String _mediaType = '';
+  Uint8List? _mediaBytes;
+  String? _mediaPad;
+  String _mediaNaam = '';
+  late final TextEditingController _tekstCtrl;
+  // Stem opname
+  final _recorder = AudioRecorder();
+  final _stemPreviewPlayer = AudioPlayer();
+  bool _stemIsOpnemen = false;
+  bool _stemHebOpname = false;
+  String? _stemOpnamePad;
+  int _stemOpnameSeconden = 0;
+  Timer? _stemOpnameTimer;
+  // Bestaand media (edit-mode)
+  String _bestaandMediaType = '';
+  String _bestaandMediaUrl = '';
   bool _opslaanBezig = false;
 
   static const _emojis = [
@@ -4449,6 +4465,7 @@ class _MomentInvulSchermState extends State<MomentInvulScherm> {
     final i = widget.initial;
     _emoji = i?['emoji'] as String? ?? '⭐';
     _labelCtrl = TextEditingController(text: i?['label'] as String? ?? '');
+    _tekstCtrl = TextEditingController();
     final geplandOp = (i?['geplandOp'] as Timestamp?)?.toDate();
     if (widget.eenmalig) {
       _datum = geplandOp ?? DateTime.now().add(const Duration(days: 1));
@@ -4461,15 +4478,23 @@ class _MomentInvulSchermState extends State<MomentInvulScherm> {
           hour: i?['uur'] as int? ?? 15,
           minute: i?['minuut'] as int? ?? 0);
     }
-    _originalMediaType = i?['mediaType'] as String? ?? '';
-    if (_originalMediaType == 'foto') {
-      _bestaandeFotoUrl = i?['mediaUrl'] as String? ?? '';
+    _bestaandMediaType = i?['mediaType'] as String? ?? '';
+    _bestaandMediaUrl = i?['mediaUrl'] as String? ?? '';
+    if (_bestaandMediaType.isNotEmpty) {
+      _mediaType = _bestaandMediaType;
+      if (_bestaandMediaType == 'tekst') {
+        _tekstCtrl.text = i?['tekstBericht'] as String? ?? '';
+      }
     }
   }
 
   @override
   void dispose() {
     _labelCtrl.dispose();
+    _tekstCtrl.dispose();
+    _stemPreviewPlayer.dispose();
+    _recorder.dispose();
+    _stemOpnameTimer?.cancel();
     super.dispose();
   }
 
@@ -4480,6 +4505,17 @@ class _MomentInvulSchermState extends State<MomentInvulScherm> {
   String _datumLabel() =>
       '${_datum.day.toString().padLeft(2, '0')}-'
       '${_datum.month.toString().padLeft(2, '0')}-${_datum.year}';
+
+  String _formatBytes(int bytes) {
+    if (bytes >= 1024 * 1024) {
+      return '${(bytes / (1024 * 1024)).toStringAsFixed(0)}MB';
+    }
+    if (bytes >= 1024) return '${(bytes / 1024).toStringAsFixed(0)}KB';
+    return '$bytes B';
+  }
+
+  void _toonFout(String m) => ScaffoldMessenger.of(context)
+      .showSnackBar(SnackBar(content: Text(m), backgroundColor: Colors.red));
 
   Future<void> _kiesTijd() async {
     final t = await showTimePicker(
@@ -4503,31 +4539,164 @@ class _MomentInvulSchermState extends State<MomentInvulScherm> {
     if (d != null) setState(() => _datum = d);
   }
 
+  void _selecteerType(String type) {
+    if (_stemIsOpnemen) {
+      _recorder.stop().then((_) {});
+      _stemOpnameTimer?.cancel();
+    }
+    setState(() {
+      _mediaType = _mediaType == type ? '' : type;
+      _mediaBytes = null;
+      _mediaPad = null;
+      _mediaNaam = '';
+      _stemHebOpname = false;
+      _stemIsOpnemen = false;
+      _stemOpnamePad = null;
+      _stemOpnameSeconden = 0;
+    });
+  }
+
   Future<void> _kiesFoto() async {
-    final picker = ImagePicker();
-    final foto = await picker.pickImage(
-        source: ImageSource.gallery, maxWidth: 1600, imageQuality: 85);
-    if (foto != null) {
-      final bytes = await foto.readAsBytes();
-      if (mounted) setState(() => _fotoBytes = bytes);
+    try {
+      final picker = ImagePicker();
+      final foto = await picker.pickImage(
+          source: ImageSource.gallery, maxWidth: 1600, imageQuality: 85);
+      if (foto != null) {
+        final bytes = await foto.readAsBytes();
+        if (mounted) setState(() { _mediaBytes = bytes; _mediaNaam = foto.name; });
+      }
+    } catch (e) {
+      _toonFout('Foto kiezen niet mogelijk: $e');
     }
   }
 
-  Future<String> _uploadDagelijkseFoto(String kringId) async {
-    final ref = FirebaseStorage.instance.ref()
-        .child('dagelijkse_media')
-        .child(kringId)
-        .child('${DateTime.now().millisecondsSinceEpoch}.jpg');
-    await ref.putData(_fotoBytes!, SettableMetadata(contentType: 'image/jpeg'));
-    return ref.getDownloadURL();
+  Future<void> _kiesVideo() async {
+    try {
+      Uint8List? bytes;
+      String? naam;
+      if (kIsWeb) {
+        final result = await FilePicker.platform.pickFiles(
+            type: FileType.custom,
+            allowedExtensions: ['mp4', 'mov', 'm4v'],
+            withData: true);
+        if (result == null) return;
+        final f = result.files.first;
+        bytes = f.bytes;
+        if (bytes == null) {
+          try { bytes = await f.xFile.readAsBytes(); } catch (_) {}
+        }
+        naam = f.name;
+      } else {
+        final picker = ImagePicker();
+        final v = await picker.pickVideo(
+            source: ImageSource.gallery,
+            maxDuration: const Duration(minutes: 2));
+        if (v == null) return;
+        try { bytes = await v.readAsBytes(); } catch (_) {}
+        naam = v.name;
+      }
+      if (bytes == null || bytes.isEmpty) {
+        _toonFout('Kon video niet laden. Kies een .mp4- of .mov-bestand (max 50MB).');
+        return;
+      }
+      if (bytes.lengthInBytes > 50 * 1024 * 1024) {
+        _toonFout('Deze video is te groot '
+            '(${(bytes.lengthInBytes / (1024 * 1024)).toStringAsFixed(0)}MB). '
+            'Kies er één van maximaal 50MB.');
+        return;
+      }
+      if (mounted) setState(() { _mediaBytes = bytes; _mediaNaam = naam ?? 'video'; });
+    } catch (e) {
+      _toonFout('Video kiezen niet mogelijk: $e');
+    }
+  }
+
+  Future<void> _kiesLiedje() async {
+    try {
+      final result = await FilePicker.platform.pickFiles(
+          type: FileType.audio, withData: kIsWeb);
+      if (result == null) return;
+      final f = result.files.first;
+      if (kIsWeb) {
+        if (f.bytes == null) return;
+        if (mounted) setState(() { _mediaBytes = f.bytes; _mediaPad = null; _mediaNaam = f.name; });
+      } else {
+        final pad = f.path;
+        if (pad == null || pad.isEmpty) {
+          _toonFout('Kon dit bestand niet openen. Kies er een uit Downloads of je muziekmap.');
+          return;
+        }
+        if (mounted) setState(() { _mediaBytes = null; _mediaPad = pad; _mediaNaam = f.name; });
+      }
+    } catch (e) {
+      _toonFout('Liedje kiezen niet mogelijk: $e');
+    }
+  }
+
+  Future<void> _startStemOpname() async {
+    try {
+      if (!await _recorder.hasPermission()) {
+        _toonFout('Geen toegang tot microfoon. Sta toe in de app-instellingen.');
+        return;
+      }
+      String pad = '';
+      if (!kIsWeb) {
+        final dir = await getTemporaryDirectory();
+        pad = '${dir.path}/dagelijks_${DateTime.now().millisecondsSinceEpoch}.m4a';
+      }
+      const encoder = kIsWeb ? AudioEncoder.opus : AudioEncoder.aacLc;
+      await _recorder.start(const RecordConfig(encoder: encoder), path: pad);
+      if (!mounted) return;
+      _stemOpnameTimer?.cancel();
+      _stemOpnameTimer = Timer.periodic(
+          const Duration(seconds: 1), (_) => setState(() => _stemOpnameSeconden++));
+      setState(() {
+        _stemIsOpnemen = true;
+        _stemOpnameSeconden = 0;
+        _stemHebOpname = false;
+        _stemOpnamePad = null;
+      });
+    } catch (e) {
+      _toonFout('Opname starten mislukt: $e');
+    }
+  }
+
+  Future<void> _stopStemOpname() async {
+    _stemOpnameTimer?.cancel();
+    String? pad;
+    try { pad = await _recorder.stop(); } catch (e) {
+      _toonFout('Opname stoppen mislukt: $e');
+    }
+    if (!mounted) return;
+    if (pad != null) {
+      _stemOpnamePad = pad;
+      try {
+        if (kIsWeb) {
+          await _stemPreviewPlayer.setUrl(pad);
+        } else {
+          await _stemPreviewPlayer.setFilePath(pad);
+        }
+      } catch (_) {}
+      setState(() { _stemIsOpnemen = false; _stemHebOpname = true; });
+    } else {
+      setState(() => _stemIsOpnemen = false);
+    }
+  }
+
+  Future<void> _speelStemPreview() async {
+    if (_stemOpnamePad == null) return;
+    try {
+      await _stemPreviewPlayer.seek(Duration.zero);
+      await _stemPreviewPlayer.play();
+    } catch (e) {
+      _toonFout('Afspelen mislukt: $e');
+    }
   }
 
   Future<void> _opslaan() async {
     final naam = _labelCtrl.text.trim();
     if (naam.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text('Vul een naam in'),
-          backgroundColor: Colors.red));
+      _toonFout('Vul een naam in');
       return;
     }
     DateTime? gepland;
@@ -4535,34 +4704,118 @@ class _MomentInvulSchermState extends State<MomentInvulScherm> {
       gepland = DateTime(
           _datum.year, _datum.month, _datum.day, _tijd.hour, _tijd.minute);
       if (!gepland.isAfter(DateTime.now())) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-            content: Text('Kies een tijdstip in de toekomst'),
-            backgroundColor: Colors.red));
+        _toonFout('Kies een tijdstip in de toekomst');
         return;
       }
     }
 
+    final heeftBestaand =
+        _bestaandMediaType == _mediaType && _bestaandMediaUrl.isNotEmpty;
+    if (_mediaType == 'tekst' && _tekstCtrl.text.trim().isEmpty) {
+      _toonFout('Typ een bericht');
+      return;
+    }
+    if (_mediaType == 'stem' && !_stemHebOpname && !heeftBestaand) {
+      _toonFout('Maak eerst een opname');
+      return;
+    }
+    if (_mediaType == 'video' && _mediaBytes == null && !heeftBestaand) {
+      _toonFout('Kies eerst een video');
+      return;
+    }
+    if (_mediaType == 'lied' &&
+        _mediaBytes == null && _mediaPad == null && !heeftBestaand) {
+      _toonFout('Kies eerst een liedje');
+      return;
+    }
+    if (_mediaType == 'foto' && _mediaBytes == null && !heeftBestaand) {
+      _toonFout('Kies eerst een foto');
+      return;
+    }
+
     setState(() => _opslaanBezig = true);
-    String? mediaType;
-    String? mediaUrl;
+    String outMediaType = '';
+    String outMediaUrl = '';
+    String outTekstBericht = '';
 
     try {
-      if (_fotoBytes != null) {
+      if (_mediaType == 'tekst') {
+        outMediaType = 'tekst';
+        outTekstBericht = _tekstCtrl.text.trim();
+      } else if (_mediaType.isEmpty) {
+        outMediaType = '';
+        outMediaUrl = '';
+      } else if (heeftBestaand &&
+          _mediaBytes == null && _mediaPad == null && !_stemHebOpname) {
+        outMediaType = _bestaandMediaType;
+        outMediaUrl = _bestaandMediaUrl;
+      } else {
         final kringId = await DeviceModusService.huidigeKringIdMetFallback();
         if (kringId == null) throw Exception('Geen kringId');
-        mediaUrl = await _uploadDagelijkseFoto(kringId);
-        mediaType = 'foto';
-      } else if (_bestaandeFotoUrl.isEmpty && _originalMediaType == 'foto') {
-        // Gebruiker heeft de bestaande foto verwijderd
-        mediaType = '';
-        mediaUrl = '';
+        final ts = DateTime.now().millisecondsSinceEpoch;
+        if (_mediaType == 'foto' && _mediaBytes != null) {
+          final ref = FirebaseStorage.instance.ref()
+              .child('dagelijkse_media').child(kringId).child('$ts.jpg');
+          await ref.putData(
+              _mediaBytes!, SettableMetadata(contentType: 'image/jpeg'));
+          outMediaType = 'foto';
+          outMediaUrl = await ref.getDownloadURL();
+        } else if (_mediaType == 'video' && _mediaBytes != null) {
+          final rawExt = _mediaNaam.contains('.')
+              ? _mediaNaam.split('.').last.toLowerCase() : '';
+          final ext = (rawExt == 'mov' || rawExt == 'm4v' || rawExt == 'mp4')
+              ? rawExt : 'mp4';
+          final contentType = ext == 'mov'
+              ? 'video/quicktime'
+              : ext == 'm4v' ? 'video/x-m4v' : 'video/mp4';
+          final ref = FirebaseStorage.instance.ref()
+              .child('dagelijkse_media').child(kringId).child('$ts.$ext');
+          await ref.putData(
+              _mediaBytes!, SettableMetadata(contentType: contentType));
+          outMediaType = 'video';
+          outMediaUrl = await ref.getDownloadURL();
+        } else if (_mediaType == 'stem' && _stemOpnamePad != null) {
+          final Uint8List bytes;
+          if (kIsWeb) {
+            final response =
+                await http.get(Uri.parse(_stemOpnamePad!));
+            bytes = response.bodyBytes;
+          } else {
+            bytes = await File(_stemOpnamePad!).readAsBytes();
+          }
+          const ext = kIsWeb ? 'webm' : 'm4a';
+          const contentType = kIsWeb ? 'audio/webm' : 'audio/mp4';
+          final ref = FirebaseStorage.instance.ref()
+              .child('dagelijkse_media').child(kringId).child('$ts.$ext');
+          await ref.putData(bytes, SettableMetadata(contentType: contentType));
+          outMediaType = 'stem';
+          outMediaUrl = await ref.getDownloadURL();
+        } else if (_mediaType == 'lied') {
+          final Uint8List liedBytes;
+          if (kIsWeb) {
+            liedBytes = _mediaBytes!;
+          } else {
+            liedBytes = await File(_mediaPad!).readAsBytes();
+          }
+          if (liedBytes.length > 15 * 1024 * 1024) {
+            setState(() => _opslaanBezig = false);
+            _toonFout('Dit liedje is te groot '
+                '(${(liedBytes.length / (1024 * 1024)).toStringAsFixed(0)} MB). '
+                'Kies er één van maximaal 15 MB.');
+            return;
+          }
+          final ref = FirebaseStorage.instance.ref()
+              .child('dagelijkse_media').child(kringId).child('$ts.mp3');
+          await ref.putData(
+              liedBytes, SettableMetadata(contentType: 'audio/mpeg'));
+          outMediaType = 'lied';
+          outMediaUrl = await ref.getDownloadURL();
+        }
       }
     } catch (_) {
       if (!mounted) return;
       setState(() => _opslaanBezig = false);
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text('Foto uploaden mislukt — probeer opnieuw'),
-          backgroundColor: Colors.red));
+      _toonFout('Opslaan mislukt — probeer opnieuw');
       return;
     }
 
@@ -4574,8 +4827,9 @@ class _MomentInvulSchermState extends State<MomentInvulScherm> {
       'label': naam,
       'uur': _tijd.hour,
       'minuut': _tijd.minute,
-      if (mediaType != null) 'mediaType': mediaType,
-      if (mediaUrl != null) 'mediaUrl': mediaUrl,
+      'mediaType': outMediaType,
+      'mediaUrl': outMediaUrl,
+      'tekstBericht': outTekstBericht,
       if (gepland != null) 'geplandOp': gepland,
     };
     Navigator.pop(context, result);
@@ -4666,78 +4920,21 @@ class _MomentInvulSchermState extends State<MomentInvulScherm> {
                   ),
                 ),
                 const SizedBox(height: 24),
-                _sectieLabel('FOTO (optioneel)'),
-                GestureDetector(
-                  onTap: _opslaanBezig ? null : _kiesFoto,
-                  child: Container(
-                    width: double.infinity,
-                    height: 110,
-                    clipBehavior: Clip.hardEdge,
-                    decoration: BoxDecoration(
-                      color: kPeachPale,
-                      borderRadius: BorderRadius.circular(12),
-                      border:
-                          Border.all(color: kPeachLight, width: 1.5),
-                    ),
-                    child: _fotoBytes != null
-                        ? Image.memory(_fotoBytes!,
-                            fit: BoxFit.cover, width: double.infinity)
-                        : _bestaandeFotoUrl.isNotEmpty
-                            ? Image.network(
-                                _bestaandeFotoUrl,
-                                fit: BoxFit.cover,
-                                width: double.infinity,
-                                loadingBuilder: (_, child, p) =>
-                                    p == null
-                                        ? child
-                                        : const Center(
-                                            child:
-                                                CircularProgressIndicator(
-                                                    color: kPeach,
-                                                    strokeWidth: 2)),
-                                errorBuilder: (_, __, ___) =>
-                                    const Center(
-                                        child: Icon(
-                                            Icons.broken_image_outlined,
-                                            color: kPeach,
-                                            size: 32)))
-                            : const Center(
-                                child: Column(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Icon(
-                                        Icons
-                                            .add_photo_alternate_outlined,
-                                        color: kPeach,
-                                        size: 36),
-                                    SizedBox(height: 4),
-                                    Text('Foto toevoegen',
-                                        style: TextStyle(
-                                            fontSize: 12,
-                                            color: kPeach,
-                                            fontWeight: FontWeight.w700)),
-                                  ])),
-                  ),
+                _sectieLabel('MEDIA (optioneel)'),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    _mediaTypeKnop('📷', 'Foto', 'foto'),
+                    _mediaTypeKnop('🎥', 'Video', 'video'),
+                    _mediaTypeKnop('✏️', 'Tekst', 'tekst'),
+                    _mediaTypeKnop('🎙️', 'Stem', 'stem'),
+                    _mediaTypeKnop('🎵', 'Liedje', 'lied'),
+                  ],
                 ),
-                if (_fotoBytes != null ||
-                    _bestaandeFotoUrl.isNotEmpty) ...[
-                  const SizedBox(height: 6),
-                  GestureDetector(
-                    onTap: () => setState(() {
-                      _fotoBytes = null;
-                      _bestaandeFotoUrl = '';
-                    }),
-                    child: const Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(Icons.close_rounded,
-                              color: kTextMuted, size: 14),
-                          SizedBox(width: 4),
-                          Text('Foto verwijderen',
-                              style: TextStyle(
-                                  fontSize: 12, color: kTextMuted)),
-                        ]),
-                  ),
+                if (_mediaType.isNotEmpty) ...[
+                  const SizedBox(height: 12),
+                  _mediaInvulSectie(),
                 ],
                 const SizedBox(height: 24),
                 if (widget.eenmalig) ...[
@@ -4769,7 +4966,7 @@ class _MomentInvulSchermState extends State<MomentInvulScherm> {
                             style: TextStyle(fontSize: 20)),
                         SizedBox(width: 10),
                         Expanded(
-                            child: Text('Eigen stem of liedje',
+                            child: Text('Aankomstgeluid aanpassen',
                                 style: TextStyle(
                                     fontSize: 14,
                                     fontWeight: FontWeight.w800,
@@ -4786,7 +4983,7 @@ class _MomentInvulSchermState extends State<MomentInvulScherm> {
                         color: kPeachPale,
                         borderRadius: BorderRadius.circular(12)),
                     child: const Text(
-                      '💡 Je kunt je eigen stem of een liedje toevoegen '
+                      '💡 Je kunt het aankomstgeluid aanpassen '
                       'nadat je dit moment hebt opgeslagen.',
                       style: TextStyle(
                           fontSize: 12, color: kBrownLight, height: 1.5),
@@ -4863,6 +5060,249 @@ class _MomentInvulSchermState extends State<MomentInvulScherm> {
           ]),
         ),
       );
+
+  Widget _mediaTypeKnop(String emoji, String label, String waarde) {
+    final sel = _mediaType == waarde;
+    return GestureDetector(
+      onTap: _opslaanBezig ? null : () => _selecteerType(waarde),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 150),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+        decoration: BoxDecoration(
+          color: sel ? kPeach : kWhite,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: sel ? kPeach : kPeachLight, width: 2),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(emoji, style: const TextStyle(fontSize: 22)),
+            const SizedBox(height: 2),
+            Text(label,
+                style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w800,
+                    color: sel ? kWhite : kBrown)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _mediaInvulSectie() {
+    switch (_mediaType) {
+      case 'foto': return _fotoInvul();
+      case 'video': return _videoInvul();
+      case 'tekst': return _tekstInvul();
+      case 'stem': return _stemInvul();
+      case 'lied': return _liedjeInvul();
+      default: return const SizedBox.shrink();
+    }
+  }
+
+  Widget _fotoInvul() {
+    final heeftBestaand =
+        _bestaandMediaType == 'foto' && _bestaandMediaUrl.isNotEmpty;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        GestureDetector(
+          onTap: _opslaanBezig ? null : _kiesFoto,
+          child: Container(
+            width: double.infinity,
+            height: 110,
+            clipBehavior: Clip.hardEdge,
+            decoration: BoxDecoration(
+              color: kPeachPale,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: kPeachLight, width: 1.5),
+            ),
+            child: _mediaBytes != null
+                ? Image.memory(_mediaBytes!, fit: BoxFit.cover, width: double.infinity)
+                : heeftBestaand
+                    ? Image.network(_bestaandMediaUrl, fit: BoxFit.cover,
+                        width: double.infinity,
+                        loadingBuilder: (_, child, p) => p == null ? child
+                            : const Center(child: CircularProgressIndicator(
+                                color: kPeach, strokeWidth: 2)),
+                        errorBuilder: (_, __, ___) => const Center(
+                            child: Icon(Icons.broken_image_outlined,
+                                color: kPeach, size: 32)))
+                    : const Center(
+                        child: Column(mainAxisSize: MainAxisSize.min, children: [
+                          Icon(Icons.add_photo_alternate_outlined,
+                              color: kPeach, size: 36),
+                          SizedBox(height: 4),
+                          Text('Tik om foto te kiezen',
+                              style: TextStyle(fontSize: 12, color: kPeach,
+                                  fontWeight: FontWeight.w700)),
+                        ])),
+          ),
+        ),
+        if (_mediaBytes != null || heeftBestaand) ...[
+          const SizedBox(height: 6),
+          GestureDetector(
+            onTap: () => setState(() {
+              _mediaBytes = null;
+              _bestaandMediaUrl = '';
+              _bestaandMediaType = '';
+              _mediaType = '';
+            }),
+            child: const Row(mainAxisSize: MainAxisSize.min, children: [
+              Icon(Icons.close_rounded, color: kTextMuted, size: 14),
+              SizedBox(width: 4),
+              Text('Foto verwijderen',
+                  style: TextStyle(fontSize: 12, color: kTextMuted)),
+            ]),
+          ),
+        ],
+      ],
+    );
+  }
+
+  Widget _videoInvul() {
+    final heeftBestaand =
+        _bestaandMediaType == 'video' && _bestaandMediaUrl.isNotEmpty;
+    return GestureDetector(
+      onTap: _opslaanBezig ? null : _kiesVideo,
+      child: Container(
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+            color: kPeachPale,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: kPeachLight, width: 1.5)),
+        child: Center(child: Column(children: [
+          const Icon(Icons.movie_rounded, size: 40, color: kPeach),
+          const SizedBox(height: 8),
+          Text(_mediaBytes != null
+              ? '🎥 Video geselecteerd'
+              : heeftBestaand
+                  ? '🎥 Huidige video — tik om te vervangen'
+                  : 'Tik om een video te kiezen',
+              textAlign: TextAlign.center,
+              style: const TextStyle(fontSize: 14,
+                  fontWeight: FontWeight.w700, color: kBrown)),
+          const SizedBox(height: 4),
+          Text(_mediaBytes != null
+              ? '$_mediaNaam — ${_formatBytes(_mediaBytes!.lengthInBytes)}'
+              : 'Video (.mp4 / .mov), max 50MB',
+              textAlign: TextAlign.center,
+              style: const TextStyle(fontSize: 12, color: kTextMuted)),
+        ])),
+      ),
+    );
+  }
+
+  Widget _tekstInvul() => TextField(
+    controller: _tekstCtrl,
+    maxLines: 4,
+    textCapitalization: TextCapitalization.sentences,
+    style: const TextStyle(fontSize: 15, color: kBrown),
+    decoration: InputDecoration(
+      hintText: 'Typ hier je bericht...',
+      hintStyle: const TextStyle(color: kTextMuted, fontWeight: FontWeight.normal),
+      filled: true,
+      fillColor: kPeachPale,
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: kPeachLight, width: 1.5)),
+      enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: kPeachLight, width: 1.5)),
+      focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: kPeach, width: 2)),
+    ),
+  );
+
+  Widget _stemInvul() => Container(
+    padding: const EdgeInsets.all(20),
+    decoration: BoxDecoration(
+        color: kPeachPale,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: kPeachLight, width: 1.5)),
+    child: Column(children: [
+      GestureDetector(
+        onTap: _stemIsOpnemen ? _stopStemOpname : _startStemOpname,
+        child: Container(
+          width: 72,
+          height: 72,
+          decoration: BoxDecoration(
+              color: _stemIsOpnemen ? kRood : kRose,
+              shape: BoxShape.circle,
+              boxShadow: [BoxShadow(
+                  color: (_stemIsOpnemen ? kRood : kRose).withOpacity(0.4),
+                  blurRadius: _stemIsOpnemen ? 24 : 10,
+                  spreadRadius: _stemIsOpnemen ? 4 : 0)]),
+          child: Icon(
+              _stemIsOpnemen ? Icons.stop_rounded : Icons.mic_rounded,
+              color: kWhite, size: 36),
+        ),
+      ),
+      const SizedBox(height: 12),
+      Text(_stemIsOpnemen
+          ? '🔴 Opname loopt: ${_stemOpnameSeconden}s — tik om te stoppen'
+          : _stemHebOpname
+              ? '✓ Opname klaar (${_stemOpnameSeconden}s)'
+              : _bestaandMediaType == 'stem' && _bestaandMediaUrl.isNotEmpty
+                  ? '✓ Huidige opname — tik microfoon om opnieuw op te nemen'
+                  : 'Tik op de microfoon om in te spreken',
+          textAlign: TextAlign.center,
+          style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w800,
+              color: _stemIsOpnemen ? kRood : kBrown)),
+      if (_stemHebOpname && !_stemIsOpnemen) ...[
+        const SizedBox(height: 12),
+        GestureDetector(
+          onTap: _speelStemPreview,
+          child: Container(
+            padding:
+                const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+            decoration: BoxDecoration(
+                color: kPeach, borderRadius: BorderRadius.circular(20)),
+            child: const Row(mainAxisSize: MainAxisSize.min, children: [
+              Icon(Icons.play_arrow_rounded, color: kWhite, size: 20),
+              SizedBox(width: 6),
+              Text('Voorbeeld beluisteren',
+                  style: TextStyle(fontSize: 13,
+                      fontWeight: FontWeight.w800, color: kWhite)),
+            ]),
+          ),
+        ),
+      ],
+    ]),
+  );
+
+  Widget _liedjeInvul() {
+    final heeftBestaand =
+        _bestaandMediaType == 'lied' && _bestaandMediaUrl.isNotEmpty;
+    final heeftNieuw = _mediaBytes != null || _mediaPad != null;
+    return GestureDetector(
+      onTap: _opslaanBezig ? null : _kiesLiedje,
+      child: Container(
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+            color: kPeachPale,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: kPeachLight, width: 1.5)),
+        child: Center(child: Column(children: [
+          const Icon(Icons.music_note_rounded, size: 40, color: kPeach),
+          const SizedBox(height: 8),
+          Text(heeftNieuw
+              ? '🎵 Liedje geselecteerd'
+              : heeftBestaand
+                  ? '🎵 Huidig liedje — tik om te vervangen'
+                  : 'Tik om een liedje te kiezen',
+              textAlign: TextAlign.center,
+              style: const TextStyle(fontSize: 14,
+                  fontWeight: FontWeight.w700, color: kBrown)),
+          const SizedBox(height: 4),
+          Text(heeftNieuw ? _mediaNaam : 'Muziekbestand (.mp3 / .m4a), max 15MB',
+              textAlign: TextAlign.center,
+              style: const TextStyle(fontSize: 12, color: kTextMuted)),
+        ])),
+      ),
+    );
+  }
 }
 
 // ────────────────────────────────────────────────────────────────────────────
