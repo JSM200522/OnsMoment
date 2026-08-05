@@ -981,18 +981,6 @@ class _FamilieSchermState extends State<FamilieScherm>
           ),
         ),
       ])),
-      floatingActionButton: (DEBUG_VIDEOBELLEN && !widget.alsOntvanger)
-          ? FloatingActionButton(
-              backgroundColor: kPeach,
-              foregroundColor: kWhite,
-              tooltip: 'Videobellen',
-              onPressed: () => Navigator.push(
-                  context,
-                  MaterialPageRoute<void>(
-                      builder: (_) => const BelApparaatKiesScherm())),
-              child: const Icon(Icons.videocam_rounded, size: 28),
-            )
-          : null,
       bottomNavigationBar: Container(
         decoration: BoxDecoration(color: kWhite,
             boxShadow: [BoxShadow(color: kBrown.withOpacity(0.08),
@@ -1341,6 +1329,19 @@ class _StuurTabState extends State<StuurTab> {
               label: 'Hartje',
               onTap: _stuurHartje),
         ]),
+        if (DEBUG_VIDEOBELLEN && !widget.alsOntvanger) ...[
+          const SizedBox(height: 10),
+          Row(children: [
+            _actieTegel(
+                icoon: const Text('📞',
+                    style: TextStyle(fontSize: 28)),
+                label: 'Bellen',
+                onTap: () => Navigator.push(
+                    context,
+                    MaterialPageRoute<void>(
+                        builder: (_) => const BelApparaatKiesScherm()))),
+          ]),
+        ],
 
         if (_type.isNotEmpty) ...[
           const SizedBox(height: 20),
