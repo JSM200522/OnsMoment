@@ -7,19 +7,12 @@ import '../../theme/kleuren.dart';
 import '../../widgets/normaal_scaffold.dart';
 import 'bel_scherm.dart';
 
-/// Verborgen debug-scherm (achter DEBUG_VIDEOBELLEN) — laat een familielid
-/// een apparaat in de kring kiezen om te bellen. Toont per apparaat de
-/// persoonsNaam + apparaatLabel en een 'Bel'-knop die [BelScherm] opent.
+/// Kies een apparaat om te bellen, met (voor de eigenaar) de
+/// auto-answer-instelling op dezelfde plek.
 ///
 /// Het eigen apparaat wordt uit de lijst gefilterd — kan-niet-met-jezelf-
 /// bellen wordt óók server-side afgedwongen (startVideoCall gooit
 /// invalid-argument), maar cliënt-side filteren voorkomt de dead-tap.
-///
-/// Bereikbaarheid van elk apparaat (fcmToken aanwezig) wordt hier NIET
-/// gefilterd; startVideoCall gooit failed-precondition als het doel-
-/// apparaat geen actieve push-token heeft en [BelScherm] toont dan een
-/// nette foutmelding. Latere iteratie kan die filter toevoegen aan
-/// ApparaatService.kringLeden voor gray-out-UX.
 class BelApparaatKiesScherm extends StatefulWidget {
   const BelApparaatKiesScherm({super.key});
 
@@ -34,6 +27,7 @@ class _BelApparaatKiesSchermState extends State<BelApparaatKiesScherm> {
   String? _mijnApparaatId;
   String? _kringId;
   bool _autoAnswer = false;
+  bool _benIkEigenaar = false;
 
   @override
   void initState() {
@@ -63,12 +57,15 @@ class _BelApparaatKiesSchermState extends State<BelApparaatKiesScherm> {
           .collection('kringen').doc(kringId).get();
       final leden = await ledenFuture;
       if (!mounted) return;
-      final autoAnswer = kringSnap.data()?['autoAnswer'] == true;
+      final data = kringSnap.data();
+      final autoAnswer = data?['autoAnswer'] == true;
+      final eigenaarUid = data?['eigenaarUid'] as String? ?? '';
       setState(() {
         _bezig = false;
         _mijnApparaatId = mijnAppId;
         _kringId = kringId;
         _autoAnswer = autoAnswer;
+        _benIkEigenaar = eigenaarUid.isNotEmpty && eigenaarUid == uid;
         _apparaten = leden
             .where((a) => a['apparaatId'] != mijnAppId)
             .toList();
@@ -76,6 +73,19 @@ class _BelApparaatKiesSchermState extends State<BelApparaatKiesScherm> {
     } catch (e) {
       if (!mounted) return;
       setState(() { _bezig = false; _fout = e.toString(); });
+    }
+  }
+
+  Future<void> _zetAutoAnswer(bool waarde) async {
+    final kringId = _kringId;
+    if (kringId == null || kringId.isEmpty) return;
+    setState(() => _autoAnswer = waarde);
+    try {
+      await FirebaseFirestore.instance
+          .collection('kringen').doc(kringId)
+          .update({'autoAnswer': waarde});
+    } catch (_) {
+      if (mounted) setState(() => _autoAnswer = !waarde);
     }
   }
 
@@ -91,7 +101,6 @@ class _BelApparaatKiesSchermState extends State<BelApparaatKiesScherm> {
         : (label.isNotEmpty ? label : 'Onbekend apparaat');
 
     // V4: als automatisch opnemen aan staat, eerst bevestigen bij de beller.
-    // Zo weet de beller dat de ontvanger meteen zichtbaar en hoorbaar is.
     if (_autoAnswer && mounted) {
       final bevestigd = await showDialog<bool>(
         context: context,
@@ -134,7 +143,7 @@ class _BelApparaatKiesSchermState extends State<BelApparaatKiesScherm> {
     return NormaalScaffold(
       backgroundColor: kCream,
       appBar: AppBar(
-        title: const Text('Bel apparaat (debug)',
+        title: const Text('Videobellen',
             style: TextStyle(color: kBrown, fontWeight: FontWeight.w800)),
         backgroundColor: kCream,
         foregroundColor: kBrown,
@@ -156,57 +165,113 @@ class _BelApparaatKiesSchermState extends State<BelApparaatKiesScherm> {
               textAlign: TextAlign.center)),
       );
     }
-    if (_apparaten.isEmpty) {
-      return const Center(
-        child: Padding(padding: EdgeInsets.all(24),
-          child: Text('Geen andere apparaten in deze kring om te bellen.',
-              style: TextStyle(color: kBrownLight, fontSize: 14),
-              textAlign: TextAlign.center)),
-      );
-    }
-    return ListView.separated(
-      padding: const EdgeInsets.all(16),
-      itemCount: _apparaten.length,
-      separatorBuilder: (_, __) => const SizedBox(height: 8),
-      itemBuilder: (context, i) {
-        final a = _apparaten[i];
-        final naam = (a['persoonsNaam'] as String? ?? '').trim();
-        final label = (a['apparaatLabel'] as String? ?? '').trim();
-        final modus = (a['modus'] as String? ?? '').trim();
-        final weergave = naam.isNotEmpty ? naam : 'Onbekend';
-        final subtitel = [
-          if (label.isNotEmpty) label,
-          if (modus.isNotEmpty) modus,
-        ].join(' · ');
-        return Card(
-          color: kWhite,
-          elevation: 0,
-          shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(14),
-              side: const BorderSide(color: kPeachLight)),
-          child: ListTile(
-            title: Text(weergave,
-                style: const TextStyle(color: kBrown,
-                    fontWeight: FontWeight.w800, fontSize: 16)),
-            subtitle: subtitel.isNotEmpty
-                ? Text(subtitel,
-                    style: const TextStyle(color: kTextMuted, fontSize: 12))
-                : null,
-            trailing: ElevatedButton.icon(
-              onPressed: () => _bel(a),
-              icon: const Icon(Icons.videocam_rounded, size: 20),
-              label: Text('Bel $weergave',
-                  style: const TextStyle(fontWeight: FontWeight.w800)),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: kGreen,
-                foregroundColor: kWhite,
-                padding: const EdgeInsets.symmetric(
-                    horizontal: 14, vertical: 10),
-              ),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _koptekst(),
+        if (_apparaten.isEmpty)
+          const Expanded(
+            child: Center(
+              child: Padding(padding: EdgeInsets.all(24),
+                child: Text(
+                    'Geen andere apparaten in deze kring om te bellen.',
+                    style: TextStyle(color: kBrownLight, fontSize: 14),
+                    textAlign: TextAlign.center)),
+            ),
+          )
+        else
+          Expanded(
+            child: ListView.separated(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+              itemCount: _apparaten.length,
+              separatorBuilder: (_, __) => const SizedBox(height: 8),
+              itemBuilder: (context, i) {
+                final a = _apparaten[i];
+                final naam = (a['persoonsNaam'] as String? ?? '').trim();
+                final label = (a['apparaatLabel'] as String? ?? '').trim();
+                final modus = (a['modus'] as String? ?? '').trim();
+                final weergave = naam.isNotEmpty ? naam : 'Onbekend';
+                final subtitel = [
+                  if (label.isNotEmpty) label,
+                  if (modus.isNotEmpty) modus,
+                ].join(' · ');
+                return Card(
+                  color: kWhite,
+                  elevation: 0,
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14),
+                      side: const BorderSide(color: kPeachLight)),
+                  child: ListTile(
+                    title: Text(weergave,
+                        style: const TextStyle(color: kBrown,
+                            fontWeight: FontWeight.w800, fontSize: 16)),
+                    subtitle: subtitel.isNotEmpty
+                        ? Text(subtitel,
+                            style: const TextStyle(
+                                color: kTextMuted, fontSize: 12))
+                        : null,
+                    trailing: ElevatedButton.icon(
+                      onPressed: () => _bel(a),
+                      icon: const Icon(Icons.videocam_rounded, size: 20),
+                      label: Text('Bel $weergave',
+                          style: const TextStyle(
+                              fontWeight: FontWeight.w800)),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: kGreen,
+                        foregroundColor: kWhite,
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 14, vertical: 10),
+                      ),
+                    ),
+                  ),
+                );
+              },
             ),
           ),
-        );
-      },
+      ],
+    );
+  }
+
+  Widget _koptekst() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('Start een videogesprek',
+              style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900,
+                  color: kBrown)),
+          const SizedBox(height: 4),
+          const Text('Kies hieronder een apparaat om te bellen.',
+              style: TextStyle(fontSize: 13, color: kTextMuted, height: 1.4)),
+          if (_benIkEigenaar) ...[
+            const SizedBox(height: 16),
+            Container(
+              decoration: BoxDecoration(
+                color: kWhite,
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: kPeachLight),
+              ),
+              child: SwitchListTile(
+                title: const Text('Gesprekken automatisch beantwoorden',
+                    style: TextStyle(color: kBrown,
+                        fontWeight: FontWeight.w700, fontSize: 15)),
+                subtitle: const Text(
+                    'De tablet neemt videogesprekken vanzelf aan, '
+                    'zodat je dierbare niets hoeft te doen.',
+                    style: TextStyle(color: kTextMuted, fontSize: 12,
+                        height: 1.4)),
+                value: _autoAnswer,
+                activeColor: kGreen,
+                onChanged: _zetAutoAnswer,
+                contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 16, vertical: 6),
+              ),
+            ),
+          ],
+          const SizedBox(height: 4),
+        ],
+      ),
     );
   }
 }
