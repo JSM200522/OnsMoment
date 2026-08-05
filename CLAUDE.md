@@ -406,6 +406,25 @@ NOOIT blind pushen — vandaag (15 mei 2026) heeft dat 10 rode builds opgeleverd
 Losse eindjes die bewust zijn uitgesteld en niet mogen wegzakken.
 Update deze lijst zodra een item is opgepakt of afgerond.
 
+Geplande momenten (grote UX-verbetering, apart traject — NIET nu bouwen):
+- **GEPLANDE MOMENTEN VERBETEREN**: Nu kan 'momenten beheren' alleen titel +
+  geluid (eigen stem/liedje). Doel: momenten beheren wordt de complete, heldere
+  plek voor ALLE planning — herhalend én eenmalig — met volledige media (tekst,
+  foto, video, stem, liedje) én herinneringen, niet alleen titel+geluid.
+  Twee kanten moeten grondig ontworpen worden:
+  1. PLAN-KANT (familie): de layout/flow van het plannen zelf — duidelijk kiezen
+     tussen herhalend vs. eenmalig, welk type, welke media, welk tijdstip. Nu
+     verwarrend en beperkt; moet helder en compleet.
+  2. ONTVANGER-KANT: hoe een gepland moment fijn, mooi en duidelijk binnenkomt/
+     verschijnt bij de kwetsbare ontvanger (rustige én normale modus) — passend
+     bij de warme dagtijdlijn (dagklok stap 3+4).
+  Voorbeeld-use-case: 'elke dag een foto van de kleinkinderen laten verschijnen'.
+  Dit is onze onderscheidende troef t.o.v. concurrenten (RecallCue e.a. scheiden
+  kale agenda van losse foto's; wij plannen álles warm samen).
+  Grote klus — raakt datastructuur (dagelijkse_momenten/gepland_momenten/momenten)
+  + media-upload in de plan-flow. Eerst een grondig ontwerp-onderzoek
+  (plan-kant + ontvanger-kant) vóór er gebouwd wordt.
+
 Push-meldingen (Fase 3+):
 - **Device-test 3d**: open tot testers 1.0.7+9 uit Play Store hebben
   geïnstalleerd — 5 scenario's beschreven in de sessielog van 13 juli.
