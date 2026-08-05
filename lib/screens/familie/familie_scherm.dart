@@ -4044,6 +4044,8 @@ class MomentenBeherenScherm extends StatelessWidget {
         'label': result['label'],
         'uur': result['uur'],
         'minuut': result['minuut'],
+        if (result.containsKey('mediaType')) 'mediaType': result['mediaType'],
+        if (result.containsKey('mediaUrl')) 'mediaUrl': result['mediaUrl'],
       });
     } else {
       final kringId = await DeviceModusService.huidigeKringIdMetFallback();
@@ -4054,7 +4056,9 @@ class MomentenBeherenScherm extends StatelessWidget {
         'label': result['label'],
         'uur': result['uur'],
         'minuut': result['minuut'],
-        'mediaType': '', 'mediaUrl': '', 'tekstBericht': '',
+        'mediaType': result['mediaType'] ?? '',
+        'mediaUrl': result['mediaUrl'] ?? '',
+        'tekstBericht': '',
         'actief': true,
         'aangemaaktOp': FieldValue.serverTimestamp(),
       });
@@ -4081,6 +4085,8 @@ class MomentenBeherenScherm extends StatelessWidget {
         'uur': result['uur'],
         'minuut': result['minuut'],
         'geplandOp': Timestamp.fromDate(result['geplandOp'] as DateTime),
+        if (result.containsKey('mediaType')) 'mediaType': result['mediaType'],
+        if (result.containsKey('mediaUrl')) 'mediaUrl': result['mediaUrl'],
       });
     } else {
       final kringId = await DeviceModusService.huidigeKringIdMetFallback();
@@ -4092,6 +4098,8 @@ class MomentenBeherenScherm extends StatelessWidget {
         'uur': result['uur'],
         'minuut': result['minuut'],
         'geplandOp': Timestamp.fromDate(result['geplandOp'] as DateTime),
+        'mediaType': result['mediaType'] ?? '',
+        'mediaUrl': result['mediaUrl'] ?? '',
         'actief': true,
         'getoond': false,
         'aangemaakt': FieldValue.serverTimestamp(),
@@ -4424,6 +4432,12 @@ class _MomentInvulSchermState extends State<MomentInvulScherm> {
   late TimeOfDay _tijd;
   late DateTime _datum;
 
+  // Foto
+  Uint8List? _fotoBytes;
+  String _bestaandeFotoUrl = '';
+  String _originalMediaType = '';
+  bool _opslaanBezig = false;
+
   static const _emojis = [
     '⭐', '☀️', '☕', '🍽️', '🌙', '💕',
     '🎵', '🌸', '🌳', '📚', '🐦', '🍰',
@@ -4446,6 +4460,10 @@ class _MomentInvulSchermState extends State<MomentInvulScherm> {
       _tijd = TimeOfDay(
           hour: i?['uur'] as int? ?? 15,
           minute: i?['minuut'] as int? ?? 0);
+    }
+    _originalMediaType = i?['mediaType'] as String? ?? '';
+    if (_originalMediaType == 'foto') {
+      _bestaandeFotoUrl = i?['mediaUrl'] as String? ?? '';
     }
   }
 
@@ -4485,7 +4503,26 @@ class _MomentInvulSchermState extends State<MomentInvulScherm> {
     if (d != null) setState(() => _datum = d);
   }
 
-  void _opslaan() {
+  Future<void> _kiesFoto() async {
+    final picker = ImagePicker();
+    final foto = await picker.pickImage(
+        source: ImageSource.gallery, maxWidth: 1600, imageQuality: 85);
+    if (foto != null) {
+      final bytes = await foto.readAsBytes();
+      if (mounted) setState(() => _fotoBytes = bytes);
+    }
+  }
+
+  Future<String> _uploadDagelijkseFoto(String kringId) async {
+    final ref = FirebaseStorage.instance.ref()
+        .child('dagelijkse_media')
+        .child(kringId)
+        .child('${DateTime.now().millisecondsSinceEpoch}.jpg');
+    await ref.putData(_fotoBytes!, SettableMetadata(contentType: 'image/jpeg'));
+    return ref.getDownloadURL();
+  }
+
+  Future<void> _opslaan() async {
     final naam = _labelCtrl.text.trim();
     if (naam.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
@@ -4493,8 +4530,9 @@ class _MomentInvulSchermState extends State<MomentInvulScherm> {
           backgroundColor: Colors.red));
       return;
     }
+    DateTime? gepland;
     if (widget.eenmalig) {
-      final gepland = DateTime(
+      gepland = DateTime(
           _datum.year, _datum.month, _datum.day, _tijd.hour, _tijd.minute);
       if (!gepland.isAfter(DateTime.now())) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
@@ -4502,21 +4540,45 @@ class _MomentInvulSchermState extends State<MomentInvulScherm> {
             backgroundColor: Colors.red));
         return;
       }
-      Navigator.pop(context, {
-        'emoji': _emoji,
-        'label': naam,
-        'uur': _tijd.hour,
-        'minuut': _tijd.minute,
-        'geplandOp': gepland,
-      });
-    } else {
-      Navigator.pop(context, {
-        'emoji': _emoji,
-        'label': naam,
-        'uur': _tijd.hour,
-        'minuut': _tijd.minute,
-      });
     }
+
+    setState(() => _opslaanBezig = true);
+    String? mediaType;
+    String? mediaUrl;
+
+    try {
+      if (_fotoBytes != null) {
+        final kringId = await DeviceModusService.huidigeKringIdMetFallback();
+        if (kringId == null) throw Exception('Geen kringId');
+        mediaUrl = await _uploadDagelijkseFoto(kringId);
+        mediaType = 'foto';
+      } else if (_bestaandeFotoUrl.isEmpty && _originalMediaType == 'foto') {
+        // Gebruiker heeft de bestaande foto verwijderd
+        mediaType = '';
+        mediaUrl = '';
+      }
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _opslaanBezig = false);
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('Foto uploaden mislukt — probeer opnieuw'),
+          backgroundColor: Colors.red));
+      return;
+    }
+
+    if (!mounted) return;
+    setState(() => _opslaanBezig = false);
+
+    final result = <String, dynamic>{
+      'emoji': _emoji,
+      'label': naam,
+      'uur': _tijd.hour,
+      'minuut': _tijd.minute,
+      if (mediaType != null) 'mediaType': mediaType,
+      if (mediaUrl != null) 'mediaUrl': mediaUrl,
+      if (gepland != null) 'geplandOp': gepland,
+    };
+    Navigator.pop(context, result);
   }
 
   @override
@@ -4604,6 +4666,80 @@ class _MomentInvulSchermState extends State<MomentInvulScherm> {
                   ),
                 ),
                 const SizedBox(height: 24),
+                _sectieLabel('FOTO (optioneel)'),
+                GestureDetector(
+                  onTap: _opslaanBezig ? null : _kiesFoto,
+                  child: Container(
+                    width: double.infinity,
+                    height: 110,
+                    clipBehavior: Clip.hardEdge,
+                    decoration: BoxDecoration(
+                      color: kPeachPale,
+                      borderRadius: BorderRadius.circular(12),
+                      border:
+                          Border.all(color: kPeachLight, width: 1.5),
+                    ),
+                    child: _fotoBytes != null
+                        ? Image.memory(_fotoBytes!,
+                            fit: BoxFit.cover, width: double.infinity)
+                        : _bestaandeFotoUrl.isNotEmpty
+                            ? Image.network(
+                                _bestaandeFotoUrl,
+                                fit: BoxFit.cover,
+                                width: double.infinity,
+                                loadingBuilder: (_, child, p) =>
+                                    p == null
+                                        ? child
+                                        : const Center(
+                                            child:
+                                                CircularProgressIndicator(
+                                                    color: kPeach,
+                                                    strokeWidth: 2)),
+                                errorBuilder: (_, __, ___) =>
+                                    const Center(
+                                        child: Icon(
+                                            Icons.broken_image_outlined,
+                                            color: kPeach,
+                                            size: 32)))
+                            : const Center(
+                                child: Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(
+                                        Icons
+                                            .add_photo_alternate_outlined,
+                                        color: kPeach,
+                                        size: 36),
+                                    SizedBox(height: 4),
+                                    Text('Foto toevoegen',
+                                        style: TextStyle(
+                                            fontSize: 12,
+                                            color: kPeach,
+                                            fontWeight: FontWeight.w700)),
+                                  ])),
+                  ),
+                ),
+                if (_fotoBytes != null ||
+                    _bestaandeFotoUrl.isNotEmpty) ...[
+                  const SizedBox(height: 6),
+                  GestureDetector(
+                    onTap: () => setState(() {
+                      _fotoBytes = null;
+                      _bestaandeFotoUrl = '';
+                    }),
+                    child: const Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.close_rounded,
+                              color: kTextMuted, size: 14),
+                          SizedBox(width: 4),
+                          Text('Foto verwijderen',
+                              style: TextStyle(
+                                  fontSize: 12, color: kTextMuted)),
+                        ]),
+                  ),
+                ],
+                const SizedBox(height: 24),
                 if (widget.eenmalig) ...[
                   _sectieLabel('DATUM'),
                   _kiesKnop(
@@ -4673,16 +4809,21 @@ class _MomentInvulSchermState extends State<MomentInvulScherm> {
                     borderRadius: BorderRadius.circular(14)),
                 elevation: 0,
               ),
-              onPressed: _opslaan,
-              child: Text(
-                isBestaand
-                    ? 'Opslaan'
-                    : (widget.eenmalig ? 'Plannen' : 'Toevoegen'),
-                style: const TextStyle(
-                    fontSize: 17,
-                    fontWeight: FontWeight.w800,
-                    color: kWhite),
-              ),
+              onPressed: _opslaanBezig ? null : _opslaan,
+              child: _opslaanBezig
+                  ? const SizedBox(
+                      width: 22,
+                      height: 22,
+                      child: CircularProgressIndicator(
+                          color: kWhite, strokeWidth: 2))
+                  : Text(
+                      isBestaand
+                          ? 'Opslaan'
+                          : (widget.eenmalig ? 'Plannen' : 'Toevoegen'),
+                      style: const TextStyle(
+                          fontSize: 17,
+                          fontWeight: FontWeight.w800,
+                          color: kWhite)),
             ),
           ),
         ),
