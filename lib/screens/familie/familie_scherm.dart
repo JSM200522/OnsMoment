@@ -1343,14 +1343,6 @@ class _StuurTabState extends State<StuurTab> {
           ]),
         ],
 
-        if (_type.isEmpty && !widget.alsOntvanger) ...[
-          const SizedBox(height: 20),
-          const Text(
-            'Wil je iets voor later plannen? Dat kan bij Momenten beheren in Instellingen.',
-            textAlign: TextAlign.center,
-            style: TextStyle(fontSize: 12, color: kTextMuted, height: 1.5)),
-        ],
-
         if (_type.isNotEmpty) ...[
           const SizedBox(height: 20),
           _inhoudInvoer(),
@@ -1436,6 +1428,15 @@ class _StuurTabState extends State<StuurTab> {
                       ])),
             ),
           ),
+        ],
+
+        if (!widget.alsOntvanger) ...[
+          const SizedBox(height: 20),
+          const Text(
+            'Wil je iets voor later plannen? Dat kan bij Momenten beheren in Instellingen.',
+            textAlign: TextAlign.center,
+            style: TextStyle(fontSize: 12, color: kTextMuted, height: 1.5)),
+          const SizedBox(height: 4),
         ],
       ])),
     );
