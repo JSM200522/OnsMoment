@@ -835,17 +835,7 @@ class _TabletSchermState extends State<TabletScherm>
                         textColor: textColor,
                         shadow: shadow,
                         schaal: schaal),
-                    const SizedBox(height: 16),
-
-                    // DAGDEEL-WOORD: OCHTEND/MIDDAG/AVOND/NACHT — grote
-                    // oriëntatiemarker voor de dementie-doelgroep. Staat
-                    // bewust los van de begroeting zodat het als feitelijk
-                    // ankerpunt werkt, ook als de naam niet meer koppelt.
-                    _DagdeelWoord(
-                        textColor: textColor,
-                        shadow: shadow,
-                        schaal: schaal),
-                    const SizedBox(height: 10),
+                    const SizedBox(height: 28),
 
                     // DAGDEEL-GEVOELIGE BEGROETING
                     if (naam.isNotEmpty) _DagdeelGroet(
@@ -1439,11 +1429,11 @@ class _KlokState extends State<_Klok> {
       children: List.generate(7, (i) {
         final isVandaag = i + 1 == vandaag;
         return Padding(
-          padding: EdgeInsets.symmetric(horizontal: 5.0 * s),
+          padding: EdgeInsets.symmetric(horizontal: 6.0 * s),
           child: Column(mainAxisSize: MainAxisSize.min, children: [
             Container(
-              width: 10.0 * s,
-              height: 10.0 * s,
+              width: 14.0 * s,
+              height: 14.0 * s,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
                 color: isVandaag ? kPeach : Colors.transparent,
@@ -1458,7 +1448,7 @@ class _KlokState extends State<_Klok> {
             SizedBox(height: 3.0 * s),
             Text(afkortingen[i],
                 style: TextStyle(
-                  fontSize: 9.0 * s,
+                  fontSize: 11.0 * s,
                   color: isVandaag
                       ? kPeach
                       : widget.textColor.withOpacity(0.45),
@@ -1569,62 +1559,5 @@ class _DagdeelGroetState extends State<_DagdeelGroet> {
               fontWeight: FontWeight.w800, color: widget.textColor,
               shadows: widget.shadow)),
     );
-  }
-}
-
-/// Grote dagdeel-oriëntatiemarker (OCHTEND / MIDDAG / AVOND / NACHT) die
-/// bewust los staat van de naam-begroeting. Werkt als feitelijk ankerpunt
-/// voor de dementie-doelgroep: dagdeel-woorden blijven herkenbaar nadat
-/// klok-cijfers hun betekenis verliezen. Grenzen spiegelen _DagdeelGroet
-/// zodat woord en begroeting altijd synchroon lopen.
-class _DagdeelWoord extends StatefulWidget {
-  final Color textColor;
-  final List<Shadow> shadow;
-  final double schaal;
-  const _DagdeelWoord({
-    required this.textColor,
-    required this.shadow,
-    required this.schaal,
-  });
-  @override
-  State<_DagdeelWoord> createState() => _DagdeelWoordState();
-}
-
-class _DagdeelWoordState extends State<_DagdeelWoord> {
-  Timer? _timer;
-  DateTime _nu = DateTime.now();
-
-  @override
-  void initState() {
-    super.initState();
-    _timer = Timer.periodic(const Duration(minutes: 1),
-        (_) => setState(() => _nu = DateTime.now()));
-  }
-
-  @override
-  void dispose() {
-    _timer?.cancel();
-    super.dispose();
-  }
-
-  String _woord() {
-    final uur = _nu.hour;
-    if (uur >= 5 && uur < 12) return 'OCHTEND';
-    if (uur >= 12 && uur < 18) return 'MIDDAG';
-    if (uur >= 18 && uur < 23) return 'AVOND';
-    return 'NACHT';
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Text(_woord(),
-        textAlign: TextAlign.center,
-        style: TextStyle(
-          fontSize: 34.0 * widget.schaal,
-          fontWeight: FontWeight.w700,
-          color: widget.textColor,
-          letterSpacing: 4.0,
-          shadows: widget.shadow,
-        ));
   }
 }
