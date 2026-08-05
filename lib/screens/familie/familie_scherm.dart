@@ -3883,7 +3883,6 @@ class MomentenBeherenScherm extends StatelessWidget {
                   final audioLabel = audioType == 'stem' ? '🎤 Eigen stem'
                       : audioType == 'mp3' ? '🎵 Eigen MP3'
                       : '🔔 Standaard geluid';
-                  final isHerinnering = d['isHerinnering'] as bool? ?? false;
                   return GestureDetector(
                     onTap: () => _opnenDialog(context, uid, bestaand: doc),
                     child: Container(
@@ -3904,8 +3903,7 @@ class MomentenBeherenScherm extends StatelessWidget {
                                     fontSize: 15,
                                     fontWeight: FontWeight.w800,
                                     color: kBrown)),
-                            Text('${(d['uur'] ?? 0).toString().padLeft(2, '0')}:${(d['minuut'] ?? 0).toString().padLeft(2, '0')} elke dag • $audioLabel'
-                                '${isHerinnering ? ' • ⏰ Herinnering' : ''}',
+                            Text('${(d['uur'] ?? 0).toString().padLeft(2, '0')}:${(d['minuut'] ?? 0).toString().padLeft(2, '0')} elke dag • $audioLabel',
                                 style: const TextStyle(
                                     fontSize: 12, color: kTextMuted)),
                           ])),
@@ -3973,7 +3971,6 @@ class MomentenBeherenScherm extends StatelessWidget {
                   final audioLabel = audioType == 'stem' ? '🎤 Eigen stem'
                       : audioType == 'mp3' ? '🎵 Eigen MP3'
                       : '🔔 Standaard geluid';
-                  final isHerinnering = d['isHerinnering'] as bool? ?? false;
                   return GestureDetector(
                     onTap: () =>
                         _opnenEenmaligDialog(context, uid, bestaand: doc),
@@ -3995,8 +3992,7 @@ class MomentenBeherenScherm extends StatelessWidget {
                                     fontSize: 15,
                                     fontWeight: FontWeight.w800,
                                     color: kBrown)),
-                            Text('$tijdLabel • $audioLabel'
-                                '${isHerinnering ? ' • ⏰ Herinnering' : ''}',
+                            Text('$tijdLabel • $audioLabel',
                                 style: const TextStyle(
                                     fontSize: 12, color: kTextMuted)),
                           ])),
@@ -4046,7 +4042,6 @@ class MomentenBeherenScherm extends StatelessWidget {
         'label': result['label'],
         'uur': result['uur'],
         'minuut': result['minuut'],
-        'isHerinnering': result['isHerinnering'] as bool? ?? false,
       });
     } else {
       final kringId = await DeviceModusService.huidigeKringIdMetFallback();
@@ -4057,7 +4052,6 @@ class MomentenBeherenScherm extends StatelessWidget {
         'label': result['label'],
         'uur': result['uur'],
         'minuut': result['minuut'],
-        'isHerinnering': result['isHerinnering'] as bool? ?? false,
         'mediaType': '', 'mediaUrl': '', 'tekstBericht': '',
         'actief': true,
         'aangemaaktOp': FieldValue.serverTimestamp(),
@@ -4083,7 +4077,6 @@ class MomentenBeherenScherm extends StatelessWidget {
         'uur': result['uur'],
         'minuut': result['minuut'],
         'geplandOp': Timestamp.fromDate(result['geplandOp'] as DateTime),
-        'isHerinnering': result['isHerinnering'] as bool? ?? false,
       });
     } else {
       final kringId = await DeviceModusService.huidigeKringIdMetFallback();
@@ -4095,7 +4088,6 @@ class MomentenBeherenScherm extends StatelessWidget {
         'uur': result['uur'],
         'minuut': result['minuut'],
         'geplandOp': Timestamp.fromDate(result['geplandOp'] as DateTime),
-        'isHerinnering': result['isHerinnering'] as bool? ?? false,
         'actief': true,
         'getoond': false,
         'aangemaakt': FieldValue.serverTimestamp(),
@@ -4116,7 +4108,6 @@ class _NieuwMomentDialogState extends State<_NieuwMomentDialog> {
   late String _emoji;
   late final TextEditingController _labelCtrl;
   late TimeOfDay _tijd;
-  bool _isHerinnering = false;
   final _emojis = ['⭐', '☀️', '☕', '🍽️', '🌙', '💕', '🎵', '🌸', '🌳', '📚', '🐦', '🍰'];
 
   @override
@@ -4128,7 +4119,6 @@ class _NieuwMomentDialogState extends State<_NieuwMomentDialog> {
     _tijd = TimeOfDay(
         hour: init?['uur'] as int? ?? 15,
         minute: init?['minuut'] as int? ?? 0);
-    _isHerinnering = init?['isHerinnering'] as bool? ?? false;
   }
 
   @override
@@ -4182,36 +4172,7 @@ class _NieuwMomentDialogState extends State<_NieuwMomentDialog> {
                 style: const TextStyle(fontSize: 14,
                     fontWeight: FontWeight.w800, color: kBrown)))),
           ]),
-          const SizedBox(height: 12),
-          GestureDetector(
-            onTap: () => setState(() => _isHerinnering = !_isHerinnering),
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-              decoration: BoxDecoration(
-                color: _isHerinnering ? kPeachPale : kWhite,
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(
-                    color: _isHerinnering ? kPeach : kPeachLight, width: 1.5)),
-              child: Row(children: [
-                const Text('⏰', style: TextStyle(fontSize: 18)),
-                const SizedBox(width: 10),
-                const Expanded(child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Text('Dit is een herinnering',
-                      style: TextStyle(fontSize: 13,
-                          fontWeight: FontWeight.w700, color: kBrown)),
-                  Text('Verschijnt met ⏰ in de tijdlijn',
-                      style: TextStyle(fontSize: 11, color: kTextMuted)),
-                ])),
-                Switch(
-                  value: _isHerinnering,
-                  onChanged: (v) => setState(() => _isHerinnering = v),
-                  activeColor: kPeach,
-                ),
-              ]),
-            ),
-          ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 16),
           if (widget.bestaand != null)
             GestureDetector(
               onTap: () => showDialog(context: context,
@@ -4255,7 +4216,6 @@ class _NieuwMomentDialogState extends State<_NieuwMomentDialog> {
                 Navigator.pop(context, {
                   'emoji': _emoji, 'label': _labelCtrl.text.trim(),
                   'uur': _tijd.hour, 'minuut': _tijd.minute,
-                  'isHerinnering': _isHerinnering,
                 });
               },
               child: const Text('Toevoegen',
@@ -4278,7 +4238,6 @@ class _EenmaligMomentDialogState extends State<_EenmaligMomentDialog> {
   late final TextEditingController _labelCtrl;
   late DateTime _datum;
   late TimeOfDay _tijd;
-  bool _isHerinnering = false;
   final _emojis = ['⭐', '☀️', '☕', '🍽️', '🌙', '💕', '🎵', '🌸', '🌳', '📚', '🐦', '🍰'];
 
   @override
@@ -4292,7 +4251,6 @@ class _EenmaligMomentDialogState extends State<_EenmaligMomentDialog> {
     _tijd = geplandOp != null
         ? TimeOfDay(hour: geplandOp.hour, minute: geplandOp.minute)
         : const TimeOfDay(hour: 12, minute: 0);
-    _isHerinnering = i?['isHerinnering'] as bool? ?? false;
   }
 
   @override
@@ -4375,36 +4333,7 @@ class _EenmaligMomentDialogState extends State<_EenmaligMomentDialog> {
                   style: const TextStyle(fontSize: 14,
                       fontWeight: FontWeight.w800, color: kBrown)))),
             ]),
-            const SizedBox(height: 12),
-            GestureDetector(
-              onTap: () => setState(() => _isHerinnering = !_isHerinnering),
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                decoration: BoxDecoration(
-                  color: _isHerinnering ? kPeachPale : kWhite,
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(
-                      color: _isHerinnering ? kPeach : kPeachLight, width: 1.5)),
-                child: Row(children: [
-                  const Text('⏰', style: TextStyle(fontSize: 18)),
-                  const SizedBox(width: 10),
-                  const Expanded(child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    Text('Dit is een herinnering',
-                        style: TextStyle(fontSize: 13,
-                            fontWeight: FontWeight.w700, color: kBrown)),
-                    Text('Verschijnt met ⏰ in de tijdlijn',
-                        style: TextStyle(fontSize: 11, color: kTextMuted)),
-                  ])),
-                  Switch(
-                    value: _isHerinnering,
-                    onChanged: (v) => setState(() => _isHerinnering = v),
-                    activeColor: kPeach,
-                  ),
-                ]),
-              ),
-            ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 16),
             if (widget.bestaand != null)
               GestureDetector(
                 onTap: () => showDialog(context: context,
@@ -4458,7 +4387,6 @@ class _EenmaligMomentDialogState extends State<_EenmaligMomentDialog> {
                     'uur': _tijd.hour,
                     'minuut': _tijd.minute,
                     'geplandOp': gepland,
-                    'isHerinnering': _isHerinnering,
                   });
                 },
                 child: const Text('Plannen',
