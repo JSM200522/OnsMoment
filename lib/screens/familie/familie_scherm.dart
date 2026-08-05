@@ -1045,6 +1045,8 @@ class StuurTab extends StatefulWidget {
 class _StuurTabState extends State<StuurTab> {
   String _type = '';
   final _berichtCtrl = TextEditingController();
+  TimeOfDay _tijd = TimeOfDay.now();
+  DateTime _datum = DateTime.now();
   Uint8List? _mediaBytes;
   // V9-mp3-fix: op mobiel houden we voor 'lied' alleen het bestandspad vast
   // (withData: false in file_picker). De bytes worden pas gelezen op het
@@ -1341,7 +1343,7 @@ class _StuurTabState extends State<StuurTab> {
           ]),
         ],
 
-        if (_type.isEmpty) ...[
+        if (_type.isEmpty && !widget.alsOntvanger) ...[
           const SizedBox(height: 20),
           const Text(
             'Wil je iets voor later plannen? Dat kan bij Momenten beheren in Instellingen.',
@@ -1362,6 +1364,29 @@ class _StuurTabState extends State<StuurTab> {
               border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
               filled: true, fillColor: kWhite),
           ),
+          if (widget.alsOntvanger && !_testModus) ...[
+            const SizedBox(height: 16),
+            const Text('WANNEER STUREN?',
+                style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800,
+                    color: kTextMuted, letterSpacing: 0.8)),
+            const SizedBox(height: 8),
+            Row(children: [
+              Expanded(child: _tijdDatumKnop('📅', _formatDatum(_datum), () async {
+                final d = await showDatePicker(context: context,
+                  initialDate: _datum, firstDate: DateTime.now(),
+                  lastDate: DateTime.now().add(const Duration(days: 365)));
+                if (d != null) setState(() => _datum = d);
+              })),
+              const SizedBox(width: 10),
+              Expanded(child: _tijdDatumKnop('🕐', _formatTijd(_tijd), () async {
+                final t = await showTimePicker(context: context, initialTime: _tijd,
+                  builder: (c, child) => MediaQuery(
+                    data: MediaQuery.of(c).copyWith(alwaysUse24HourFormat: true),
+                    child: child!));
+                if (t != null) setState(() => _tijd = t);
+              })),
+            ]),
+          ],
           const SizedBox(height: 24),
           GestureDetector(
             onTap: _bezig ? null : _verstuur,
@@ -1374,11 +1399,17 @@ class _StuurTabState extends State<StuurTab> {
                     blurRadius: 20, offset: const Offset(0, 8))]),
               child: Center(child: !_bezig
                 ? Text(
-                    widget.alsOntvanger
-                        ? (_gekozenPersoonsNaam == null
-                            ? 'Stuur naar de kring 💕'
-                            : 'Stuur naar $_gekozenPersoonsNaam 💕')
-                        : 'Stuur naar $_toonNaam 💕',
+                    _testModus
+                        ? (widget.alsOntvanger
+                            ? (_gekozenPersoonsNaam == null
+                                ? '⚡ Stuur NU naar de kring'
+                                : '⚡ Stuur NU naar $_gekozenPersoonsNaam')
+                            : '⚡ Stuur NU naar $_toonNaam')
+                        : widget.alsOntvanger
+                            ? (_gekozenPersoonsNaam == null
+                                ? 'Plan voor de kring 💕'
+                                : 'Plan voor $_gekozenPersoonsNaam 💕')
+                            : 'Stuur naar $_toonNaam 💕',
                     style: const TextStyle(fontSize: 16,
                         fontWeight: FontWeight.w800, color: kWhite))
                 : _uploadProgress == null
@@ -1999,15 +2030,20 @@ class _StuurTabState extends State<StuurTab> {
         'type': _type,
         'mediaUrl': mediaUrl,
         'bericht': _berichtCtrl.text.trim(),
-        'geplandOp': FieldValue.serverTimestamp(),
+        'geplandOp': (widget.alsOntvanger && !_testModus)
+            ? Timestamp.fromDate(DateTime(
+                _datum.year, _datum.month, _datum.day, _tijd.hour, _tijd.minute))
+            : FieldValue.serverTimestamp(),
         'verstuurdOp': FieldValue.serverTimestamp(),
         'gezien': false,
         'testModus': _testModus,
       });
 
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text('Verstuurd! Verschijnt zo bij de ontvanger 💕'),
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text((widget.alsOntvanger && !_testModus)
+              ? 'Moment gepland voor ${_formatDatum(_datum)} ${_formatTijd(_tijd)} 💕'
+              : 'Verstuurd! Verschijnt zo bij de ontvanger 💕'),
           backgroundColor: kGreen));
         setState(() {
           _type = '';
@@ -2211,6 +2247,25 @@ class _StuurTabState extends State<StuurTab> {
         ]),
       ),
     ));
+
+  Widget _tijdDatumKnop(String emoji, String tekst, VoidCallback onTap) =>
+    GestureDetector(onTap: onTap, child: Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(color: kWhite,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: kPeachLight, width: 2)),
+      child: Row(children: [
+        Text(emoji, style: const TextStyle(fontSize: 18)),
+        const SizedBox(width: 8),
+        Text(tekst, style: const TextStyle(fontSize: 13,
+            fontWeight: FontWeight.w800, color: kBrown)),
+      ]),
+    ));
+
+  String _formatDatum(DateTime d) =>
+      '${d.day.toString().padLeft(2, '0')}-${d.month.toString().padLeft(2, '0')}';
+  String _formatTijd(TimeOfDay t) =>
+      '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
 
 }
 
