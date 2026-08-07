@@ -2519,8 +2519,16 @@ class _EenmaligItem extends StatelessWidget {
 }
 
 class _AudioInstelDialog extends StatefulWidget {
-  final DocumentSnapshot doc;
-  const _AudioInstelDialog({required this.doc});
+  final DocumentSnapshot? doc;
+  final void Function(Uint8List bytes, String type)? onDraftSave;
+  final Uint8List? draftBytes;
+  final String draftType;
+  const _AudioInstelDialog({
+    this.doc,
+    this.onDraftSave,
+    this.draftBytes,
+    this.draftType = '',
+  });
   @override
   State<_AudioInstelDialog> createState() => _AudioInstelDialogState();
 }
@@ -2552,10 +2560,15 @@ class _AudioInstelDialogState extends State<_AudioInstelDialog> {
   @override
   void initState() {
     super.initState();
-    final d = widget.doc.data() as Map<String, dynamic>;
-    _huidigeUrl = d['aangepasteAudioUrl'] as String?;
-    _huidigType = d['aangepasteAudioType'] as String?;
-    _preloadHuidige();
+    if (widget.doc != null) {
+      final d = widget.doc!.data() as Map<String, dynamic>;
+      _huidigeUrl = d['aangepasteAudioUrl'] as String?;
+      _huidigType = d['aangepasteAudioType'] as String?;
+      _preloadHuidige();
+    } else if (widget.draftBytes != null && widget.draftType.isNotEmpty) {
+      _huidigeBytes = widget.draftBytes;
+      _huidigType = widget.draftType;
+    }
   }
 
   Future<void> _preloadHuidige() async {
@@ -2786,15 +2799,20 @@ class _AudioInstelDialogState extends State<_AudioInstelDialog> {
 
   Future<void> _opslaanOpname() async {
     if (_opnameBytes == null) return;
+    if (widget.onDraftSave != null) {
+      widget.onDraftSave!(_opnameBytes!, 'stem');
+      if (mounted) Navigator.pop(context);
+      return;
+    }
     final kringId = await DeviceModusService.huidigeKringIdMetFallback();
     if (kringId == null) return;
     setState(() => _bezig = true);
     final url = await DagelijksAudioService.upload(
       kringId: kringId,
-      momentId: widget.doc.id,
+      momentId: widget.doc!.id,
       bytes: _opnameBytes!,
       type: 'stem',
-      collectie: widget.doc.reference.parent.id,
+      collectie: widget.doc!.reference.parent.id,
     );
     if (!mounted) return;
     setState(() => _bezig = false);
@@ -2816,15 +2834,20 @@ class _AudioInstelDialogState extends State<_AudioInstelDialog> {
 
   Future<void> _opslaanMp3() async {
     if (_mp3Bytes == null) return;
+    if (widget.onDraftSave != null) {
+      widget.onDraftSave!(_mp3Bytes!, 'mp3');
+      if (mounted) Navigator.pop(context);
+      return;
+    }
     final kringId = await DeviceModusService.huidigeKringIdMetFallback();
     if (kringId == null) return;
     setState(() => _bezig = true);
     final url = await DagelijksAudioService.upload(
       kringId: kringId,
-      momentId: widget.doc.id,
+      momentId: widget.doc!.id,
       bytes: _mp3Bytes!,
       type: 'mp3',
-      collectie: widget.doc.reference.parent.id,
+      collectie: widget.doc!.reference.parent.id,
     );
     if (!mounted) return;
     setState(() => _bezig = false);
@@ -2844,12 +2867,13 @@ class _AudioInstelDialogState extends State<_AudioInstelDialog> {
   }
 
   Future<void> _zetTerugNaarBel() async {
+    if (widget.doc == null) return;
     final kringId = await DeviceModusService.huidigeKringIdMetFallback();
     if (kringId == null) return;
     setState(() => _bezig = true);
     final ok = await DagelijksAudioService.reset(
-        kringId: kringId, momentId: widget.doc.id,
-        collectie: widget.doc.reference.parent.id);
+        kringId: kringId, momentId: widget.doc!.id,
+        collectie: widget.doc!.reference.parent.id);
     if (!mounted) return;
     setState(() => _bezig = false);
     if (ok) {
@@ -2867,8 +2891,8 @@ class _AudioInstelDialogState extends State<_AudioInstelDialog> {
 
   @override
   Widget build(BuildContext context) {
-    final d = widget.doc.data() as Map<String, dynamic>;
-    final label = d['label'] ?? 'Moment';
+    final d = widget.doc?.data() as Map<String, dynamic>?;
+    final label = d?['label'] ?? 'Moment';
     final heeftHuidig = (_huidigeUrl ?? '').isNotEmpty;
     final huidigLabel = _huidigType == 'stem' ? '🎤 Eigen stem'
         : _huidigType == 'mp3' ? '🎵 Eigen MP3'
@@ -3021,8 +3045,8 @@ class _AudioInstelDialogState extends State<_AudioInstelDialog> {
             ],
             const SizedBox(height: 20),
 
-            // TERUG NAAR STANDAARD
-            if (heeftHuidig)
+            // TERUG NAAR STANDAARD (alleen bij bestaand moment, niet in draft-mode)
+            if (heeftHuidig && widget.doc != null)
               GestureDetector(
                 onTap: _bezig ? null : _zetTerugNaarBel,
                 child: Container(width: double.infinity,
@@ -4086,7 +4110,8 @@ class MomentenBeherenScherm extends StatelessWidget {
     } else {
       final kringId = await DeviceModusService.huidigeKringIdMetFallback();
       if (kringId == null) return;
-      await FirebaseFirestore.instance.collection('dagelijkse_momenten').add({
+      final ref = await FirebaseFirestore.instance
+          .collection('dagelijkse_momenten').add({
         'kringId': kringId,
         'emoji': result['emoji'],
         'label': result['label'],
@@ -4098,6 +4123,18 @@ class MomentenBeherenScherm extends StatelessWidget {
         'actief': true,
         'aangemaaktOp': FieldValue.serverTimestamp(),
       });
+      final audioBytes = result['audioBytes'] as Uint8List?;
+      final audioType = result['audioType'] as String?;
+      if (audioBytes != null &&
+          (audioType == 'stem' || audioType == 'mp3')) {
+        await DagelijksAudioService.upload(
+          kringId: kringId,
+          momentId: ref.id,
+          bytes: audioBytes,
+          type: audioType!,
+          collectie: 'dagelijkse_momenten',
+        );
+      }
     }
   }
 
@@ -4128,7 +4165,8 @@ class MomentenBeherenScherm extends StatelessWidget {
     } else {
       final kringId = await DeviceModusService.huidigeKringIdMetFallback();
       if (kringId == null) return;
-      await FirebaseFirestore.instance.collection('gepland_momenten').add({
+      final ref = await FirebaseFirestore.instance
+          .collection('gepland_momenten').add({
         'kringId': kringId,
         'emoji': result['emoji'],
         'label': result['label'],
@@ -4142,6 +4180,18 @@ class MomentenBeherenScherm extends StatelessWidget {
         'getoond': false,
         'aangemaakt': FieldValue.serverTimestamp(),
       });
+      final audioBytes = result['audioBytes'] as Uint8List?;
+      final audioType = result['audioType'] as String?;
+      if (audioBytes != null &&
+          (audioType == 'stem' || audioType == 'mp3')) {
+        await DagelijksAudioService.upload(
+          kringId: kringId,
+          momentId: ref.id,
+          bytes: audioBytes,
+          type: audioType!,
+          collectie: 'gepland_momenten',
+        );
+      }
     }
   }
 }
@@ -4498,6 +4548,9 @@ class _MomentInvulSchermState extends State<MomentInvulScherm> {
   String _bestaandMediaType = '';
   String _bestaandMediaUrl = '';
   bool _opslaanBezig = false;
+  // Aankomstgeluid draft (nieuw moment)
+  Uint8List? _audioBytes;
+  String _audioType = '';
 
   static const _emojis = [
     '⭐', '☀️', '☕', '🍽️', '🌙', '💕',
@@ -4876,6 +4929,10 @@ class _MomentInvulSchermState extends State<MomentInvulScherm> {
       'mediaUrl': outMediaUrl,
       'tekstBericht': outTekstBericht,
       if (gepland != null) 'geplandOp': gepland,
+      if (widget.bestaand == null && _audioBytes != null && _audioType.isNotEmpty) ...{
+        'audioBytes': _audioBytes,
+        'audioType': _audioType,
+      },
     };
     Navigator.pop(context, result);
   }
@@ -5030,16 +5087,42 @@ class _MomentInvulSchermState extends State<MomentInvulScherm> {
                     ),
                   )
                 else
-                  Container(
-                    padding: const EdgeInsets.all(14),
-                    decoration: BoxDecoration(
-                        color: kPeachPale,
-                        borderRadius: BorderRadius.circular(12)),
-                    child: const Text(
-                      '💡 Je kunt het aankomstgeluid aanpassen '
-                      'nadat je dit moment hebt opgeslagen.',
-                      style: TextStyle(
-                          fontSize: 12, color: kBrownLight, height: 1.5),
+                  GestureDetector(
+                    onTap: () => showDialog(
+                      context: context,
+                      builder: (_) => _AudioInstelDialog(
+                        onDraftSave: (bytes, type) =>
+                            setState(() { _audioBytes = bytes; _audioType = type; }),
+                        draftBytes: _audioBytes,
+                        draftType: _audioType,
+                      ),
+                    ),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 16, vertical: 12),
+                      decoration: BoxDecoration(
+                          color: _audioType.isNotEmpty ? kGreen.withOpacity(0.08) : kPeachPale,
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                              color: _audioType.isNotEmpty ? kGreen : kPeach,
+                              width: 1.5)),
+                      child: Row(children: [
+                        Text(_audioType == 'mp3' ? '🎵' : '🎤',
+                            style: const TextStyle(fontSize: 20)),
+                        const SizedBox(width: 10),
+                        Expanded(child: Text(
+                          _audioType == 'stem'
+                              ? '✓ Eigen stem gekozen — tik om te wijzigen'
+                              : _audioType == 'mp3'
+                                  ? '✓ Eigen MP3 gekozen — tik om te wijzigen'
+                                  : 'Aankomstgeluid kiezen (optioneel)',
+                          style: TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w800,
+                              color: _audioType.isNotEmpty ? kGreen : kBrown))),
+                        Icon(Icons.chevron_right_rounded,
+                            color: _audioType.isNotEmpty ? kGreen : kPeach),
+                      ]),
                     ),
                   ),
                 const SizedBox(height: 24),
