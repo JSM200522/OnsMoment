@@ -7,15 +7,15 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 /// Storage-pad: dagelijkse_audio/{kringId}/{momentId}.{webm|m4a|mp3}
 class DagelijksAudioService {
   /// Upload bytes naar Storage en zet aangepasteAudioUrl/Type in het
-  /// moment-doc. Probeert oude file met andere extensie eerst weg te halen.
-  static Future<bool> upload({
+  /// moment-doc. Geeft de download-URL terug, of null bij een fout.
+  static Future<String?> upload({
     required String kringId,
     required String momentId,
     required Uint8List bytes,
     required String type,
     String collectie = 'dagelijkse_momenten',
   }) async {
-    if (type != 'stem' && type != 'mp3') return false;
+    if (type != 'stem' && type != 'mp3') return null;
     try {
       final String ext;
       final String mime;
@@ -38,9 +38,9 @@ class DagelijksAudioService {
         'aangepasteAudioType': type,
         'aangepasteAudioUploadedOp': FieldValue.serverTimestamp(),
       });
-      return true;
+      return url;
     } catch (_) {
-      return false;
+      return null;
     }
   }
 

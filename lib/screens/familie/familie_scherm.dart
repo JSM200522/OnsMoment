@@ -2519,7 +2519,7 @@ class _EenmaligItem extends StatelessWidget {
 }
 
 class _AudioInstelDialog extends StatefulWidget {
-  final QueryDocumentSnapshot doc;
+  final DocumentSnapshot doc;
   const _AudioInstelDialog({required this.doc});
   @override
   State<_AudioInstelDialog> createState() => _AudioInstelDialogState();
@@ -2542,6 +2542,7 @@ class _AudioInstelDialogState extends State<_AudioInstelDialog> {
   String? _huidigeUrl;
   String? _huidigType;
   Uint8List? _huidigeBytes;
+  String? _successBericht;
 
   /// V9 2.19: guard tegen dubbel-klikken op de preview-knoppen. Wordt in
   /// de play-methoden gezet naar true bij binnenkomst en via try/finally
@@ -2788,7 +2789,7 @@ class _AudioInstelDialogState extends State<_AudioInstelDialog> {
     final kringId = await DeviceModusService.huidigeKringIdMetFallback();
     if (kringId == null) return;
     setState(() => _bezig = true);
-    final ok = await DagelijksAudioService.upload(
+    final url = await DagelijksAudioService.upload(
       kringId: kringId,
       momentId: widget.doc.id,
       bytes: _opnameBytes!,
@@ -2797,11 +2798,17 @@ class _AudioInstelDialogState extends State<_AudioInstelDialog> {
     );
     if (!mounted) return;
     setState(() => _bezig = false);
-    if (ok) {
-      Navigator.pop(context);
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-        content: Text('✓ Stem-opname opgeslagen'),
-        backgroundColor: kGreen));
+    if (url != null) {
+      final savedBytes = _opnameBytes;
+      setState(() {
+        _huidigeUrl = url;
+        _huidigType = 'stem';
+        _opnameBytes = null;
+        _opnamePad = null;
+        _opnameSeconden = 0;
+        _successBericht = '✓ Stem-opname opgeslagen';
+      });
+      _huidigeBytes = savedBytes;
     } else {
       _toonFout('Opslaan mislukt — probeer opnieuw');
     }
@@ -2812,7 +2819,7 @@ class _AudioInstelDialogState extends State<_AudioInstelDialog> {
     final kringId = await DeviceModusService.huidigeKringIdMetFallback();
     if (kringId == null) return;
     setState(() => _bezig = true);
-    final ok = await DagelijksAudioService.upload(
+    final url = await DagelijksAudioService.upload(
       kringId: kringId,
       momentId: widget.doc.id,
       bytes: _mp3Bytes!,
@@ -2821,10 +2828,16 @@ class _AudioInstelDialogState extends State<_AudioInstelDialog> {
     );
     if (!mounted) return;
     setState(() => _bezig = false);
-    if (ok) {
-      Navigator.pop(context);
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-        content: Text('✓ MP3 opgeslagen'), backgroundColor: kGreen));
+    if (url != null) {
+      final savedBytes = _mp3Bytes;
+      setState(() {
+        _huidigeUrl = url;
+        _huidigType = 'mp3';
+        _mp3Bytes = null;
+        _mp3Naam = '';
+        _successBericht = '✓ MP3 opgeslagen';
+      });
+      _huidigeBytes = savedBytes;
     } else {
       _toonFout('Opslaan mislukt — probeer opnieuw');
     }
@@ -2889,6 +2902,28 @@ class _AudioInstelDialogState extends State<_AudioInstelDialog> {
                         style: TextStyle(fontSize: 12,
                             fontWeight: FontWeight.w800, color: kPeach)),
                   ]))),
+            ],
+            if (_successBericht != null) ...[
+              const SizedBox(height: 8),
+              Container(
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 12, vertical: 8),
+                decoration: BoxDecoration(
+                  color: kGreen.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: kGreen, width: 1.5),
+                ),
+                child: Row(children: [
+                  const Icon(Icons.check_circle_outline_rounded,
+                      color: kGreen, size: 16),
+                  const SizedBox(width: 6),
+                  Expanded(child: Text(_successBericht!,
+                      style: const TextStyle(
+                          fontSize: 12,
+                          color: kGreen,
+                          fontWeight: FontWeight.w700))),
+                ]),
+              ),
             ],
             const SizedBox(height: 20),
 
@@ -4190,9 +4225,19 @@ class _NieuwMomentDialogState extends State<_NieuwMomentDialog> {
           const SizedBox(height: 16),
           if (widget.bestaand != null)
             GestureDetector(
-              onTap: () => showDialog(context: context,
-                  builder: (ctx) =>
-                      _AudioInstelDialog(doc: widget.bestaand!)),
+              onTap: () async {
+                final ctx = context;
+                DocumentSnapshot fresh;
+                try {
+                  fresh = await widget.bestaand!.reference.get();
+                } catch (_) {
+                  fresh = widget.bestaand!;
+                }
+                if (!mounted) return;
+                // ignore: use_build_context_synchronously
+                showDialog(context: ctx,
+                    builder: (_) => _AudioInstelDialog(doc: fresh));
+              },
               child: Container(
                 padding: const EdgeInsets.symmetric(
                     horizontal: 14, vertical: 10),
@@ -4949,10 +4994,18 @@ class _MomentInvulSchermState extends State<MomentInvulScherm> {
                 const SizedBox(height: 24),
                 if (isBestaand)
                   GestureDetector(
-                    onTap: () => showDialog(
-                        context: context,
-                        builder: (_) =>
-                            _AudioInstelDialog(doc: widget.bestaand!)),
+                    onTap: () async {
+                      final ctx = context;
+                      DocumentSnapshot fresh;
+                      try {
+                        fresh = await widget.bestaand!.reference.get();
+                      } catch (_) {
+                        fresh = widget.bestaand!;
+                      }
+                      if (!mounted) return;
+                      // ignore: use_build_context_synchronously
+                      showDialog(context: ctx, builder: (_) => _AudioInstelDialog(doc: fresh));
+                    },
                     child: Container(
                       padding: const EdgeInsets.symmetric(
                           horizontal: 16, vertical: 12),
