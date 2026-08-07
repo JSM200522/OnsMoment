@@ -484,31 +484,93 @@ class _FamilieSchermState extends State<FamilieScherm>
   Future<void> _toonDagelijksPopup(
       String id, Map<String, dynamic> d) async {
     final aangepasteAudio = d['aangepasteAudioUrl'] as String? ?? '';
-    final synthetic = <String, dynamic>{
-      'type': 'dagelijks',
-      'emoji': d['emoji'],
-      'label': d['label'],
-      'mediaUrl': aangepasteAudio,
-      'geplandOp': Timestamp.now(),
-      'heeftAangepasteAudio': aangepasteAudio.isNotEmpty,
-    };
+    final mediaType = d['mediaType'] as String? ?? '';
+    final mediaUrl = d['mediaUrl'] as String? ?? '';
+    final tekstBericht = d['tekstBericht'] as String? ?? '';
+    final synthetic = _maakSyntheticDoc(
+        d, mediaType, mediaUrl, tekstBericht, aangepasteAudio);
     await _toonPopup('dagelijks_$id', synthetic);
   }
 
   Future<void> _toonEenmaligPopup(
       String id, Map<String, dynamic> d) async {
-    // Hergebruik 'dagelijks' popup-rendering + audio-flow: emoji + label,
-    // standaard geluid of eigen audio. Identiek aan dagelijks moment.
     final aangepasteAudio = d['aangepasteAudioUrl'] as String? ?? '';
-    final synthetic = <String, dynamic>{
-      'type': 'dagelijks',
-      'emoji': d['emoji'],
-      'label': d['label'],
-      'mediaUrl': aangepasteAudio,
-      'geplandOp': Timestamp.now(),
-      'heeftAangepasteAudio': aangepasteAudio.isNotEmpty,
-    };
+    final mediaType = d['mediaType'] as String? ?? '';
+    final mediaUrl = d['mediaUrl'] as String? ?? '';
+    final tekstBericht = d['tekstBericht'] as String? ?? '';
+    final synthetic = _maakSyntheticDoc(
+        d, mediaType, mediaUrl, tekstBericht, aangepasteAudio);
     await _toonPopup('eenmalig_$id', synthetic);
+  }
+
+  /// Bouwt een synthetisch popup-doc op basis van mediaType.
+  /// Spiegelt tablet_scherm._maakSyntheticDoc — beide modi gebruiken
+  /// dezelfde mapping zodat gedrag identiek is.
+  /// Fallback (geen media): type 'dagelijks' met emoji+label+aankomstgeluid.
+  Map<String, dynamic> _maakSyntheticDoc(
+      Map<String, dynamic> d,
+      String mediaType,
+      String mediaUrl,
+      String tekstBericht,
+      String aangepasteAudio) {
+    if (mediaType == 'foto' && mediaUrl.isNotEmpty) {
+      return {
+        'type': 'foto',
+        'emoji': d['emoji'],
+        'label': d['label'],
+        'mediaUrl': mediaUrl,
+        'geplandOp': Timestamp.now(),
+        'heeftAangepasteAudio': false,
+      };
+    } else if (mediaType == 'video' && mediaUrl.isNotEmpty) {
+      return {
+        'type': 'video',
+        'emoji': d['emoji'],
+        'label': d['label'],
+        'mediaUrl': mediaUrl,
+        'geplandOp': Timestamp.now(),
+        'heeftAangepasteAudio': false,
+      };
+    } else if (mediaType == 'tekst' && tekstBericht.isNotEmpty) {
+      return {
+        'type': 'tekst',
+        'emoji': d['emoji'],
+        'label': d['label'],
+        'mediaUrl': '',
+        'bericht': tekstBericht,
+        'geplandOp': Timestamp.now(),
+        'heeftAangepasteAudio': false,
+      };
+    } else if (mediaType == 'stem' && mediaUrl.isNotEmpty) {
+      return {
+        'type': 'stem',
+        'emoji': d['emoji'],
+        'label': d['label'],
+        'mediaUrl': mediaUrl,
+        'geplandOp': Timestamp.now(),
+        'heeftAangepasteAudio': false,
+      };
+    } else if (mediaType == 'lied' && mediaUrl.isNotEmpty) {
+      return {
+        'type': 'lied',
+        'emoji': d['emoji'],
+        'label': d['label'],
+        'mediaUrl': mediaUrl,
+        'geplandOp': Timestamp.now(),
+        'heeftAangepasteAudio': false,
+      };
+    } else {
+      // Geen media of onbekend type: toon als dagelijks (emoji+label).
+      // Dekt bestaande momenten zonder mediaType én nieuwe momenten zonder media.
+      return {
+        'type': 'dagelijks',
+        'emoji': d['emoji'],
+        'label': d['label'],
+        'mediaUrl': aangepasteAudio,
+        'geplandOp': Timestamp.now(),
+        'heeftAangepasteAudio': aangepasteAudio.isNotEmpty,
+      };
+    }
   }
 
   void _verwerkMomenten(QuerySnapshot snap) {
