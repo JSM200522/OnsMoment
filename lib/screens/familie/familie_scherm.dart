@@ -6005,10 +6005,12 @@ class _HulpDialog extends StatelessWidget {
   static const List<_FAQ> _faqs = [
     // ── Algemeen ──
     _FAQ('Algemeen', "Wat is Ons Moment precies?",
-        "Ons Moment is een app waarmee je foto's, stem-berichten en "
-        "herinneringen kunt sturen naar het apparaat van je dierbare. Je kunt "
-        "kiezen hoe de app bij je dierbare verschijnt: als een rustig scherm "
-        "dat alleen jouw berichten toont, of als een gewone app met meldingen."),
+        "Ons Moment is een app waarmee je foto's, video's, gesproken berichten, "
+        "liedjes, tekstberichten en hartjes kunt sturen naar het apparaat van je "
+        "dierbare. Je kunt ook videobellen, rechtstreeks vanuit de app. Je kiest "
+        "hoe de app bij je dierbare verschijnt: als een rustig scherm dat alleen "
+        "jullie berichten toont en waarbij niets per ongeluk misgaat, of als een "
+        "gewone app met meldingen voor wie nog zelf met een tablet of telefoon omgaat."),
     _FAQ('Algemeen', "Hoe werkt het voor mijn dierbare?",
         "Je dierbare ontvangt jouw berichten op het apparaat dat bij hem of "
         "haar staat. Bij elk nieuw bericht klinkt een herkenningsgeluid en "
@@ -6037,12 +6039,13 @@ class _HulpDialog extends StatelessWidget {
         "sturen en zichzelf uit de kring halen, maar beheert de kring niet. "
         "Zo houdt één persoon het overzicht, terwijl iedereen kan meedoen."),
     _FAQ('Algemeen', "Wat ziet mijn dierbare op het scherm?",
-        "Je dierbare ziet een rustig, overzichtelijk scherm met de tijd, "
-        "een vriendelijke begroeting en de berichten die jullie sturen. "
-        "Komt er een nieuw bericht of een herinnering binnen, dan "
-        "verschijnt die vanzelf in beeld met een herkenningsgeluid. Er "
-        "staan geen ingewikkelde knoppen of menu's — alleen wat jullie "
-        "sturen."),
+        "Je dierbare ziet een rustig, overzichtelijk scherm met de tijd, de dag "
+        "van de week en een vriendelijke begroeting die past bij het moment van "
+        "de dag. Bovenaan staat een weekstrip die duidelijk laat zien welke dag "
+        "het is — dat helpt bij oriëntatie. Komt er een bericht of een gepland "
+        "moment binnen, dan verschijnt dat vanzelf in beeld met een vertrouwd "
+        "aankomstgeluid. Er staan geen ingewikkelde knoppen of menu's — alleen "
+        "wat jullie sturen."),
     // ── Voor families ──
     _FAQ('Voor families', "Hoe voeg ik iemand toe aan de kring?",
         "Open Instellingen en kies 'Kringleden beheren'. Tik op 'Familie "
@@ -6054,30 +6057,38 @@ class _HulpDialog extends StatelessWidget {
         "je abonnement."),
     _FAQ('Voor families', "Hoe stuur ik een bericht?",
         "Open het tabblad 'Sturen'. Kies wat je wilt versturen: een foto, een "
-        "stem-bericht, een liedje of een tekst. Vul in voor wie het bedoeld is "
-        "en wanneer het moet aankomen. Druk op versturen en het bericht "
-        "verschijnt op het ingestelde moment bij je dierbare."),
+        "video, een gesproken bericht, een liedje, een tekst of een hartje. Tik "
+        "op de verstuurknop en het bericht verschijnt direct bij je dierbare. "
+        "Wil je iets plannen voor later — elke dag op een vaste tijd of op een "
+        "eenmalig moment — dan doe je dat via 'Momenten beheren' in Instellingen."),
     _FAQ('Voor families', "Hoe maak ik een dagelijkse herinnering?",
-        "Ga naar 'Instellingen' en kies 'Momenten beheren'. Stel een "
-        "tijd in en kies wat er moet verschijnen — bijvoorbeeld 'Tijd voor "
-        "koffie' met een foto of geluid. De herinnering komt voortaan elke dag "
-        "op die tijd in beeld bij je dierbare."),
+        "Ga naar Instellingen en kies 'Momenten beheren'. Tik op 'Nieuw moment' "
+        "en stel een tijdstip in. Daarna voeg je toe wat er moet verschijnen: "
+        "een foto, een video, een gesproken bericht, een liedje of een tekst. "
+        "De herinnering komt voortaan elke dag op die tijd in beeld bij je "
+        "dierbare, met het aankomstgeluid dat je hebt ingesteld."),
     _FAQ('Voor families', "Hoe voeg ik mijn eigen stem toe aan een moment?",
-        "Bij het maken of bewerken van een herinnering kun je je eigen stem "
-        "opnemen via de microfoon-knop. Spreek de boodschap in en sla op. Je "
-        "dierbare hoort dan jouw stem in plaats van een standaard geluid."),
+        "Jouw stem kun je op twee manieren gebruiken. Als inhoud van een moment: "
+        "open 'Momenten beheren', kies bij het aanmaken of bewerken van een "
+        "moment het type 'Stem' en neem je bericht in — je dierbare hoort dan "
+        "jouw stem zodra het moment verschijnt. Als aankomstgeluid: dat is het "
+        "korte geluidje dat klinkt op het moment dat een bericht binnenkomt. "
+        "Bij het aanmaken van een nieuw moment kun je meteen je eigen stem "
+        "opnemen als aankomstgeluid, zodat je dierbare jou herkent nog voor "
+        "het bericht in beeld is."),
     _FAQ('Voor families', "Kan ik een bericht in de toekomst plannen?",
-        "Ja. Bij het versturen van een bericht kies je 'Wanneer sturen?' en "
-        "stel je een datum en tijd in. Het bericht wordt opgeslagen en "
-        "verschijnt vanzelf op het gekozen moment bij je dierbare. Dit werkt "
-        "voor losse momenten en voor terugkerende herinneringen."),
+        "Ja. Ga naar Instellingen en kies 'Momenten beheren'. Daar maak je "
+        "vaste, dagelijks terugkerende momenten aan — bijvoorbeeld elke ochtend "
+        "om negen uur een foto — of eenmalige momenten op een specifieke datum "
+        "en tijd, zoals een verjaardagswens volgende week. Het tabblad 'Sturen' "
+        "is bedoeld om direct iets te sturen; plannen doe je altijd via "
+        "Momenten beheren."),
     _FAQ('Voor families', "Hoe wijzig ik mijn wachtwoord?",
-        "Open Instellingen en kies 'Wachtwoord wijzigen'. Vul je huidige "
-        "wachtwoord in en kies een nieuw wachtwoord. Iedereen in de kring "
-        "heeft een eigen wachtwoord, dus dit verandert alleen dat van "
-        "jou. Heb je het apparaat van je dierbare met jouw account "
-        "ingesteld? Dan moet je dat apparaat na een wachtwoordwijziging "
-        "opnieuw inloggen."),
+        "Open Instellingen en kies 'Email of wachtwoord wijzigen'. Vul je "
+        "huidige wachtwoord in en kies een nieuw wachtwoord. Iedereen in de "
+        "kring heeft een eigen account, dus dit verandert alleen dat van jou. "
+        "Heb je het apparaat van je dierbare gekoppeld met jouw account? Dan "
+        "moet je dat apparaat na een wachtwoordwijziging opnieuw inloggen."),
     _FAQ('Voor families', "Kan ik iemand uit de kring verwijderen?",
         "Ja. Ga naar Instellingen → Kringleden beheren en tik op de "
         "persoon die je wilt verwijderen. De eigenaar van de kring kan "
@@ -6102,10 +6113,11 @@ class _HulpDialog extends StatelessWidget {
         "verbinding, dan komen de berichten alsnog binnen zodra er weer "
         "internet is. Er gaat niets verloren."),
     _FAQ('Voor families', "Hoe stuur ik een bericht naar één bepaald persoon?",
-        "Bij het versturen kies je bij 'Naar wie?' een specifiek kringlid "
-        "in plaats van 'Iedereen in de kring'. Het bericht komt dan alleen "
-        "bij die persoon aan. Zo kun je bijvoorbeeld iets persoonlijks "
-        "naar je dierbare sturen, of een berichtje naar één familielid."),
+        "Bij het versturen zie je een keuzelijst 'Naar wie?'. Kies 'Voor je "
+        "dierbare' als je iets persoonlijks wilt sturen dat alleen op het "
+        "apparaat van je dierbare verschijnt. Je kunt ook een specifiek "
+        "kringlid kiezen, of 'Iedereen in de kring' als je iets met de hele "
+        "groep wilt delen."),
     _FAQ('Voor families', "Hoe verlaat ik een kring waar ik gast ben?",
         "Ga naar Instellingen, kies Kringleden beheren en kies bij jezelf "
         "'Uit kring gaan'. Je hebt daarna geen toegang meer tot die kring. "
@@ -6113,19 +6125,19 @@ class _HulpDialog extends StatelessWidget {
     // ── Abonnement ──
     _FAQ('Abonnement', "Wat kost Ons Moment?",
         "Twee abonnementen:\n"
-        "- Familie Klein — 1 kring, max 8 kringleden per kring. "
+        "- Familie Klein — 1 kring, max 8 kringleden. "
         "€4,99 p/m of €35,99 per jaar.\n"
         "- Familie Groot — max 3 kringen, max 20 kringleden per kring. "
         "€7,99 p/m of €57,99 per jaar.\n"
         "Met een jaarabonnement bespaar je zo'n 40%. Je begint altijd "
-        "met 5 dagen gratis — geen betaalgegevens nodig."),
+        "met 14 dagen gratis — geen betaalgegevens nodig."),
     _FAQ('Abonnement', "Wie telt mee in mijn abonnement?",
         "Iedereen in een kring die berichten kan sturen telt mee voor die "
         "kring — familieleden, vrienden en mantelzorgers. Je dierbare zelf "
         "telt niet mee. Heb je meerdere kringen (Familie Groot), dan heeft "
         "elke kring zijn eigen telling."),
-    _FAQ('Abonnement', "Wat gebeurt er na de 5 gratis dagen?",
-        "Je begint altijd met 5 dagen gratis, zonder dat je betaalgegevens "
+    _FAQ('Abonnement', "Wat gebeurt er na de 14 gratis dagen?",
+        "Je begint altijd met 14 dagen gratis, zonder dat je betaalgegevens "
         "hoeft op te geven. Wil je daarna doorgaan, dan kies je een "
         "abonnement. Doe je niets, dan stopt het vanzelf — je wordt nooit "
         "zomaar iets in rekening gebracht."),
