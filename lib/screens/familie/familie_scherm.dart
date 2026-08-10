@@ -6232,9 +6232,8 @@ class _HulpDialog extends StatelessWidget {
                             borderRadius: BorderRadius.circular(12))),
                       onPressed: () async {
                         final messenger = ScaffoldMessenger.of(ctx);
-                        // CONTACT-ADRES — later vervangen door zakelijk adres
                         final uri = Uri(scheme: 'mailto',
-                            path: 'joshuapanna@gmail.com',
+                            path: 'info@onsmoment.app',
                             query: 'subject=Vraag of feedback over Ons Moment');
                         try {
                           final ok = await launchUrl(uri);
