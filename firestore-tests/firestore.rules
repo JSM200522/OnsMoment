@@ -1,0 +1,92 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isIngelogd() {
+      return request.auth != null;
+    }
+
+    // Lid-check via leden-subcollectie (content-docs hebben alleen kringId)
+    function isLid(kringId) {
+      return isIngelogd() &&
+        exists(/databases/$(database)/documents/kringen/$(kringId)/leden/$(request.auth.uid));
+    }
+
+    // Eigenaar-check via eigenaarUid op kring-doc
+    function isEigenaar(kringId) {
+      return isIngelogd() &&
+        get(/databases/$(database)/documents/kringen/$(kringId)).data.eigenaarUid == request.auth.uid;
+    }
+
+    // Kring-aanmaaklimiet op basis van tier + kringAantal-teller.
+    // De teller (kringAantal) wordt door de app atomair verhoogd bij
+    // elke kring-aanmaak. Ontbrekend gebruikers-doc → nieuwe gebruiker,
+    // altijd toestaan (aanmaken eerste kring). Onbekende tier → 'klein'.
+    function tierKringLimietOk() {
+      let uid = request.auth.uid;
+      let pad = /databases/$(database)/documents/gebruikers/$(uid);
+      let bestaat = exists(pad);
+      let huidigAantal = bestaat ? get(pad).data.get('kringAantal', 0) : 0;
+      let tier = bestaat ? get(pad).data.get('tier', 'klein') : 'klein';
+      let maxKringen = tier == 'groot' ? 3 : (tier == 'zorg' ? 9999 : 1);
+      return huidigAantal < maxKringen;
+    }
+
+    // Eigen gebruikers-doc + apparaten-subcollectie.
+    // kringAantal-veld mag alleen toenemen (niet verlagen) om tel-manipulatie
+    // via de REST API te blokkeren.
+    match /gebruikers/{uid} {
+      allow read: if request.auth != null && request.auth.uid == uid;
+      allow create: if request.auth != null && request.auth.uid == uid;
+      allow update: if request.auth != null && request.auth.uid == uid &&
+        request.resource.data.get('kringAantal', 0) >= resource.data.get('kringAantal', 0);
+      allow delete: if request.auth != null && request.auth.uid == uid;
+      match /apparaten/{apparaatId} {
+        allow read, write: if request.auth != null && request.auth.uid == uid;
+      }
+    }
+
+    // Kringen: leden lezen, eigenaar schrijft; aanmaak beperkt door tier-limiet
+    match /kringen/{kringId} {
+      allow read: if isLid(kringId);
+      allow create: if isIngelogd() &&
+        request.resource.data.eigenaarUid == request.auth.uid &&
+        tierKringLimietOk();
+      allow update, delete: if isEigenaar(kringId);
+
+      match /leden/{lidId} {
+        allow read: if isLid(kringId);
+        allow write: if isEigenaar(kringId);
+      }
+    }
+
+    // Collection group query voor mijnKringen() — leest eigen leden-docs over alle kringen
+    match /{path=**}/leden/{lidId} {
+      allow read: if isIngelogd() && resource.data.userUid == request.auth.uid;
+    }
+
+    // Momenten (verstuurde berichten)
+    match /momenten/{id} {
+      allow read, update, delete: if isLid(resource.data.kringId);
+      allow create: if isLid(request.resource.data.kringId);
+    }
+
+    // Dagelijkse momenten (vaste routines)
+    match /dagelijkse_momenten/{id} {
+      allow read, update, delete: if isLid(resource.data.kringId);
+      allow create: if isLid(request.resource.data.kringId);
+    }
+
+    // Geplande momenten (eenmalige geplande berichten)
+    match /gepland_momenten/{id} {
+      allow read, update, delete: if isLid(resource.data.kringId);
+      allow create: if isLid(request.resource.data.kringId);
+    }
+
+    // Notities
+    match /notities/{id} {
+      allow read, update, delete: if isLid(resource.data.kringId);
+      allow create: if isLid(request.resource.data.kringId);
+    }
+  }
+}
