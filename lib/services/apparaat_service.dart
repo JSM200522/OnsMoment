@@ -237,8 +237,15 @@ class ApparaatService {
     'klein': 8, 'groot': 20, 'zorg': 9999,
   };
 
-  /// Maximaal aantal unieke personen voor een tier. Onbekend → 'klein'.
+  /// Maximaal aantal unieke personen per kring voor een tier. Onbekend → 'klein'.
   static int limietPerTier(String tier) => _limietPerTier[tier] ?? 8;
+
+  static const Map<String, int> _kringLimietPerTier = {
+    'klein': 1, 'groot': 3, 'zorg': 9999,
+  };
+
+  /// Maximaal aantal kringen per eigenaar voor een tier. Onbekend → 'klein'.
+  static int kringLimietPerTier(String tier) => _kringLimietPerTier[tier] ?? 1;
 
   /// Leest het tier uit gebruikers/{uid}. Ontbrekend/ongeldig → 'klein'.
   static Future<String> krijgTier(String familieUid) async {

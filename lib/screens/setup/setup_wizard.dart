@@ -850,6 +850,7 @@ class _SetupWizardState extends State<SetupWizard> {
         'herkenningsgeluid': _gekozenGeluid,
         'accountType': 'familie',
         'tier': 'klein',
+        'kringAantal': 1,
         'aangemaaktOp': FieldValue.serverTimestamp(),
       });
 

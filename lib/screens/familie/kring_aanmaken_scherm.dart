@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:just_audio/just_audio.dart';
 import '../../data/geluiden.dart';
+import '../../services/apparaat_service.dart';
 import '../../services/device_modus_service.dart';
 import '../../services/kring_service.dart';
 import '../../theme/kleuren.dart';
@@ -97,6 +98,22 @@ class _KringAanmakenSchermState extends State<KringAanmakenScherm> {
     }
     setState(() => _bezig = true);
     try {
+      // Kring-limiet: tel eigen kringen vóór de write
+      final tier = await ApparaatService.krijgTier(uid);
+      final maxKringen = ApparaatService.kringLimietPerTier(tier);
+      final ledenSnap = await FirebaseFirestore.instance
+          .collectionGroup('leden')
+          .where('userUid', isEqualTo: uid)
+          .get();
+      final aantalEigenKringen = ledenSnap.docs
+          .where((d) => d.data()['rol'] == 'eigenaar')
+          .length;
+      if (aantalEigenKringen >= maxKringen) {
+        if (mounted) setState(() => _bezig = false);
+        _toonLimietMelding(maxKringen, tier);
+        return;
+      }
+
       final kringId = KringService.genereerKringId();
 
       String fotoUrl = '';
@@ -136,6 +153,10 @@ class _KringAanmakenSchermState extends State<KringAanmakenScherm> {
         herkenningsgeluid: _gekozenGeluid,
         eigenaarNaam: eigenaarNaam,
       );
+      // Server-side teller: Firestore-rules checken kringAantal < tierLimit
+      batch.update(
+          FirebaseFirestore.instance.collection('gebruikers').doc(uid),
+          {'kringAantal': FieldValue.increment(1)});
 
       const defaults = [
         {'emoji': '☀️', 'label': 'Goedemorgen', 'uur': 8,  'minuut': 30},
@@ -178,6 +199,30 @@ class _KringAanmakenSchermState extends State<KringAanmakenScherm> {
         _toonFout('Aanmaken mislukt — probeer opnieuw.');
       }
     }
+  }
+
+  void _toonLimietMelding(int max, String tier) {
+    final maxTekst = max == 1 ? '1 kring' : '$max kringen';
+    final isPro = tier == 'groot' || tier == 'zorg';
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: kCream,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text('Kring-limiet bereikt',
+            style: TextStyle(color: kBrown, fontWeight: FontWeight.w900)),
+        content: Text(
+          'Met je huidige pakket kun je maximaal $maxTekst aanmaken.'
+          '${isPro ? '' : '\n\nWil je meer kringen? Bekijk Familie Groot.'}',
+          style: const TextStyle(color: kBrown, height: 1.5)),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Begrepen',
+                style: TextStyle(color: kPeach, fontWeight: FontWeight.w800))),
+        ],
+      ),
+    );
   }
 
   void _toonFout(String m) {
