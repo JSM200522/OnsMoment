@@ -97,8 +97,7 @@ class _PakketKeuzeSchermState extends State<PakketKeuzeScherm> {
                       'Met 8 deelnemers: €0,62 per persoon per maand.',
                   perPersoonJaar:
                       'De rest van de familie nodig je gratis uit. '
-                      'Met 8 deelnemers: €0,37 per persoon per maand '
-                      '(jaarprijs gedeeld door 12).',
+                      'Met 8 deelnemers: €4,50 per persoon per jaar.',
                   kenmerken: const [
                     '1 kring',
                     'Max 8 kringleden',
@@ -120,7 +119,7 @@ class _PakketKeuzeSchermState extends State<PakketKeuzeScherm> {
                       'komt het praktisch neer op €0,13 per persoon per maand.',
                   perPersoonJaar:
                       'De rest nodig je gratis uit, dus met 60 deelnemers: '
-                      '€0,08 per persoon per maand (jaarprijs gedeeld door 12).',
+                      '€0,97 per persoon per jaar.',
                   kenmerken: const [
                     'Max 3 kringen',
                     'Max 20 kringleden per kring',

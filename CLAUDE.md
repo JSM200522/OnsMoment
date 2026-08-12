@@ -650,6 +650,13 @@ Tests zijn al 58/58 groen — alleen nog activeren.
 - [ ] Betaalsysteem keuze: Google Play Billing (in-app purchase) of Stripe?
       Proefperiode 14 dagen, pakket Klein/Groot, jaarabonnement pushen.
       Kring-aantal-limiet (1 vs 3) server-side afdwingen in Firestore rules.
+- [ ] Trial-expiry-lock (NIET bouwen vóór betaalsysteem werkt):
+      Na 14 gratis dagen zonder actief abonnement moet de eigenaar 'gelockt'
+      worden — toegang beperkt tot PakketKeuzeScherm totdat er betaald is.
+      Volgorde dwingend: (1) betaalsysteem werkend + getest, (2) lock
+      inbouwen, (3) betaling heft lock op. Lock vóór betalen = testers en
+      eigenaar buitengesloten zonder uitweg. PakketKeuzeScherm (disabled
+      betaalknop) en proefStart-veld liggen al klaar in de code.
 - [ ] Privacy Policy schrijven + in-app tonen (AVG art. 13, wettelijk verplicht)
 - [ ] Right to erasure implementeren (AVG art. 17, verwijderAccount()-flow)
 - [ ] In-app teksten/FAQ controleren: staat overal "per kring", nergens "totaal"?
