@@ -10,10 +10,24 @@ Familie stuurt vanaf hun telefoon een foto, stem, lied of bericht. Op het appara
 
 Kernwaarde: "Mantelzorger App helpt JOU. Ons Moment helpt je DIERBARE."
 
+## Naam, domein en internationale strategie
+
+- **Naam**: "Ons Moment" blijft. Bewust Nederlands, warm, past bij de NL-doelgroep.
+  Niet neutraliseren voor internationale ambitie — dat zou de kracht voor de
+  NL-markt verzwakken.
+- **Domein**: onsmoment.app (neutrale extensie, modern, prima voor NL-launch).
+- **Internationale ambitie**: indien later relevant → een APARTE app/merknaam
+  lanceren, vertaald, met eigen domein en Play Store-listing. De technische
+  basis (Flutter/Firebase/belfunctie/dagklok/logica) is taal-onafhankelijk en
+  grotendeels herbruikbaar; alleen de schil (naam, teksten, branding) verandert.
+  NU volledig focussen op een sterke Nederlandse launch. Internationale versie =
+  apart toekomstproject, te beslissen met echte data (meten, niet gokken).
+
 ## Businessmodel
 
-- 7,99 EUR per maand per gezinsaccount, max 8 familieleden
-- 5 dagen gratis proefperiode
+- Familie Klein €4,99/maand (1 kring, max 8 leden), Familie Groot €7,99/maand (max 3 kringen, max 20 leden/kring)
+- Jaar: €35,99 resp. €57,99 (~40% korting)
+- 14 dagen gratis proefperiode
 - Markt: Nederland eerst
 
 ## Architectuur (V7)
@@ -52,7 +66,7 @@ Firestore collecties: gebruikers, dagelijkse_momenten, momenten, notities. Alle 
 1. Stem-opname als bytes uploaden naar Storage
 2. Familieleden uitnodigen via email + deeplink
 3. Persoonlijk herkenningsgeluid opnemen
-4. Stripe 7,99/maand met 5 dagen proef
+4. Stripe betaalsysteem (Klein/Groot, 14 dagen gratis proef)
 5. Account-status check
 
 ## V9 — App stores
@@ -375,6 +389,21 @@ NOOIT blind pushen — vandaag (15 mei 2026) heeft dat 10 rode builds opgeleverd
   - Cloud Functions: groen. Auth ✓, kring-membership ✓, rate-limiting ✓,
     apparaat-verify ✓, secrets in Secret Manager ✓. Geen actie vereist.
   Zie sectie "Security hardening" in Openstaande punten voor het complete plan.
+- 8 augustus 2026: Security FASE 1 code-compleet + 58/58 tests groen.
+  Drie Flutter-fixes ook gebouwd (commits op main, CI groen):
+  - Stale-snapshot bug in _AudioInstelDialog: opname meteen zichtbaar na upload
+    zonder dialog te sluiten. DagelijksAudioService.upload() geeft URL terug;
+    dialog werkt eigen state bij. Openers fetchen fresh DocumentSnapshot.
+  - G1: aankomstgeluid direct kiesbaar bij nieuw moment. Draft-mode in
+    _AudioInstelDialog (optionele doc + onDraftSave). Bytes gehouden in parent
+    state; mee-uploaden na add() met ref.id. Identiek patroon als foto.
+  - Testbreekende bug: _toonDagelijksPopup/_toonEenmaligPopup bouwden altijd
+    type:'dagelijks' ongeacht mediaType. _maakSyntheticDoc() helper toegevoegd
+    (spiegel van tablet_scherm.dart). Backwards-compat: geen mediaType → oud gedrag.
+  Security FASE 1: firestore-tests/ met 29 legitieme + 29 aanvals-testgevallen.
+  Java 21 (OpenJDK) geïnstalleerd op Joshua's machine. Rules NIET geactiveerd
+  op live DB — wacht op toesteltest FASE A + bevestiging van eigen toegang.
+  Zie "TERUG VAN VAKANTIE — WEG NAAR LIVE" checklist voor het volledige pad.
 
 ## Bekende grenzen push-meldingen (eerlijk vastgelegd)
 
@@ -508,22 +537,19 @@ Security hardening (geprioriteerd traject — start NA belfunctie-test 1.0.15+17
   Huidige staat onbekend — niet in repo, beheerd in Console. Open Console →
   Storage → Rules en controleer. Indien permissief: aanscherpen vóór activatie
   Firestore-rules. Structuur bepaalt de regels (zie sessielog 4 aug audit).
-- **GATE — Geautomatiseerde testset EERST bouwen, dan deployen**:
-  Locatie: firestore-tests/ (nieuw Node.js/TypeScript project in projectroot).
-  Packages: @firebase/rules-unit-testing ^3.0.0, jest, ts-jest, typescript.
-  Vereiste: Java JRE voor Firebase Emulator (controleer met `java -version`).
-  Bestanden: firestore.rules (lokale kopie), helpers.ts (seed + contexts),
-  legitiem.test.ts (alle app-handelingen → assertSucceeds),
-  aanval.test.ts (cross-family / crafted docs / unauthenticated → assertFails).
-  Commando: firebase emulators:exec --only firestore "cd firestore-tests && npm test"
-  Rules worden NOOIT geactiveerd zolang tests niet 100% groen zijn.
-  Rollback bij problemen: Console → Firestore → Rules → History → Revert.
-- **Veilige uitrolstrategie** (NIET tijdens actieve testperiode 1.0.15+17):
-  1. firestore-tests/ bouwen + java-check + npm install
-  2. firestore.rules lokaal schrijven (complete tekst klaarstaan in sessie)
-  3. firebase emulators:exec → alle tests groen
-  4. Storage-rules verifiëren in Console
-  5. Rules activeren in Console (na afsluiting gesloten test)
+- **~~GATE — Geautomatiseerde testset~~** — KLAAR (8 aug 2026): firestore-tests/
+  gebouwd met @firebase/rules-unit-testing + Jest + Firebase Emulator (Java 21).
+  58/58 tests groen: 29 legitieme app-handelingen slagen, 29 aanvalspogingen
+  geblokkeerd. Commando herhalen:
+  $env:PATH = "C:\Program Files\Microsoft\jdk-21.0.12.8-hotspot\bin;" + $env:PATH;
+  firebase emulators:exec --only firestore "cd firestore-tests && npm test"
+- **Veilige uitrolstrategie** (activeren PAS als Joshua terug is van vakantie
+  en eigen app-toegang heeft bevestigd):
+  1. ~~firestore-tests/ bouwen + java-check + npm install~~ — KLAAR
+  2. ~~firestore.rules lokaal schrijven~~ — KLAAR
+  3. ~~firebase emulators:exec → alle tests groen~~ — KLAAR (58/58)
+  4. Storage-rules verifiëren in Console — OPENSTAAND
+  5. Rules activeren in Console (na toesteltest FASE A)
   6. 30 min monitor Cloud Function logs na activatie
   7. Rollback indien nodig (< 1 min via Console History)
 - **BELANGRIJK — E-mailverificatie server-side** (vóór launch):
@@ -542,3 +568,111 @@ Security hardening (geprioriteerd traject — start NA belfunctie-test 1.0.15+17
   semi-publiek bedoeld; bescherming zit in rules, niet in geheimhouding.
 - **Cloud Functions**: groen bevonden in audit (auth ✓, membership ✓,
   rate-limiting ✓, apparaat-verify ✓, secrets in Secret Manager ✓). Geen actie.
+
+## TERUG VAN VAKANTIE — WEG NAAR LIVE (Google Play)
+
+Dit is de geordende checklist van grote toesteltest tot store-launch.
+Doorloop de fasen op volgorde. Niets overslaan.
+
+### FASE A — Grote toesteltest (eerste actie thuis, build 1.0.18+20)
+
+Op beide toestellen (Pixel = schoon Android, Samsung/tablet = One UI),
+beide modi (rustig + normaal). Noteer per punt OK / FOUT / NVTB.
+
+**Geplande momenten — alle 5 types:**
+- [ ] Foto: komt op juiste tijd aan, toont de foto mooi?
+- [ ] Video: speelt af, geen freeze?
+- [ ] Tekst: leesbaar, juiste lettergrootte voor doelgroep?
+- [ ] Stem: hoorbaar zonder extra tap? (kon niet op web testen)
+- [ ] Liedje: speelt volledig af?
+- [ ] Dagelijks herhalend foto-moment: komt de volgende dag opnieuw?
+
+**Aankomstgeluid:**
+- [ ] Standaard herkenningsgeluid hoorbaar bij binnenkomen moment?
+- [ ] Eigen stem als herkenningsgeluid hoorbaar? (kon niet op web)
+
+**Bellen — alle situaties:**
+- [ ] Rustige modus (vergrendeld, app altijd voorgrond): gesprek binnenkomt?
+- [ ] Normale modus actief (meldingen, app voorgrond): gesprek binnenkomt?
+- [ ] Normale modus achtergrond (app gebackgrounded): melding + ringtone?
+- [ ] App volledig weggeveegd: full-screen intent + marimba luid?
+- [ ] Auto-answer in dock (rustige modus): gesprek opent direct zonder tik?
+- [ ] Marimba groot + luid (beltoonvolume, niet meldingsvolume)?
+- [ ] CallStyle-melding zichtbaar met Opnemen + Weigeren knoppen?
+- [ ] Opnemen-knop → direct GesprekScherm (geen InkomendGesprekScherm)?
+- [ ] Weigeren-knop → melding verdwijnt, geen actie?
+- [ ] USE_FULL_SCREEN_INTENT toestemming gevraagd (API 34+)?
+
+**Weekstrip + eerste bericht + normale meldingen:**
+- [ ] Weekstrip correct weergegeven?
+- [ ] Eerste bericht na inloggen direct zichtbaar?
+- [ ] Push-melding met largeIcon + badge bij nieuw moment?
+
+**Randgevallen:**
+- [ ] Tablet-scherm uit → komt gepland moment alsnog aan als scherm aan gaat?
+- [ ] Tablet herstart → verschijnen geplande momenten weer? (BOOT_COMPLETED)
+- [ ] Home+recents-ontsnapping → failsafe-herpin binnen ~1s?
+- [ ] Kiosk eigenaar-uitgang: modus wisselen → lock opheft, geen herpin?
+
+Fix wat nodig is vóór verder gaan naar Fase B.
+
+### FASE B — Security activeren (na geslaagde toesteltest)
+
+- [ ] Open live app → bevestig: eigen kring zichtbaar, momenten werken, bellen OK
+- [ ] Controleer Storage rules in Firebase Console → Storage → Rules
+      (staat onbekend; aanscherpen als permissief)
+- [ ] Plak `firestore-tests/firestore.rules` in Console → Firestore → Rules → Publiceren
+- [ ] 30 min monitoren: Cloud Function logs (`firebase functions:log`)
+- [ ] Bij problemen: Console → Rules → History → Revert (< 1 min)
+
+Tests zijn al 58/58 groen — alleen nog activeren.
+
+### FASE C — Mails + domein (deels op vakantie al mogelijk)
+
+- [ ] Eigen domein regelen (voor privacy-pagina + account-verwijderpagina,
+      nu nog Netlify)
+- [ ] Transactionele mailservice opzetten: SendGrid / Resend / Postmark
+      (NIET Mailchimp) voor Firebase Auth-mails (anti-spam, eigen domein)
+- [ ] Firebase Auth mail-templates: NL + "Ons Moment" branding controleren
+- [ ] E-mailverificatie afdwingen in Firestore rules:
+      request.auth.token.email_verified == true toevoegen
+      (eerst bestaande accounts verifiëren; dan rule activeren)
+
+### FASE D — Flags + finale checks vóór live
+
+- [ ] DEBUG_VIDEOBELLEN → false in lib/data/debug_flags.dart
+- [ ] DEBUG_KIOSK → false in lib/data/debug_flags.dart
+- [ ] V4 autoAnswer Firestore-rule handmatig toevoegen in Console:
+      alleen eigenaarUid mag autoAnswer schrijven op kring-doc
+- [ ] Storage rules controleren + aanscherpen (zie Fase B)
+- [ ] Firebase Blaze-upgrade (van Spark) — vereist voor publieke launch
+      (Cloud Functions draaien al op Blaze; controleer of account actief is)
+- [ ] Betaalsysteem keuze: Google Play Billing (in-app purchase) of Stripe?
+      Proefperiode 14 dagen, pakket Klein/Groot, jaarabonnement pushen.
+      Kring-aantal-limiet (1 vs 3) server-side afdwingen in Firestore rules.
+- [ ] Privacy Policy schrijven + in-app tonen (AVG art. 13, wettelijk verplicht)
+- [ ] Right to erasure implementeren (AVG art. 17, verwijderAccount()-flow)
+- [ ] In-app teksten/FAQ controleren: staat overal "per kring", nergens "totaal"?
+
+### FASE E — Google Play live
+
+- [ ] Versie bumpen (nieuwe release-build, flags op false)
+- [ ] Codemagic release-build (.aab) maken + ondertekenen
+- [ ] Play Console listing afmaken:
+      - Screenshots: telefoon min. 2 + 7-inch + 10-inch tablet
+      - Store-omschrijving NL (kort + lang)
+      - App-icoon 512×512
+      - Feature graphic 1024×500
+- [ ] Camera/USE_FULL_SCREEN_INTENT/MODIFY_AUDIO_SETTINGS verklaren in
+      Play Console (Data safety + permissions)
+- [ ] .aab uploaden als closed test (vereist: min. 12 testers, 14 dagen)
+- [ ] Na 14 dagen closed test zonder blockers: productie aanvragen
+
+### FASE F — iOS (apart traject, ná Android live)
+
+Groot apart traject — niet nu plannen. Wat er straks bij komt kijken:
+- Apple Developer-account (99 EUR/jaar)
+- Mac of cloud build service (bijv. Codemagic heeft macOS runners)
+- iOS Safari audio-checklist (autoplay-restricties anders dan Android)
+- App Store Connect listing + review (1-2 weken)
+- TestFlight closed beta verplicht vóór productie
