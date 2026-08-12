@@ -852,6 +852,7 @@ class _SetupWizardState extends State<SetupWizard> {
         'tier': 'klein',
         'kringAantal': 1,
         'aangemaaktOp': FieldValue.serverTimestamp(),
+        'proefStart': FieldValue.serverTimestamp(),
       });
 
       // V9 schema: kring + eigenaar-membership atomair in batch.
