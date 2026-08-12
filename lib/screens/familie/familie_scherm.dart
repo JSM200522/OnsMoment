@@ -6129,13 +6129,16 @@ class _HulpDialog extends StatelessWidget {
         "De eigenaar en de andere kringleden blijven gewoon doorgaan."),
     // ── Abonnement ──
     _FAQ('Abonnement', "Wat kost Ons Moment?",
-        "Twee abonnementen:\n"
-        "- Familie Klein — 1 kring, max 8 kringleden. "
-        "€4,99 p/m of €35,99 per jaar.\n"
-        "- Familie Groot — max 3 kringen, max 20 kringleden per kring. "
-        "€7,99 p/m of €57,99 per jaar.\n"
-        "Met een jaarabonnement bespaar je zo'n 40%. Je begint altijd "
-        "met 14 dagen gratis — geen betaalgegevens nodig."),
+        "Je start altijd met 14 dagen gratis — geen betaalgegevens nodig.\n\n"
+        "Familie Klein — €4,99 per maand of €35,99 per jaar\n"
+        "Perfect voor één warme kring rondom vader, moeder of opa en oma. "
+        "Alleen jij als eigenaar betaalt — de rest van de familie nodig je "
+        "gratis uit. Met 8 deelnemers: €0,62 per persoon per maand.\n\n"
+        "Familie Groot — €7,99 per maand of €57,99 per jaar\n"
+        "Ideaal als je meerdere kringen wilt, bijvoorbeeld voor zowel je "
+        "ouders als schoonouders. Alleen jij als eigenaar betaalt — de rest "
+        "nodig je gratis uit. Met 60 deelnemers: €0,13 per persoon per maand.\n\n"
+        "Met een jaarabonnement bespaar je zo'n 40%."),
     _FAQ('Abonnement', "Wie telt mee in mijn abonnement?",
         "Iedereen in een kring die berichten kan sturen telt mee voor die "
         "kring — familieleden, vrienden en mantelzorgers. Je dierbare zelf "
