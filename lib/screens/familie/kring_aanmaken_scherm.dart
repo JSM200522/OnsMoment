@@ -11,6 +11,7 @@ import '../../services/device_modus_service.dart';
 import '../../services/kring_service.dart';
 import '../../theme/kleuren.dart';
 import '../../widgets/normaal_scaffold.dart';
+import 'pakket_keuze_scherm.dart';
 
 /// Scherm waarmee een ingelogde gebruiker een EXTRA kring kan aanmaken
 /// vanuit Instellingen → "Nieuwe kring aanmaken" (V9 2.2a + 2.2a-fix).
@@ -213,13 +214,22 @@ class _KringAanmakenSchermState extends State<KringAanmakenScherm> {
             style: TextStyle(color: kBrown, fontWeight: FontWeight.w900)),
         content: Text(
           'Met je huidige pakket kun je maximaal $maxTekst aanmaken.'
-          '${isPro ? '' : '\n\nWil je meer kringen? Bekijk Familie Groot.'}',
+          '${isPro ? '' : '\n\nWil je meer kringen? Bekijk onze pakketten.'}',
           style: const TextStyle(color: kBrown, height: 1.5)),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
-            child: const Text('Begrepen',
-                style: TextStyle(color: kPeach, fontWeight: FontWeight.w800))),
+            child: const Text('Sluiten',
+                style: TextStyle(color: kTextMuted))),
+          if (!isPro)
+            TextButton(
+              onPressed: () {
+                Navigator.pop(ctx);
+                PakketKeuzeScherm.toon(context);
+              },
+              child: const Text('Pakketten bekijken →',
+                  style: TextStyle(
+                      color: kPeach, fontWeight: FontWeight.w800))),
         ],
       ),
     );

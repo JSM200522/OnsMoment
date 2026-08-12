@@ -26,6 +26,7 @@ import '../../widgets/video_speler.dart';
 import '../../data/labels.dart';
 import 'kringleden_scherm.dart';
 import 'kring_aanmaken_scherm.dart';
+import 'pakket_keuze_scherm.dart';
 import 'bel_apparaat_kies_scherm.dart';
 import '../../data/kring.dart';
 import '../../data/kring_membership.dart';
@@ -3720,6 +3721,10 @@ class _InstellingenTabState extends State<InstellingenTab> {
               'Voor jou en je kringleden',
               () => showDialog(context: context,
                   builder: (ctx) => const _AccountWijzigDialog())),
+        if (_benIkEigenaar && !widget.alsOntvanger)
+          _item('💳', 'Abonnement',
+              'Proefperiode en pakketten bekijken',
+              () => PakketKeuzeScherm.toon(context)),
         const SizedBox(height: 20),
         _sectie('OVERIG'),
         _item('❓', 'Hulp en uitleg', 'Veelgestelde vragen', () {
