@@ -13,6 +13,7 @@ import '../../data/geluiden.dart';
 import '../../data/kring.dart';
 import '../../widgets/normaal_scaffold.dart';
 import 'accept_uitnodig_scherm.dart';
+import '../../widgets/ow_knop.dart';
 
 class SetupWizard extends StatefulWidget {
   const SetupWizard({super.key});
@@ -26,6 +27,9 @@ class _SetupWizardState extends State<SetupWizard> {
   bool _isInloggen = false;
   bool _bezig = false;
   String? _bezigModus;
+  bool _toonCarousel = true;
+  final _carouselCtrl = PageController();
+  int _carouselPagina = 0;
 
   final _naamCtrl = TextEditingController();
   final _emailCtrl = TextEditingController();
@@ -74,11 +78,18 @@ class _SetupWizardState extends State<SetupWizard> {
   void dispose() {
     _ontvangerNaamCtrl.removeListener(_herbouw);
     _geluidPreviewPlayer.dispose();
+    _carouselCtrl.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
+    if (_toonCarousel) {
+      return NormaalScaffold(
+        backgroundColor: kCream,
+        body: _carousel(),
+      );
+    }
     return NormaalScaffold(
       backgroundColor: kCream,
       body: Padding(
@@ -234,6 +245,143 @@ class _SetupWizardState extends State<SetupWizard> {
       if (_stap == 2) return _weergaveModusStap();
     }
     return const SizedBox();
+  }
+
+  // ───────────────────────────────────────────────────
+  // CAROUSEL: WELKOMST-SCHERMEN (tonen vóór de wizard)
+  // ───────────────────────────────────────────────────
+  Widget _carousel() {
+    return SafeArea(
+      child: Stack(children: [
+        PageView(
+          controller: _carouselCtrl,
+          onPageChanged: (i) => setState(() => _carouselPagina = i),
+          children: [
+            _carouselSlide(
+              emoji: '📸',
+              blobKleuren: const [Color(0xFFFFE8D6), Color(0xFFFFD4B8)],
+              kop: 'Stuur een foto.\nZe ziet hem meteen.',
+              subtitel: 'Geen app openen, geen knopjes drukken. '
+                  'Gewoon verschijnt je foto — met een vertrouwd geluidje.',
+            ),
+            _carouselSlide(
+              emoji: '💕',
+              blobKleuren: const [Color(0xFFFFD6E0), Color(0xFFFFB8CA)],
+              kop: 'Oma hoeft niets\nte doen.',
+              subtitel: 'Het apparaat bij haar thuis toont jullie foto\'s, '
+                  'stemberichten en herinneringen vanzelf. Zij kijkt en '
+                  'luistert — jullie sturen.',
+            ),
+            _carouselSlide(
+              emoji: '🌸',
+              blobKleuren: const [Color(0xFFD4EDD4), Color(0xFFB8D8B8)],
+              kop: 'Samen houd je het\ncontact warm.',
+              subtitel: 'Maak een kring aan met de familie. Iedereen kan '
+                  'sturen, zij ontvangt. Op haar eigen tempo, op haar '
+                  'eigen moment.',
+              isLaatste: true,
+            ),
+          ],
+        ),
+        if (_carouselPagina < 2)
+          Positioned(
+            top: 8,
+            right: 16,
+            child: TextButton(
+              onPressed: () => setState(() => _toonCarousel = false),
+              child: const Text('Overslaan',
+                  style: TextStyle(
+                      color: kTextMuted,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700)),
+            ),
+          ),
+        Positioned(
+          bottom: 24,
+          left: 0,
+          right: 0,
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: List.generate(3, (i) => GestureDetector(
+              onTap: () => _carouselCtrl.animateToPage(i,
+                  duration: const Duration(milliseconds: 300),
+                  curve: Curves.easeInOut),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 200),
+                margin: const EdgeInsets.symmetric(horizontal: 4),
+                width: _carouselPagina == i ? 20 : 8,
+                height: 8,
+                decoration: BoxDecoration(
+                  color: _carouselPagina == i ? kPeach : kPeachLight,
+                  borderRadius: BorderRadius.circular(4),
+                ),
+              ),
+            )),
+          ),
+        ),
+      ]),
+    );
+  }
+
+  Widget _carouselSlide({
+    required String emoji,
+    required List<Color> blobKleuren,
+    required String kop,
+    required String subtitel,
+    bool isLaatste = false,
+  }) {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.fromLTRB(24, 48, 24, 80),
+      child: Column(
+        children: [
+          Container(
+            height: 220,
+            width: double.infinity,
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: blobKleuren,
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              borderRadius: BorderRadius.circular(28),
+            ),
+            child: Center(
+              child: Text(emoji, style: const TextStyle(fontSize: 72)),
+            ),
+          ),
+          const SizedBox(height: 32),
+          Text(kop,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                  fontSize: 28,
+                  fontWeight: FontWeight.w900,
+                  color: kBrown,
+                  height: 1.2)),
+          const SizedBox(height: 12),
+          Text(subtitel,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                  fontSize: 15, color: kTextMuted, height: 1.5)),
+          if (isLaatste) ...[
+            const SizedBox(height: 32),
+            OWKnop(
+              label: 'Aan de slag',
+              onTap: () => setState(() => _toonCarousel = false),
+            ),
+            const SizedBox(height: 14),
+            GestureDetector(
+              onTap: () => setState(() => _toonCarousel = false),
+              child: const Text('Al een account? Log in',
+                  style: TextStyle(
+                      fontSize: 14,
+                      color: kPeach,
+                      fontWeight: FontWeight.w700,
+                      decoration: TextDecoration.underline)),
+            ),
+          ],
+        ],
+      ),
+    );
   }
 
   // ───────────────────────────────────────────────────
