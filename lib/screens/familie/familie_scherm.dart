@@ -1371,6 +1371,19 @@ class _StuurTabState extends State<StuurTab> {
           _adresKeuze(),
           const SizedBox(height: 16),
         ],
+        if (DEBUG_VIDEOBELLEN && !widget.alsOntvanger) ...[
+          Row(children: [
+            _actieTegel(
+                icoon: const Text('📞',
+                    style: TextStyle(fontSize: 28)),
+                label: 'Bellen',
+                onTap: () => Navigator.push(
+                    context,
+                    MaterialPageRoute<void>(
+                        builder: (_) => const BelApparaatKiesScherm()))),
+          ]),
+          const SizedBox(height: 10),
+        ],
         // 3x2 grid: Foto/Video, Stem/Lied, Tekst/Hartje.
         Row(children: [
           _typeKnop('📷', 'Foto', 'foto'),
@@ -1392,19 +1405,6 @@ class _StuurTabState extends State<StuurTab> {
               label: 'Hartje',
               onTap: _stuurHartje),
         ]),
-        if (DEBUG_VIDEOBELLEN && !widget.alsOntvanger) ...[
-          const SizedBox(height: 10),
-          Row(children: [
-            _actieTegel(
-                icoon: const Text('📞',
-                    style: TextStyle(fontSize: 28)),
-                label: 'Bellen',
-                onTap: () => Navigator.push(
-                    context,
-                    MaterialPageRoute<void>(
-                        builder: (_) => const BelApparaatKiesScherm()))),
-          ]),
-        ],
 
         if (_type.isNotEmpty) ...[
           const SizedBox(height: 20),
