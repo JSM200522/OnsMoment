@@ -1327,8 +1327,12 @@ class _StuurTabState extends State<StuurTab> {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(padding: const EdgeInsets.all(20),
-      child: SingleChildScrollView(child: Column(
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+      Expanded(child: SingleChildScrollView(
+        padding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
+        child: Column(
         crossAxisAlignment: CrossAxisAlignment.start, children: [
         const Text('Stuur een moment',
             style: TextStyle(fontSize: 24, fontWeight: FontWeight.w900,
@@ -1370,19 +1374,6 @@ class _StuurTabState extends State<StuurTab> {
         if (widget.alsOntvanger) ...[
           _adresKeuze(),
           const SizedBox(height: 16),
-        ],
-        if (DEBUG_VIDEOBELLEN && !widget.alsOntvanger) ...[
-          Row(children: [
-            _actieTegel(
-                icoon: const Text('📞',
-                    style: TextStyle(fontSize: 28)),
-                label: 'Bellen',
-                onTap: () => Navigator.push(
-                    context,
-                    MaterialPageRoute<void>(
-                        builder: (_) => const BelApparaatKiesScherm()))),
-          ]),
-          const SizedBox(height: 10),
         ],
         // 3x2 grid: Foto/Video, Stem/Lied, Tekst/Hartje.
         Row(children: [
@@ -1501,7 +1492,30 @@ class _StuurTabState extends State<StuurTab> {
             style: TextStyle(fontSize: 12, color: kTextMuted, height: 1.5)),
           const SizedBox(height: 4),
         ],
-      ])),
+      ]))),
+      if (DEBUG_VIDEOBELLEN && !widget.alsOntvanger)
+        Padding(
+          padding: const EdgeInsets.fromLTRB(20, 12, 20, 16),
+          child: SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              onPressed: () => Navigator.push(context,
+                  MaterialPageRoute<void>(
+                      builder: (_) => const BelApparaatKiesScherm())),
+              icon: const Icon(Icons.videocam_rounded, size: 22),
+              label: const Text('Bellen',
+                  style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: kGreen,
+                foregroundColor: kWhite,
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14)),
+              ),
+            ),
+          ),
+        ),
+      ],
     );
   }
 
