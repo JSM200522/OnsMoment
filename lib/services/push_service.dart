@@ -705,6 +705,7 @@ Future<void> _achtergrondGesprekNotificatie(
     const InitializationSettings(
       android: AndroidInitializationSettings('ic_stat_ons_moment'),
     ),
+    onDidReceiveBackgroundNotificationResponse: _achtergrondNotificatieActie,
   );
 
   await plugin.show(
