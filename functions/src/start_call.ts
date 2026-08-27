@@ -173,6 +173,16 @@ export const startVideoCall = onCall(
       throw new HttpsError('permission-denied',
         'Doel-apparaat zit niet in deze kring');
     }
+    if (doelData.modus !== 'ontvanger') {
+      // Familielid-naar-familielid bellen is verboden — de app is alleen
+      // bedoeld om de dierbare/ontvanger te bellen.
+      logger.warn('familielid-naar-familielid bellen geblokkeerd', {
+        uid, kringId, doelApparaatId,
+        doelModus: doelData.modus ?? null,
+      });
+      throw new HttpsError('permission-denied',
+        'Je kunt alleen de dierbare bellen, niet een ander familielid');
+    }
     const doelFcmToken = doelData.fcmToken;
     if (typeof doelFcmToken !== 'string' || doelFcmToken.length === 0) {
       throw new HttpsError('failed-precondition',
@@ -243,6 +253,17 @@ export const startVideoCall = onCall(
       },
       android: {
         priority: 'high',
+      },
+      // iOS: zie onNieuwMoment — background + priority 5 is het maximale
+      // voor data-only FCM op iOS zonder PushKit/CallKit (Fase F).
+      apns: {
+        headers: {
+          'apns-push-type': 'background',
+          'apns-priority': '5',
+        },
+        payload: {
+          aps: { contentAvailable: true },
+        },
       },
     };
     try {

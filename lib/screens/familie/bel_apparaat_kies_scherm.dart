@@ -71,7 +71,9 @@ class _BelApparaatKiesSchermState extends State<BelApparaatKiesScherm> {
         _autoAnswer = autoAnswer;
         _benIkEigenaar = eigenaarUid.isNotEmpty && eigenaarUid == uid;
         _apparaten = leden
-            .where((a) => a['apparaatId'] != mijnAppId)
+            .where((a) =>
+                a['apparaatId'] != mijnAppId &&
+                (a['modus'] as String?) == 'ontvanger')
             .toList();
       });
     } catch (e) {
