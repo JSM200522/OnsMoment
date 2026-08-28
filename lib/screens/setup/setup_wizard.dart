@@ -265,25 +265,36 @@ class _SetupWizardState extends State<SetupWizard> {
             _carouselSlide(
               emoji: '📸',
               blobKleuren: const [Color(0xFFFFE8D6), Color(0xFFFFD4B8)],
-              kop: 'Stuur een foto.\nZe ziet hem meteen.',
-              subtitel: 'Geen app openen, geen knopjes drukken. '
-                  'Gewoon verschijnt je foto — met een vertrouwd geluidje.',
+              kop: 'Je wilt er zijn.\nOok als je er niet bent.',
+              subtitel: 'Misschien woon je te ver weg. Misschien lukt bellen '
+                  'niet meer zo goed, of vliegen de dagen voorbij. Maar je '
+                  'denkt aan je dierbare. Ons Moment brengt je dichtbij, met '
+                  'een foto, je stem of een liedje dat vanzelf bij je dierbare '
+                  'aankomt.',
             ),
             _carouselSlide(
               emoji: '💕',
               blobKleuren: const [Color(0xFFFFD6E0), Color(0xFFFFB8CA)],
-              kop: 'Oma hoeft niets\nte doen.',
-              subtitel: 'Het apparaat bij haar thuis toont jullie foto\'s, '
-                  'stemberichten en herinneringen vanzelf. Zij kijkt en '
-                  'luistert — jullie sturen.',
+              kop: 'Zonder dat je dierbare\niets hoeft te doen.',
+              subtitel: 'Bij een telefoontje of appje moet je dierbare zelf '
+                  'opnemen, zoeken, of weten hoe het werkt. Bij Ons Moment '
+                  'niet. Kan je dierbare nog zelf kijken en terugsturen? Dan '
+                  'doet die mee, zo veel als die wil. Lukt dat niet meer? Dan '
+                  'zet je het apparaat in de rustige modus, helemaal vergrendeld '
+                  'op Ons Moment. Alles verschijnt dan vanzelf op het scherm, '
+                  'zonder knoppen of gedoe.',
             ),
             _carouselSlide(
               emoji: '🌸',
               blobKleuren: const [Color(0xFFD4EDD4), Color(0xFFB8D8B8)],
-              kop: 'Samen houd je het\ncontact warm.',
-              subtitel: 'Maak een kring aan met de familie. Iedereen kan '
-                  'sturen, zij ontvangt. Op haar eigen tempo, op haar '
-                  'eigen moment.',
+              kop: 'Een klein moment.\nElke dag opnieuw.',
+              subtitel: 'Nodig de mensen om je dierbare heen uit in een kring. '
+                  'Samen vul je de dagen met berichtjes, foto\'s en '
+                  'herinneringen. Met de dagelijkse agenda plan je vaste '
+                  'momenten, zoals een goedemorgen of een liedje voor het '
+                  'slapen. En wil je je dierbare zien? Met een videogesprek '
+                  'kijk je elkaar in de ogen. Je kunt zelfs instellen dat de '
+                  'oproep vanzelf beantwoord wordt.',
               isLaatste: true,
             ),
           ],
