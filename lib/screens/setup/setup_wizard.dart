@@ -14,6 +14,7 @@ import '../../data/kring.dart';
 import '../../widgets/normaal_scaffold.dart';
 import 'accept_uitnodig_scherm.dart';
 import '../../widgets/ow_knop.dart';
+import '../../widgets/ow_invoer.dart';
 
 class SetupWizard extends StatefulWidget {
   const SetupWizard({super.key});
@@ -27,7 +28,7 @@ class _SetupWizardState extends State<SetupWizard> {
   bool _isInloggen = false;
   bool _bezig = false;
   String? _bezigModus;
-  bool _toonCarousel = true;
+  bool _toonCarousel = false;
   final _carouselCtrl = PageController();
   int _carouselPagina = 0;
 
@@ -181,7 +182,11 @@ class _SetupWizardState extends State<SetupWizard> {
         }
       }
       _rol = nieuweRol;
-      _stap = 1;
+      if (nieuweRol == 'familie') {
+        _toonCarousel = true;
+      } else {
+        _stap = 1;
+      }
     });
   }
 
@@ -288,7 +293,7 @@ class _SetupWizardState extends State<SetupWizard> {
             top: 8,
             right: 16,
             child: TextButton(
-              onPressed: () => setState(() => _toonCarousel = false),
+              onPressed: () => setState(() { _toonCarousel = false; _stap = 1; }),
               child: const Text('Overslaan',
                   style: TextStyle(
                       color: kTextMuted,
@@ -366,11 +371,11 @@ class _SetupWizardState extends State<SetupWizard> {
             const SizedBox(height: 32),
             OWKnop(
               label: 'Aan de slag',
-              onTap: () => setState(() => _toonCarousel = false),
+              onTap: () => setState(() { _toonCarousel = false; _stap = 1; }),
             ),
             const SizedBox(height: 14),
             GestureDetector(
-              onTap: () => setState(() => _toonCarousel = false),
+              onTap: () => setState(() { _toonCarousel = false; _stap = 1; _isInloggen = true; }),
               child: const Text('Al een account? Log in',
                   style: TextStyle(
                       fontSize: 14,
@@ -385,146 +390,80 @@ class _SetupWizardState extends State<SetupWizard> {
   }
 
   // ───────────────────────────────────────────────────
-  // STAP 0: WELKOM + ROL KEUZE
+  // STAP 0: ROL KEUZE (3 kaarten)
   // ───────────────────────────────────────────────────
   Widget _rolKeuze() => Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
     const SizedBox(height: 8),
     Center(child: Image.asset('assets/images/logo.png', height: 76)),
-    const SizedBox(height: 16),
-    const Text('Welkom bij\nOns Moment',
+    const SizedBox(height: 28),
+    const Text('Hoe gebruik jij\nOns Moment?',
         style: TextStyle(fontSize: 32, fontWeight: FontWeight.w900,
             color: kBrown, height: 1.2)),
-    const SizedBox(height: 12),
-    const Text('Stuur lieve momenten',
-        style: TextStyle(fontSize: 15, color: kTextMuted)),
-    const SizedBox(height: 20),
-    Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: kPeach,
-        borderRadius: BorderRadius.circular(12),
-        boxShadow: [BoxShadow(color: kPeach.withOpacity(0.3),
-            blurRadius: 12, offset: const Offset(0, 4))]),
-      child: const Column(crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-        Row(children: [
-          Text('⚠️', style: TextStyle(fontSize: 18)),
-          SizedBox(width: 8),
-          Expanded(child: Text('LET OP',
-              style: TextStyle(fontSize: 13,
-                  fontWeight: FontWeight.w900, color: kWhite,
-                  letterSpacing: 1.2))),
-        ]),
-        SizedBox(height: 8),
-        Text(
-          'Begin op je eigen telefoon. Maak eerst een account aan '
-          '(of word lid met een uitnodig-code). Het apparaat van je '
-          'dierbare stel je daarna in.',
-          style: TextStyle(fontSize: 13,
-              fontWeight: FontWeight.w700, color: kWhite, height: 1.4)),
-      ])),
-    const SizedBox(height: 16),
-    Container(padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(color: kPeachPale,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: kPeachLight, width: 1.5)),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-        const Row(children: [
-          Text('💡', style: TextStyle(fontSize: 16)),
-          SizedBox(width: 8),
-          Text('Hoe werkt het?', style: TextStyle(fontSize: 13,
-              fontWeight: FontWeight.w800, color: kBrown)),
-        ]),
-        const SizedBox(height: 10),
-        _hoeWerktStap(1, 'Maak een account of word lid',
-            'Maak een nieuw account aan, of word lid van een '
-            'bestaande kring met een uitnodig-code.'),
-        const SizedBox(height: 14),
-        _hoeWerktStap(2, 'Vertel over je dierbare',
-            'Wie krijgt de berichten? Vul een naam en foto in. '
-            '(Doet de persoon die de kring aanmaakt.)'),
-        const SizedBox(height: 14),
-        _hoeWerktStap(3, 'Stel het apparaat van je dierbare in',
-            'Pak de tablet of telefoon bij je dierbare, kies '
-            '"Ontvanger" en log in met het account van de '
-            'kring-eigenaar.'),
-        const SizedBox(height: 14),
-        _hoeWerktStap(4, 'Stuur lieve momenten',
-            'Foto\'s, stemberichten, video\'s en herinneringen '
-            'vanaf je eigen telefoon.'),
-      ])),
-    const SizedBox(height: 20),
-    const Text('Hoe gebruik je dit apparaat?',
-        style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800,
-            color: kBrown)),
-    const SizedBox(height: 12),
-    _rolKaart('👨‍👩‍👧 Familielid of mantelzorger',
-      'Ik stuur foto\'s, stemberichtjes en herinneringen',
-      () => _kiesRol('familie')),
-    const SizedBox(height: 12),
-    _rolKaart('👵 Ontvanger',
-      'Dit apparaat is voor mijn dierbare — om berichten te zien en horen',
-      () => _kiesRol('ontvanger')),
+    const SizedBox(height: 8),
+    const Text('Kies hoe jij de app gebruikt.',
+        style: TextStyle(fontSize: 15, color: kTextMuted, height: 1.4)),
     const SizedBox(height: 28),
-    Center(child: GestureDetector(
+    _keuzeKaart(
+      emoji: '👨‍👩‍👧',
+      titel: 'Familielid',
+      uitleg: 'Jij bent de eigenaar: je maakt de kring aan, stelt alles in en nodigt anderen uit.',
+      onTap: () => _kiesRol('familie'),
+    ),
+    const SizedBox(height: 14),
+    _keuzeKaart(
+      emoji: '💛',
+      titel: 'Ontvanger',
+      uitleg: 'Als eigenaar stel je dit in op het apparaat van je dierbare. Je dierbare hoeft zelf niets te doen.',
+      onTap: () => _kiesRol('ontvanger'),
+    ),
+    const SizedBox(height: 14),
+    _keuzeKaart(
+      emoji: '🔑',
+      titel: 'Uitnodigingscode',
+      uitleg: 'Voor iedereen die door de eigenaar is uitgenodigd om mee te doen.',
       onTap: () => Navigator.push(context, MaterialPageRoute(
           builder: (_) => const AcceptUitnodigScherm())),
-      child: const Padding(
-        padding: EdgeInsets.symmetric(vertical: 12),
-        child: Text('Heb je een uitnodig-code? Tik hier',
-            style: TextStyle(fontSize: 15,
-                fontWeight: FontWeight.w800, color: kPeach,
-                decoration: TextDecoration.underline)),
-      ),
-    )),
+    ),
   ]);
 
-  Widget _rolKaart(String titel, String tekst, VoidCallback onTap) =>
-    GestureDetector(onTap: onTap, child: Container(
-      padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(color: kWhite,
-        borderRadius: BorderRadius.circular(18),
+  Widget _keuzeKaart({
+    required String emoji,
+    required String titel,
+    required String uitleg,
+    required VoidCallback onTap,
+  }) => GestureDetector(
+    onTap: onTap,
+    child: Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: kWhite,
+        borderRadius: BorderRadius.circular(20),
         border: Border.all(color: kPeachLight, width: 2),
         boxShadow: [BoxShadow(color: kPeach.withOpacity(0.08),
-            blurRadius: 12, offset: const Offset(0, 4))]),
+            blurRadius: 12, offset: const Offset(0, 4))],
+      ),
       child: Row(children: [
+        Container(
+          width: 52, height: 52,
+          decoration: BoxDecoration(
+              color: kPeachPale, borderRadius: BorderRadius.circular(14)),
+          child: Center(child: Text(emoji,
+              style: const TextStyle(fontSize: 26))),
+        ),
+        const SizedBox(width: 16),
         Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-          Text(titel, style: const TextStyle(fontSize: 15,
-              fontWeight: FontWeight.w800, color: kBrown)),
+          Text(titel, style: const TextStyle(fontSize: 16,
+              fontWeight: FontWeight.w900, color: kBrown)),
           const SizedBox(height: 4),
-          Text(tekst, style: const TextStyle(fontSize: 12,
+          Text(uitleg, style: const TextStyle(fontSize: 13,
               color: kBrownLight, height: 1.4)),
         ])),
-        const Icon(Icons.arrow_forward_ios_rounded,
-            color: kPeach, size: 16),
+        const SizedBox(width: 8),
+        const Icon(Icons.arrow_forward_ios_rounded, color: kPeach, size: 16),
       ]),
-    ));
-
-  /// Eén stap-rij in het 'Hoe werkt het?'-balkje: rond cijfer-bolletje
-  /// links + vette titel en zachte uitleg rechts. Helper i.p.v. één
-  /// tekstblok zodat titel en uitleg visueel uit elkaar liggen en de
-  /// kapotte keycap-emoji's (1️⃣ …) niet meer nodig zijn.
-  Widget _hoeWerktStap(int nummer, String titel, String uitleg) =>
-    Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      Container(width: 26, height: 26,
-        decoration: const BoxDecoration(
-            shape: BoxShape.circle, color: kPeach),
-        child: Center(child: Text('$nummer',
-            style: const TextStyle(fontSize: 13,
-                fontWeight: FontWeight.w900, color: kWhite))),
-      ),
-      const SizedBox(width: 12),
-      Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(titel, style: const TextStyle(fontSize: 13,
-              fontWeight: FontWeight.w800, color: kBrown)),
-          const SizedBox(height: 2),
-          Text(uitleg, style: const TextStyle(fontSize: 12,
-              color: kBrownLight, height: 1.4)),
-        ])),
-    ]);
+    ),
+  );
 
   // ───────────────────────────────────────────────────
   // STAP 1: ACCOUNT (registreren of inloggen)
@@ -546,12 +485,16 @@ class _SetupWizardState extends State<SetupWizard> {
           color: kTextMuted, height: 1.4)),
       const SizedBox(height: 24),
       if (_rol == 'familie' && !_isInloggen) ...[
-        _input('👤', 'Jouw naam', 'Bijv. Sara', _naamCtrl, false),
-        const SizedBox(height: 10),
+        OWInvoer(emoji: '👤', label: 'JOUW NAAM', hint: 'Bijv. Sara',
+            controller: _naamCtrl),
+        const SizedBox(height: 12),
       ],
-      _input('📧', 'E-mailadres', 'voorbeeld@email.nl', _emailCtrl, false),
-      const SizedBox(height: 10),
-      _input('🔒', 'Wachtwoord', 'Minimaal 6 tekens', _wachtwoordCtrl, true),
+      OWInvoer(emoji: '📧', label: 'E-MAILADRES', hint: 'voorbeeld@email.nl',
+          controller: _emailCtrl, toetsenbord: TextInputType.emailAddress,
+          hoofdletters: TextCapitalization.none),
+      const SizedBox(height: 12),
+      OWInvoer(emoji: '🔒', label: 'WACHTWOORD', hint: 'Minimaal 6 tekens',
+          controller: _wachtwoordCtrl, verborgen: true),
       // V9 2.12-a-1: 'Wachtwoord vergeten?'-link alleen op inlog-paden
       // (familie+inloggen of ontvanger). Bij registreren niet — daar is
       // er nog geen account om te resetten.
@@ -857,30 +800,10 @@ class _SetupWizardState extends State<SetupWizard> {
 
   Widget _knop() {
     final geblokkeerd = _ontvangerNaamVerplichtMaarLeeg;
-    return Opacity(
-      opacity: geblokkeerd ? 0.5 : 1.0,
-      child: GestureDetector(
-        onTap: (_bezig || geblokkeerd) ? null : _volgende,
-        child: Container(width: double.infinity, padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            gradient: const LinearGradient(colors: [kPeach, kRose]),
-            borderRadius: BorderRadius.circular(16),
-            boxShadow: [BoxShadow(color: kPeach.withOpacity(0.35),
-                blurRadius: 20, offset: const Offset(0, 8))]),
-          child: Center(child: _bezig
-              ? Row(mainAxisSize: MainAxisSize.min, children: const [
-                  SizedBox(width: 18, height: 18,
-                      child: CircularProgressIndicator(
-                          color: kWhite, strokeWidth: 3)),
-                  SizedBox(width: 12),
-                  Text('Even laden...',
-                      style: TextStyle(fontSize: 16,
-                          fontWeight: FontWeight.w800, color: kWhite)),
-                ])
-              : Text(_knopTekst(), style: const TextStyle(fontSize: 16,
-                    fontWeight: FontWeight.w800, color: kWhite))),
-        ),
-      ),
+    return OWKnop(
+      label: _knopTekst(),
+      onTap: geblokkeerd ? null : _volgende,
+      bezig: _bezig,
     );
   }
 
@@ -1164,7 +1087,8 @@ class _SetupWizardState extends State<SetupWizard> {
     const Text('Hoe heet jij?',
         style: TextStyle(fontSize: 14, color: kTextMuted, height: 1.4)),
     const SizedBox(height: 24),
-    _input('👤', 'Jouw naam', 'Bijv. Sara', _naamCtrl, false),
+    OWInvoer(emoji: '👤', label: 'JOUW NAAM', hint: 'Bijv. Sara',
+        controller: _naamCtrl),
   ]);
 
   Future<void> _voltooiFamilieInloggen() async {
