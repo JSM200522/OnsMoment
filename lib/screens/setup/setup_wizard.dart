@@ -257,65 +257,62 @@ class _SetupWizardState extends State<SetupWizard> {
   // ───────────────────────────────────────────────────
   Widget _carousel() {
     return SafeArea(
-      child: Stack(children: [
-        PageView(
-          controller: _carouselCtrl,
-          onPageChanged: (i) => setState(() => _carouselPagina = i),
-          children: [
-            _carouselSlide(
-              emoji: '📸',
-              blobKleuren: const [Color(0xFFFFE8D6), Color(0xFFFFD4B8)],
-              kop: 'Je wilt er zijn.\nOok als je er niet bent.',
-              subtitel: 'Misschien woon je te ver weg. Misschien lukt bellen '
-                  'niet meer zo goed, of vliegen de dagen voorbij. Maar je '
-                  'denkt aan je dierbare. Ons Moment brengt je dichtbij, met '
-                  'een foto, je stem of een liedje dat vanzelf bij je dierbare '
-                  'aankomt.',
+      child: Column(children: [
+        Expanded(
+          child: Stack(children: [
+            PageView(
+              controller: _carouselCtrl,
+              onPageChanged: (i) => setState(() => _carouselPagina = i),
+              children: [
+                _carouselSlide(
+                  emoji: '📸',
+                  blobKleuren: const [Color(0xFFFFE8D6), Color(0xFFFFD4B8)],
+                  kop: 'Je wilt er zijn.\nOok als je er niet bent.',
+                  alineas: const [
+                    'Misschien woon je te ver weg. Misschien lukt bellen niet meer zo goed, of vliegen de dagen voorbij.',
+                    'Maar je denkt aan je dierbare. Ons Moment brengt je dichtbij, met een foto, je stem of een liedje dat vanzelf bij je dierbare aankomt.',
+                  ],
+                ),
+                _carouselSlide(
+                  emoji: '💕',
+                  blobKleuren: const [Color(0xFFFFD6E0), Color(0xFFFFB8CA)],
+                  kop: 'Zonder dat je dierbare\niets hoeft te doen.',
+                  alineas: const [
+                    'Bij een telefoontje of appje moet je dierbare zelf opnemen, zoeken, of weten hoe het werkt. Bij Ons Moment niet.',
+                    'Kan je dierbare nog zelf kijken en terugsturen? Dan doet die mee, zo veel als die wil.',
+                    'Lukt dat niet meer? Dan zet je het apparaat in de rustige modus, vergrendeld op Ons Moment. Alles verschijnt vanzelf op het scherm, zonder knoppen of gedoe.',
+                  ],
+                ),
+                _carouselSlide(
+                  emoji: '🌸',
+                  blobKleuren: const [Color(0xFFD4EDD4), Color(0xFFB8D8B8)],
+                  kop: 'Een klein moment.\nElke dag opnieuw.',
+                  alineas: const [
+                    'Nodig de mensen om je dierbare heen uit in een kring. Samen vul je de dagen met berichtjes, foto\'s en herinneringen.',
+                    'Met de dagelijkse agenda plan je vaste momenten, zoals een goedemorgen of een liedje voor het slapen.',
+                    'En wil je je dierbare zien? Met een videogesprek kijk je elkaar in de ogen. Je kunt zelfs instellen dat de oproep vanzelf beantwoord wordt.',
+                  ],
+                ),
+              ],
             ),
-            _carouselSlide(
-              emoji: '💕',
-              blobKleuren: const [Color(0xFFFFD6E0), Color(0xFFFFB8CA)],
-              kop: 'Zonder dat je dierbare\niets hoeft te doen.',
-              subtitel: 'Bij een telefoontje of appje moet je dierbare zelf '
-                  'opnemen, zoeken, of weten hoe het werkt. Bij Ons Moment '
-                  'niet. Kan je dierbare nog zelf kijken en terugsturen? Dan '
-                  'doet die mee, zo veel als die wil. Lukt dat niet meer? Dan '
-                  'zet je het apparaat in de rustige modus, helemaal vergrendeld '
-                  'op Ons Moment. Alles verschijnt dan vanzelf op het scherm, '
-                  'zonder knoppen of gedoe.',
-            ),
-            _carouselSlide(
-              emoji: '🌸',
-              blobKleuren: const [Color(0xFFD4EDD4), Color(0xFFB8D8B8)],
-              kop: 'Een klein moment.\nElke dag opnieuw.',
-              subtitel: 'Nodig de mensen om je dierbare heen uit in een kring. '
-                  'Samen vul je de dagen met berichtjes, foto\'s en '
-                  'herinneringen. Met de dagelijkse agenda plan je vaste '
-                  'momenten, zoals een goedemorgen of een liedje voor het '
-                  'slapen. En wil je je dierbare zien? Met een videogesprek '
-                  'kijk je elkaar in de ogen. Je kunt zelfs instellen dat de '
-                  'oproep vanzelf beantwoord wordt.',
-              isLaatste: true,
-            ),
-          ],
+            if (_carouselPagina < 2)
+              Positioned(
+                top: 8,
+                right: 16,
+                child: TextButton(
+                  onPressed: () => setState(() { _toonCarousel = false; _stap = 1; }),
+                  child: const Text('Overslaan',
+                      style: TextStyle(
+                          color: kTextMuted,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w700)),
+                ),
+              ),
+          ]),
         ),
-        if (_carouselPagina < 2)
-          Positioned(
-            top: 8,
-            right: 16,
-            child: TextButton(
-              onPressed: () => setState(() { _toonCarousel = false; _stap = 1; }),
-              child: const Text('Overslaan',
-                  style: TextStyle(
-                      color: kTextMuted,
-                      fontSize: 14,
-                      fontWeight: FontWeight.w700)),
-            ),
-          ),
-        Positioned(
-          bottom: 24,
-          left: 0,
-          right: 0,
+        // Dots — buiten de PageView zodat ze nooit overlappen met CTA
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 14),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: List.generate(3, (i) => GestureDetector(
@@ -335,6 +332,28 @@ class _SetupWizardState extends State<SetupWizard> {
             )),
           ),
         ),
+        // CTA — alleen op laatste slide, nooit over dots heen
+        if (_carouselPagina == 2) ...[
+          Padding(
+            padding: const EdgeInsets.fromLTRB(24, 0, 24, 0),
+            child: OWKnop(
+              label: 'Aan de slag',
+              onTap: () => setState(() { _toonCarousel = false; _stap = 1; }),
+            ),
+          ),
+          const SizedBox(height: 12),
+          GestureDetector(
+            onTap: () => setState(() { _toonCarousel = false; _stap = 1; _isInloggen = true; }),
+            child: const Text('Al een account? Log in',
+                style: TextStyle(
+                    fontSize: 14,
+                    color: kPeach,
+                    fontWeight: FontWeight.w700,
+                    decoration: TextDecoration.underline)),
+          ),
+          const SizedBox(height: 24),
+        ] else
+          const SizedBox(height: 90),
       ]),
     );
   }
@@ -343,15 +362,14 @@ class _SetupWizardState extends State<SetupWizard> {
     required String emoji,
     required List<Color> blobKleuren,
     required String kop,
-    required String subtitel,
-    bool isLaatste = false,
+    required List<String> alineas,
   }) {
     return SingleChildScrollView(
-      padding: const EdgeInsets.fromLTRB(24, 48, 24, 80),
+      padding: const EdgeInsets.fromLTRB(24, 40, 24, 16),
       child: Column(
         children: [
           Container(
-            height: 220,
+            height: 200,
             width: double.infinity,
             decoration: BoxDecoration(
               gradient: LinearGradient(
@@ -365,36 +383,22 @@ class _SetupWizardState extends State<SetupWizard> {
               child: Text(emoji, style: const TextStyle(fontSize: 72)),
             ),
           ),
-          const SizedBox(height: 32),
+          const SizedBox(height: 28),
           Text(kop,
               textAlign: TextAlign.center,
               style: const TextStyle(
-                  fontSize: 28,
+                  fontSize: 26,
                   fontWeight: FontWeight.w900,
                   color: kBrown,
-                  height: 1.2)),
-          const SizedBox(height: 12),
-          Text(subtitel,
-              textAlign: TextAlign.center,
-              style: const TextStyle(
-                  fontSize: 15, color: kTextMuted, height: 1.5)),
-          if (isLaatste) ...[
-            const SizedBox(height: 32),
-            OWKnop(
-              label: 'Aan de slag',
-              onTap: () => setState(() { _toonCarousel = false; _stap = 1; }),
-            ),
-            const SizedBox(height: 14),
-            GestureDetector(
-              onTap: () => setState(() { _toonCarousel = false; _stap = 1; _isInloggen = true; }),
-              child: const Text('Al een account? Log in',
-                  style: TextStyle(
-                      fontSize: 14,
-                      color: kPeach,
-                      fontWeight: FontWeight.w700,
-                      decoration: TextDecoration.underline)),
-            ),
-          ],
+                  height: 1.25)),
+          const SizedBox(height: 16),
+          ...alineas.map((a) => Padding(
+            padding: const EdgeInsets.only(bottom: 10),
+            child: Text(a,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                    fontSize: 15, color: kTextMuted, height: 1.6)),
+          )),
         ],
       ),
     );
@@ -415,7 +419,7 @@ class _SetupWizardState extends State<SetupWizard> {
         style: TextStyle(fontSize: 15, color: kTextMuted, height: 1.4)),
     const SizedBox(height: 28),
     _keuzeKaart(
-      emoji: '👨‍👩‍👧',
+      emoji: '🧑',
       titel: 'Familielid',
       uitleg: 'Jij bent de eigenaar: je maakt de kring aan, stelt alles in en nodigt anderen uit.',
       onTap: () => _kiesRol('familie'),
@@ -569,12 +573,12 @@ class _SetupWizardState extends State<SetupWizard> {
   // STAP 2: ONTVANGER PROFIEL (alleen voor familie bij registratie)
   // ───────────────────────────────────────────────────
   Widget _ontvangerProfielStap() => Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-    const Text('Vertel ons over je dierbare',
+    const Text('Vertel over je dierbare',
         style: TextStyle(fontSize: 28, fontWeight: FontWeight.w900,
             color: kBrown, height: 1.2)),
     const SizedBox(height: 8),
-    const Text('Hoe meer je vertelt, hoe persoonlijker de app voelt. '
-        'Alles is optioneel — je kunt altijd later aanpassen in Instellingen.',
+    const Text('Dit is straks zichtbaar op het apparaat van je dierbare. '
+        'Extra velden kun je later invullen via Instellingen.',
         style: TextStyle(fontSize: 14, color: kTextMuted, height: 1.4)),
     const SizedBox(height: 24),
 
@@ -608,34 +612,20 @@ class _SetupWizardState extends State<SetupWizard> {
           style: TextStyle(color: kTextMuted, fontSize: 12)))),
     const SizedBox(height: 24),
 
-    _sectieKop('👤 Naam en informatie',
-        'De naam staat op het home-scherm. Extra info helpt de kring '
-        'gerichte berichten te sturen.'),
+    _sectieKop('👤 Naam',
+        'Zo verschijnt je dierbare in de app en bij berichten.'),
     const SizedBox(height: 12),
-    _input('👵', 'Naam van je dierbare',
-        'Bijv. Oma, Opa, Mam, Pap...',
-        _ontvangerNaamCtrl, false),
-    const SizedBox(height: 6),
-    const Text('Zo verschijnt zijn/haar naam in de app en bij berichten.',
-        style: TextStyle(fontSize: 12, color: kTextMuted, height: 1.4)),
-    const SizedBox(height: 10),
-    _input('💕', 'Lievelingsdingen (optioneel)',
-        'Bijv. tulpen, koffie, oude foto\'s', _lievelingsdingenCtrl, false),
-    const SizedBox(height: 10),
-    _input('🏠', 'Vroegere woonplaats (optioneel)',
-        'Bijv. Volendam', _woonplaatsCtrl, false),
-    const SizedBox(height: 10),
-    _input('🆘', 'Noodcontact naam (optioneel)',
-        'Bijv. Dochter Sara', _noodNaamCtrl, false),
-    const SizedBox(height: 10),
-    _input('☎️', 'Noodcontact telefoon (optioneel)',
-        '06...', _noodTelCtrl, false),
+    OWInvoer(
+      emoji: '👵',
+      label: 'NAAM VAN JE DIERBARE',
+      hint: 'Bijv. Oma, Opa, Mam, Pap...',
+      controller: _ontvangerNaamCtrl,
+    ),
     const SizedBox(height: 24),
 
     _sectieKop('🔔 Herkenningsgeluid',
-        'Klinkt elke keer als er iets nieuws aankomt. Tik op een geluid om '
-        'het voor te beluisteren. Helpt je dierbare het te herkennen als '
-        'iets liefs.'),
+        'Klinkt elke keer als er iets nieuws aankomt. Helpt je dierbare '
+        'het te herkennen als iets liefs.'),
     const SizedBox(height: 12),
     ...kGeluiden.map((g) => Padding(
       padding: const EdgeInsets.only(bottom: 8),
@@ -662,7 +652,7 @@ class _SetupWizardState extends State<SetupWizard> {
         ),
       ),
     )),
-    const SizedBox(height: 12),
+    const SizedBox(height: 16),
     Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
@@ -670,53 +660,10 @@ class _SetupWizardState extends State<SetupWizard> {
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: kPeachLight, width: 1.5)),
       child: const Text(
-        '💡 Tip: in de app kun je later ook eigen stem of muziek '
-        'toevoegen per moment via Instellingen → Momenten beheren.',
-        style: TextStyle(fontSize: 12, color: kTextMuted, height: 1.4)),
+        '💡 Lievelingsdingen, woonplaats, noodcontact en dagelijkse '
+        'momenten stel je in via Instellingen nadat je de app hebt gestart.',
+        style: TextStyle(fontSize: 12, color: kTextMuted, height: 1.5)),
     ),
-    const SizedBox(height: 24),
-
-    _sectieKop('📅 Dagelijkse momenten',
-        'Vaste tijden waarop er automatisch een melding verschijnt. '
-        'Later in de app kun je bij elk moment een foto, stemberichtje, '
-        'lied, tekst of agenda-melding koppelen.'),
-    const SizedBox(height: 12),
-    if (_momenten.isEmpty)
-      Container(padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(color: kPeachPale,
-            borderRadius: BorderRadius.circular(14)),
-        child: const Text('Nog geen momenten. Sla deze stap over of voeg een '
-            'moment toe.',
-            style: TextStyle(fontSize: 13, color: kBrownLight))),
-    ..._momenten.asMap().entries.map((e) => _momentRij(e.key, e.value)),
-    const SizedBox(height: 8),
-    GestureDetector(
-      onTap: _voegMomentToe,
-      child: Container(padding: const EdgeInsets.symmetric(vertical: 12),
-        decoration: BoxDecoration(color: kPeachPale,
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: kPeach, width: 1.5)),
-        child: const Center(child: Row(mainAxisSize: MainAxisSize.min, children: [
-          Icon(Icons.add_rounded, color: kPeach, size: 18),
-          SizedBox(width: 4),
-          Text('Moment toevoegen', style: TextStyle(fontSize: 13,
-              fontWeight: FontWeight.w800, color: kPeach)),
-        ])),
-      ),
-    ),
-    const SizedBox(height: 24),
-    Container(padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(color: kPeachPale,
-          borderRadius: BorderRadius.circular(12)),
-      child: const Row(children: [
-        Text('🎉', style: TextStyle(fontSize: 18)),
-        SizedBox(width: 10),
-        Expanded(child: Text(
-          'Klaar? Klik "App starten". Je komt in het kring-portaal waar '
-          'je foto\'s, stem en muziek kunt sturen.',
-          style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700,
-              color: kBrownLight, height: 1.4))),
-      ])),
   ]);
 
   Widget _sectieKop(String titel, String uitleg) =>
@@ -749,57 +696,6 @@ class _SetupWizardState extends State<SetupWizard> {
       _toonFout('Foto kiezen niet mogelijk: $e');
     }
   }
-
-  Widget _momentRij(int index, _DagelijksMoment m) => Container(
-    margin: const EdgeInsets.only(bottom: 8),
-    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-    decoration: BoxDecoration(color: kWhite,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: kPeachLight, width: 2)),
-    child: Row(children: [
-      Text(m.emoji, style: const TextStyle(fontSize: 22)),
-      const SizedBox(width: 10),
-      Expanded(child: Text(m.label,
-          style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700,
-              color: kBrown))),
-      GestureDetector(
-        onTap: () => _kiesTijd(index),
-        child: Container(padding: const EdgeInsets.symmetric(
-            horizontal: 14, vertical: 8),
-          decoration: BoxDecoration(color: kPeachPale,
-              borderRadius: BorderRadius.circular(10),
-              border: Border.all(color: kPeach, width: 1.5)),
-          child: Text(_formatTijd(m.tijd),
-              style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w800,
-                  color: kBrown)),
-        ),
-      ),
-      const SizedBox(width: 8),
-      GestureDetector(
-        onTap: () => setState(() => _momenten.removeAt(index)),
-        child: const Padding(padding: EdgeInsets.all(4),
-          child: Icon(Icons.close_rounded, color: kTextMuted, size: 18)),
-      ),
-    ]),
-  );
-
-  void _voegMomentToe() async {
-    final result = await showDialog<_DagelijksMoment>(
-      context: context, builder: (ctx) => _NieuwMomentDialog());
-    if (result != null) setState(() => _momenten.add(result));
-  }
-
-  Future<void> _kiesTijd(int index) async {
-    final gekozen = await showTimePicker(context: context,
-      initialTime: _momenten[index].tijd,
-      builder: (context, child) => MediaQuery(
-        data: MediaQuery.of(context).copyWith(alwaysUse24HourFormat: true),
-        child: child!));
-    if (gekozen != null) setState(() => _momenten[index].tijd = gekozen);
-  }
-
-  String _formatTijd(TimeOfDay t) =>
-      '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
 
   // ───────────────────────────────────────────────────
   // KNOP & ACTIES
@@ -1388,25 +1284,6 @@ class _SetupWizardState extends State<SetupWizard> {
   void _toonFout(String m) => ScaffoldMessenger.of(context)
       .showSnackBar(SnackBar(content: Text(m), backgroundColor: Colors.red));
 
-  Widget _input(String emoji, String label, String hint,
-      TextEditingController ctrl, bool verborgen) =>
-      Container(
-        decoration: BoxDecoration(color: kWhite,
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: kPeachLight, width: 2)),
-        child: Row(children: [
-          Padding(padding: const EdgeInsets.only(left: 16),
-              child: Text(emoji, style: const TextStyle(fontSize: 20))),
-          Expanded(child: TextField(controller: ctrl, obscureText: verborgen,
-            style: const TextStyle(color: kBrown, fontWeight: FontWeight.w700),
-            decoration: InputDecoration(
-              hintText: hint, labelText: label,
-              labelStyle: const TextStyle(color: kTextMuted, fontSize: 12),
-              hintStyle: const TextStyle(color: kPeachLight),
-              contentPadding: const EdgeInsets.fromLTRB(12, 16, 16, 16),
-              border: InputBorder.none))),
-        ]),
-      );
 }
 
 class _DagelijksMoment {
@@ -1414,83 +1291,3 @@ class _DagelijksMoment {
   _DagelijksMoment(this.emoji, this.label, this.tijd);
 }
 
-class _NieuwMomentDialog extends StatefulWidget {
-  @override
-  State<_NieuwMomentDialog> createState() => _NieuwMomentDialogState();
-}
-
-class _NieuwMomentDialogState extends State<_NieuwMomentDialog> {
-  String _emoji = '⭐';
-  final _labelCtrl = TextEditingController();
-  TimeOfDay _tijd = const TimeOfDay(hour: 15, minute: 0);
-  final _emojis = ['⭐', '☀️', '☕', '🍽️', '🌙', '💕', '🎵', '🌸', '🌳', '📚', '🐦', '🍰'];
-
-  @override
-  void dispose() {
-    _labelCtrl.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Dialog(backgroundColor: kCream,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-      child: Padding(padding: const EdgeInsets.all(20),
-        child: Column(mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start, children: [
-          const Text('Nieuw moment',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900,
-                  color: kBrown)),
-          const SizedBox(height: 16),
-          const Text('Emoji', style: TextStyle(fontSize: 12,
-              color: kTextMuted, fontWeight: FontWeight.w700)),
-          const SizedBox(height: 8),
-          Wrap(spacing: 8, runSpacing: 8, children: _emojis.map((e) =>
-            GestureDetector(onTap: () => setState(() => _emoji = e),
-              child: Container(padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: _emoji == e ? kPeach : kPeachPale,
-                  borderRadius: BorderRadius.circular(8)),
-                child: Text(e, style: const TextStyle(fontSize: 20))))).toList()),
-          const SizedBox(height: 16),
-          TextField(controller: _labelCtrl,
-            decoration: const InputDecoration(labelText: 'Naam',
-              border: OutlineInputBorder())),
-          const SizedBox(height: 16),
-          Row(children: [
-            const Text('Tijd:', style: TextStyle(fontSize: 14,
-                fontWeight: FontWeight.w700, color: kBrown)),
-            const SizedBox(width: 12),
-            GestureDetector(onTap: () async {
-              final t = await showTimePicker(context: context,
-                initialTime: _tijd, builder: (c, child) => MediaQuery(
-                  data: MediaQuery.of(c).copyWith(alwaysUse24HourFormat: true),
-                  child: child!));
-              if (t != null) setState(() => _tijd = t);
-            }, child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-              decoration: BoxDecoration(color: kPeachPale,
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: kPeach, width: 1.5)),
-              child: Text('${_tijd.hour.toString().padLeft(2, '0')}:${_tijd.minute.toString().padLeft(2, '0')}',
-                style: const TextStyle(fontSize: 14,
-                    fontWeight: FontWeight.w800, color: kBrown)))),
-          ]),
-          const SizedBox(height: 20),
-          Row(mainAxisAlignment: MainAxisAlignment.end, children: [
-            TextButton(onPressed: () => Navigator.pop(context),
-              child: const Text('Annuleren',
-                  style: TextStyle(color: kTextMuted))),
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(backgroundColor: kPeach),
-              onPressed: () {
-                if (_labelCtrl.text.trim().isEmpty) return;
-                Navigator.pop(context, _DagelijksMoment(_emoji,
-                    _labelCtrl.text.trim(), _tijd));
-              },
-              child: const Text('Toevoegen', style: TextStyle(color: kWhite,
-                  fontWeight: FontWeight.w800))),
-          ]),
-        ])));
-  }
-}
