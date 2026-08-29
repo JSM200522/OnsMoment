@@ -672,8 +672,8 @@ class _SetupWizardState extends State<SetupWizard> {
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: kPeachLight, width: 1.5)),
       child: const Text(
-        '💡 Noodcontact en dagelijkse momenten stel je in via '
-        'Instellingen nadat je de app hebt gestart.',
+        '💡 Noodcontact en de agenda met dagelijkse momenten stel je in '
+        'via Instellingen nadat je de app hebt gestart.',
         style: TextStyle(fontSize: 12, color: kTextMuted, height: 1.5)),
     ),
   ]);
