@@ -42,7 +42,17 @@ service cloud.firestore {
         request.resource.data.get('kringAantal', 0) >= resource.data.get('kringAantal', 0);
       allow delete: if request.auth != null && request.auth.uid == uid;
       match /apparaten/{apparaatId} {
-        allow read, write: if request.auth != null && request.auth.uid == uid;
+        // Read verruimd: eigen apparaten altijd, én apparaten van andere
+        // gebruikers als je lid bent van dezelfde kring (bellijst leest
+        // eigenaar-apparaten om ontvanger-tablet te bellen).
+        allow read: if request.auth != null && (
+          request.auth.uid == uid ||
+          (resource.data.get('kringId', '') is string &&
+           resource.data.get('kringId', '') != '' &&
+           isLid(resource.data.kringId))
+        );
+        // Write blijft strikt eigen uid — geen cross-user apparaat-writes.
+        allow write: if request.auth != null && request.auth.uid == uid;
       }
     }
 
@@ -56,13 +66,57 @@ service cloud.firestore {
 
       match /leden/{lidId} {
         allow read: if isLid(kringId);
+
+        // Eigenaar mag elke membership toevoegen/wijzigen (inclusief
+        // zichzelf bij kring-aanmaak).
         allow write: if isEigenaar(kringId);
+
+        // Gast-accept: een ingelogde gebruiker mag ZICHZELF als 'gast'
+        // toevoegen aan een kring, mits hij het bijbehorende uitnodig_token
+        // meestuurt in het viaToken-veld en dat token naar deze kring
+        // wijst. Rol wordt geforceerd op 'gast' — geen self-promotion
+        // tot eigenaar. userUid-veld moet gelijk zijn aan de auth-uid.
+        allow create: if isIngelogd() &&
+          lidId == request.auth.uid &&
+          request.resource.data.userUid == request.auth.uid &&
+          request.resource.data.rol == 'gast' &&
+          request.resource.data.viaToken is string &&
+          request.resource.data.viaToken.size() > 0 &&
+          exists(/databases/$(database)/documents/uitnodig_tokens/$(request.resource.data.viaToken)) &&
+          get(/databases/$(database)/documents/uitnodig_tokens/$(request.resource.data.viaToken)).data.kringId == kringId;
+
+        // Self-leave: elke gebruiker mag zijn eigen membership deleten
+        // (uit een kring stappen). Eigenaar-delete zit al in write-rule.
+        allow delete: if isIngelogd() && lidId == request.auth.uid;
       }
     }
 
     // Collection group query voor mijnKringen() — leest eigen leden-docs over alle kringen
     match /{path=**}/leden/{lidId} {
       allow read: if isIngelogd() && resource.data.userUid == request.auth.uid;
+    }
+
+    // Uitnodig-tokens: publiek leesbaar (gast valideert vóór inlog), maar
+    // alleen kring-eigenaar mag creëren/muteren.
+    //
+    // - Read publiek: token is 20-char alfanumeriek (~7×10³⁵ combinaties);
+    //   brute-forcen is onhaalbaar. Preview-velden (kring-naam, foto,
+    //   ledental) zijn low-sensitive.
+    // - Query op tokenLower (case-insensitive fallback): valt onder deze
+    //   publieke read.
+    // - Create: eigenaar van de kring die in het token staat. aangemaaktDoor
+    //   moet de auth-uid zijn (audit-trail).
+    // - Update (tokenLower-backfill): eigenaar; kringId mag niet veranderen.
+    // - Delete: eigenaar (voor eventuele intrekken-flow).
+    match /uitnodig_tokens/{token} {
+      allow read: if true;
+      allow create: if isIngelogd() &&
+        request.resource.data.aangemaaktDoor == request.auth.uid &&
+        request.resource.data.kringId is string &&
+        isEigenaar(request.resource.data.kringId);
+      allow update: if isEigenaar(resource.data.kringId) &&
+        request.resource.data.kringId == resource.data.kringId;
+      allow delete: if isEigenaar(resource.data.kringId);
     }
 
     // Momenten (verstuurde berichten)

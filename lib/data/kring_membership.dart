@@ -24,12 +24,20 @@ class Membership {
   /// accounts zonder familieNaam — UI valt dan terug op "Kringlid".
   final String? weergaveNaam;
 
+  /// Uitnodig-token waarmee deze gast zichzelf aan de kring heeft
+  /// toegevoegd. Firestore-rules gebruiken dit veld om te verifiëren
+  /// dat de gast een geldig uitnodig_token heeft (rule leest
+  /// uitnodig_tokens/{viaToken}.kringId en vergelijkt met kring-pad).
+  /// Null voor eigenaar-memberships en pre-2.5-a-3 gast-memberships.
+  final String? viaToken;
+
   Membership({
     required this.userUid,
     required this.rol,
     required this.gejoindOp,
     this.uitgenodigdDoor,
     this.weergaveNaam,
+    this.viaToken,
   });
 
   /// Leest een membership-doc uit Firestore. Onbekende rol-strings
@@ -51,6 +59,7 @@ class Membership {
           ?? DateTime.fromMillisecondsSinceEpoch(0),
       uitgenodigdDoor: data['uitgenodigdDoor'] as String?,
       weergaveNaam: data['weergaveNaam'] as String?,
+      viaToken: data['viaToken'] as String?,
     );
   }
 
@@ -72,6 +81,7 @@ class Membership {
       'uitgenodigdDoor': uitgenodigdDoor,
     };
     if (weergaveNaam != null) map['weergaveNaam'] = weergaveNaam;
+    if (viaToken != null) map['viaToken'] = viaToken;
     return map;
   }
 }

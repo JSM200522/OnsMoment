@@ -14,6 +14,7 @@ import {
   alsEigenaarB,
   alsOnbekend,
   alsGast,
+  alsNieuweGast,
   doc,
   getDoc,
   setDoc,
@@ -28,8 +29,12 @@ import {
   EIGENAAR_A_UID,
   LID_A_UID,
   EIGENAAR_B_UID,
+  ONBEKEND_UID,
+  NIEUWE_GAST_UID,
   KRING_A_ID,
   KRING_B_ID,
+  TOKEN_A_RAW,
+  TOKEN_B_RAW,
 } from './helpers';
 
 let env: RulesTestEnvironment;
@@ -330,6 +335,169 @@ describe('kring-aantallimiet (tier-enforcement)', () => {
       updateDoc(doc(db, 'gebruikers', EIGENAAR_A_UID), {
         kringAantal: 0,
       })
+    );
+  });
+});
+
+// ──────────────────────────────────────────────
+// UITNODIG_TOKENS — aanvals-scenario's
+// ──────────────────────────────────────────────
+describe('uitnodig_tokens — aanvallen', () => {
+  test('A33: eigenaarB maakt token aan voor kringA (niet zijn kring)', async () => {
+    const db = alsEigenaarB(env).firestore();
+    await assertFails(
+      setDoc(doc(db, 'uitnodig_tokens', 'GestolenToken0000000'), {
+        kringId: KRING_A_ID,
+        aangemaaktDoor: EIGENAAR_B_UID,
+        tokenLower: 'gestolentoken0000000',
+      }),
+    );
+  });
+
+  test('A34: eigenaarA maakt token met aangemaaktDoor van eigenaarB (spoof)', async () => {
+    const db = alsEigenaarA(env).firestore();
+    await assertFails(
+      setDoc(doc(db, 'uitnodig_tokens', 'SpoofToken0000000000'), {
+        kringId: KRING_A_ID,
+        aangemaaktDoor: EIGENAAR_B_UID,
+        tokenLower: 'spooftoken0000000000',
+      }),
+    );
+  });
+
+  test('A35: gast (ingelogd) maakt zelf token aan voor kringA', async () => {
+    const db = alsNieuweGast(env).firestore();
+    await assertFails(
+      setDoc(doc(db, 'uitnodig_tokens', 'GastToken00000000000'), {
+        kringId: KRING_A_ID,
+        aangemaaktDoor: NIEUWE_GAST_UID,
+        tokenLower: 'gasttoken00000000000',
+      }),
+    );
+  });
+
+  test('A36: eigenaarB wijzigt tokenA (van kringA)', async () => {
+    const db = alsEigenaarB(env).firestore();
+    await assertFails(
+      updateDoc(doc(db, 'uitnodig_tokens', TOKEN_A_RAW), {
+        tokenLower: 'gehackt',
+      }),
+    );
+  });
+
+  test('A37: eigenaarA wijzigt kringId van tokenA (kaping)', async () => {
+    const db = alsEigenaarA(env).firestore();
+    await assertFails(
+      updateDoc(doc(db, 'uitnodig_tokens', TOKEN_A_RAW), {
+        kringId: KRING_B_ID,
+      }),
+    );
+  });
+
+  test('A38: eigenaarB verwijdert tokenA (niet zijn kring)', async () => {
+    const db = alsEigenaarB(env).firestore();
+    await assertFails(
+      deleteDoc(doc(db, 'uitnodig_tokens', TOKEN_A_RAW)),
+    );
+  });
+});
+
+// ──────────────────────────────────────────────
+// GAST-ACCEPT — aanvallen (join zonder geldig token)
+// ──────────────────────────────────────────────
+describe('gast-accept — aanvallen', () => {
+  test('A39: nieuwe gast joint kringA zonder viaToken-veld', async () => {
+    const db = alsNieuweGast(env).firestore();
+    await assertFails(
+      setDoc(doc(db, 'kringen', KRING_A_ID, 'leden', NIEUWE_GAST_UID), {
+        userUid: NIEUWE_GAST_UID,
+        rol: 'gast',
+      }),
+    );
+  });
+
+  test('A40: nieuwe gast joint kringA met verzonnen (niet-bestaand) token', async () => {
+    const db = alsNieuweGast(env).firestore();
+    await assertFails(
+      setDoc(doc(db, 'kringen', KRING_A_ID, 'leden', NIEUWE_GAST_UID), {
+        userUid: NIEUWE_GAST_UID,
+        rol: 'gast',
+        viaToken: 'VerzonnenToken00000A',
+      }),
+    );
+  });
+
+  test('A41: nieuwe gast joint kringA met tokenB (verkeerde kring)', async () => {
+    const db = alsNieuweGast(env).firestore();
+    await assertFails(
+      setDoc(doc(db, 'kringen', KRING_A_ID, 'leden', NIEUWE_GAST_UID), {
+        userUid: NIEUWE_GAST_UID,
+        rol: 'gast',
+        viaToken: TOKEN_B_RAW,
+      }),
+    );
+  });
+
+  test('A42: nieuwe gast joint kringA als eigenaar (rol-escalatie)', async () => {
+    const db = alsNieuweGast(env).firestore();
+    await assertFails(
+      setDoc(doc(db, 'kringen', KRING_A_ID, 'leden', NIEUWE_GAST_UID), {
+        userUid: NIEUWE_GAST_UID,
+        rol: 'eigenaar',
+        viaToken: TOKEN_A_RAW,
+      }),
+    );
+  });
+
+  test('A43: nieuwe gast joint als andere userUid dan zichzelf', async () => {
+    const db = alsNieuweGast(env).firestore();
+    await assertFails(
+      setDoc(doc(db, 'kringen', KRING_A_ID, 'leden', 'anderUid'), {
+        userUid: 'anderUid',
+        rol: 'gast',
+        viaToken: TOKEN_A_RAW,
+      }),
+    );
+  });
+
+  test('A44: niet-ingelogde gast joint kringA met geldig token', async () => {
+    const db = alsGast(env).firestore();
+    await assertFails(
+      setDoc(doc(db, 'kringen', KRING_A_ID, 'leden', 'ietsverzonnen'), {
+        userUid: 'ietsverzonnen',
+        rol: 'gast',
+        viaToken: TOKEN_A_RAW,
+      }),
+    );
+  });
+});
+
+// ──────────────────────────────────────────────
+// APPARATEN — cross-uid aanvallen
+// ──────────────────────────────────────────────
+describe('apparaten — cross-uid aanvallen', () => {
+  test('A45: eigenaarB (andere kring) leest apparaten van eigenaarA', async () => {
+    // Cross-uid read blijft geblokkeerd voor niet-leden van dezelfde kring.
+    const db = alsEigenaarB(env).firestore();
+    await assertFails(
+      getDoc(doc(db, 'gebruikers', EIGENAAR_A_UID, 'apparaten', 'app1')),
+    );
+  });
+
+  test('A46: onbekende gebruiker leest apparaten van eigenaarA', async () => {
+    const db = alsOnbekend(env).firestore();
+    await assertFails(
+      getDoc(doc(db, 'gebruikers', EIGENAAR_A_UID, 'apparaten', 'app1')),
+    );
+  });
+
+  test('A47: lidA schrijft FCM-token op apparaat van eigenaarA (write blijft eigen uid)', async () => {
+    const db = alsLidA(env).firestore();
+    await assertFails(
+      setDoc(doc(db, 'gebruikers', EIGENAAR_A_UID, 'apparaten', 'kaperapp'), {
+        kringId: KRING_A_ID,
+        fcmToken: 'kapertoken',
+      }),
     );
   });
 });

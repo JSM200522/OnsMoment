@@ -303,6 +303,9 @@ class UitnodigingService {
         gejoindOp: DateTime.now(), // direct overschreven met serverTimestamp
         uitgenodigdDoor: aangemaaktDoor,
         weergaveNaam: weergaveNaam,
+        // Canonieke token-id (uit tokenSnap.id) i.p.v. rawToken zodat de
+        // Firestore-rule case-insensitief joinen accepteert.
+        viaToken: tokenSnap.id,
       );
 
       final batch = FirebaseFirestore.instance.batch();

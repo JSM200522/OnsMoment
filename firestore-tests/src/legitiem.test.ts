@@ -12,6 +12,8 @@ import {
   alsEigenaarA,
   alsLidA,
   alsEigenaarB,
+  alsGast,
+  alsNieuweGast,
   doc,
   getDoc,
   setDoc,
@@ -26,8 +28,11 @@ import {
   EIGENAAR_A_UID,
   LID_A_UID,
   EIGENAAR_B_UID,
+  NIEUWE_GAST_UID,
   KRING_A_ID,
   KRING_B_ID,
+  TOKEN_A_RAW,
+  TOKEN_A_LOWER,
 } from './helpers';
 
 let env: RulesTestEnvironment;
@@ -327,6 +332,105 @@ describe('gebruikers', () => {
         fcmToken: 'nieuw_token',
         fcmPlatform: 'android',
       })
+    );
+  });
+});
+
+// ──────────────────────────────────────────────
+// UITNODIG_TOKENS
+// ──────────────────────────────────────────────
+describe('uitnodig_tokens — lezen (preview)', () => {
+  test('L30: gast (niet ingelogd) leest tokenA voor preview', async () => {
+    const db = alsGast(env).firestore();
+    await assertSucceeds(getDoc(doc(db, 'uitnodig_tokens', TOKEN_A_RAW)));
+  });
+
+  test('L31: nieuwe gast (ingelogd) leest tokenA voor preview', async () => {
+    const db = alsNieuweGast(env).firestore();
+    await assertSucceeds(getDoc(doc(db, 'uitnodig_tokens', TOKEN_A_RAW)));
+  });
+
+  test('L32: case-insensitive query op tokenLower slaagt', async () => {
+    const db = alsNieuweGast(env).firestore();
+    await assertSucceeds(
+      getDocs(
+        query(
+          collection(db, 'uitnodig_tokens'),
+          where('tokenLower', '==', TOKEN_A_LOWER),
+        ),
+      ),
+    );
+  });
+});
+
+describe('uitnodig_tokens — schrijven (eigenaar)', () => {
+  test('L33: eigenaarA maakt nieuw uitnodig-token aan voor kringA', async () => {
+    const db = alsEigenaarA(env).firestore();
+    await assertSucceeds(
+      setDoc(doc(db, 'uitnodig_tokens', 'NieuwToken12345678AB'), {
+        kringId: KRING_A_ID,
+        aangemaaktDoor: EIGENAAR_A_UID,
+        kringNaam: 'Familie A',
+        kringFoto: null,
+        uitnodigerNaam: 'Eigenaar A',
+        huidigeLedenCache: 2,
+        maxLedenCache: 8,
+        tokenLower: 'nieuwtoken12345678ab',
+      }),
+    );
+  });
+
+  test('L34: eigenaarA backfilt tokenLower op bestaand token', async () => {
+    const db = alsEigenaarA(env).firestore();
+    await assertSucceeds(
+      updateDoc(doc(db, 'uitnodig_tokens', TOKEN_A_RAW), {
+        tokenLower: TOKEN_A_LOWER,
+      }),
+    );
+  });
+
+  test('L35: eigenaarA verwijdert eigen uitnodig-token', async () => {
+    const db = alsEigenaarA(env).firestore();
+    await assertSucceeds(
+      deleteDoc(doc(db, 'uitnodig_tokens', TOKEN_A_RAW)),
+    );
+  });
+});
+
+// ──────────────────────────────────────────────
+// GAST-ACCEPT (join via uitnodig-token)
+// ──────────────────────────────────────────────
+describe('leden — gast-accept via token', () => {
+  test('L36: nieuwe gast joint kringA met geldig tokenA', async () => {
+    const db = alsNieuweGast(env).firestore();
+    await assertSucceeds(
+      setDoc(doc(db, 'kringen', KRING_A_ID, 'leden', NIEUWE_GAST_UID), {
+        userUid: NIEUWE_GAST_UID,
+        rol: 'gast',
+        viaToken: TOKEN_A_RAW,
+        uitgenodigdDoor: EIGENAAR_A_UID,
+      }),
+    );
+  });
+
+  test('L37: lidA (bestaand lid) verlaat kringA (self-delete)', async () => {
+    const db = alsLidA(env).firestore();
+    await assertSucceeds(
+      deleteDoc(doc(db, 'kringen', KRING_A_ID, 'leden', LID_A_UID)),
+    );
+  });
+});
+
+// ──────────────────────────────────────────────
+// APPARATEN — cross-uid read (bel-lijst)
+// ──────────────────────────────────────────────
+describe('apparaten — cross-uid read voor bellijst', () => {
+  test('L38: lidA leest eigenaarA-apparaat (zelfde kring)', async () => {
+    // Bel-flow: gast (lidA) opent bel-scherm en moet ontvanger-apparaten
+    // van de eigenaar kunnen lezen om te bellen.
+    const db = alsLidA(env).firestore();
+    await assertSucceeds(
+      getDoc(doc(db, 'gebruikers', EIGENAAR_A_UID, 'apparaten', 'app1')),
     );
   });
 });
