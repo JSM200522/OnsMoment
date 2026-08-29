@@ -6,6 +6,8 @@ import '../../services/device_modus_service.dart';
 import '../../services/uitnodiging_service.dart';
 import '../../theme/kleuren.dart';
 import '../../widgets/normaal_scaffold.dart';
+import '../../widgets/ow_knop.dart';
+import '../../widgets/ow_invoer.dart';
 import 'gast_signup_scherm.dart';
 
 /// Accept-flow voor een uitnodig-link of -code (V9 2.5-a-3-a).
@@ -205,56 +207,56 @@ class _AcceptUitnodigSchermState extends State<AcceptUitnodigScherm> {
   // ─── 1. Token-invoer ────────────────────────────────────────────────
 
   List<Widget> _tokenInvoerSectie() => [
-    const Text('Een familielid heeft je uitgenodigd',
-        style: TextStyle(fontSize: 24, fontWeight: FontWeight.w900,
+    const SizedBox(height: 8),
+    const Text('Je bent uitgenodigd',
+        style: TextStyle(fontSize: 28, fontWeight: FontWeight.w900,
             color: kBrown, height: 1.2)),
     const SizedBox(height: 8),
     const Text('Vul hier de uitnodig-code in die je hebt gekregen. '
         'De code bestaat uit groepjes letters en cijfers met streepjes.',
         style: TextStyle(fontSize: 14, color: kTextMuted, height: 1.4)),
-    const SizedBox(height: 24),
+    const SizedBox(height: 28),
 
+    // Custom monospace-veld in dezelfde stijl als OWInvoer.
+    const Text('UITNODIG-CODE',
+        style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700,
+            color: kTextMuted, letterSpacing: 0.3)),
+    const SizedBox(height: 5),
     Container(
       decoration: BoxDecoration(color: kWhite,
           borderRadius: BorderRadius.circular(14),
           border: Border.all(color: kPeachLight, width: 2)),
-      child: TextField(
-        controller: _tokenCtrl,
-        textAlign: TextAlign.center,
-        textCapitalization: TextCapitalization.none,
-        decoration: const InputDecoration(
-          hintText: 'aB3c-D4eF-5gH6-iJ7k-lM8n',
-          hintStyle: TextStyle(color: kPeachLight, letterSpacing: 1.2),
-          border: InputBorder.none,
-          contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 16),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(12),
+        child: IntrinsicHeight(
+          child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            Container(width: 52, color: kPeachPale, alignment: Alignment.center,
+              child: const Text('🔑', style: TextStyle(fontSize: 20))),
+            Expanded(child: TextField(
+              controller: _tokenCtrl,
+              textAlign: TextAlign.center,
+              textCapitalization: TextCapitalization.none,
+              decoration: const InputDecoration(
+                hintText: 'aB3c-D4eF-5gH6-iJ7k-lM8n',
+                hintStyle: TextStyle(color: kPeachLight, letterSpacing: 1.2),
+                border: InputBorder.none,
+                contentPadding: EdgeInsets.fromLTRB(12, 18, 12, 18),
+              ),
+              style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800,
+                  color: kBrown, fontFamily: 'monospace', letterSpacing: 1.2),
+            )),
+          ]),
         ),
-        style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800,
-            color: kBrown, fontFamily: 'monospace', letterSpacing: 1.2),
       ),
     ),
     const SizedBox(height: 16),
 
     if (_validatieFout != null) ..._validatieFoutBlok(_validatieFout!),
 
-    GestureDetector(
+    OWKnop(
+      label: 'Volgende',
       onTap: _bezigValideren ? null : _valideerToken,
-      child: Opacity(opacity: _bezigValideren ? 0.5 : 1.0,
-        child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 16),
-          decoration: BoxDecoration(
-            gradient: const LinearGradient(colors: [kPeach, kRose]),
-            borderRadius: BorderRadius.circular(14),
-            boxShadow: [BoxShadow(color: kPeach.withOpacity(0.3),
-                blurRadius: 14, offset: const Offset(0, 6))]),
-          child: Center(child: _bezigValideren
-              ? const SizedBox(width: 20, height: 20,
-                  child: CircularProgressIndicator(
-                      color: kWhite, strokeWidth: 3))
-              : const Text('Volgende',
-                  style: TextStyle(fontSize: 16,
-                      fontWeight: FontWeight.w900, color: kWhite))),
-        ),
-      ),
+      bezig: _bezigValideren,
     ),
   ];
 
@@ -294,42 +296,57 @@ class _AcceptUitnodigSchermState extends State<AcceptUitnodigScherm> {
         : 'Kring is vol (${u.maxLeden} kringleden)';
 
     return [
-      Center(child: Container(
-        width: 80, height: 80,
+      const SizedBox(height: 8),
+      // Warme kring-kaart met foto, naam, uitnodiger en plekchip.
+      Container(
+        padding: const EdgeInsets.all(20),
         decoration: BoxDecoration(
-          shape: BoxShape.circle, color: kPeachPale,
-          border: Border.all(color: kPeach, width: 3),
-          image: (u.kringFoto != null && u.kringFoto!.isNotEmpty)
-              ? DecorationImage(image: NetworkImage(u.kringFoto!),
-                  fit: BoxFit.cover)
-              : null,
+          color: kWhite,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: kPeachLight, width: 2),
+          boxShadow: [BoxShadow(color: kPeach.withOpacity(0.08),
+              blurRadius: 12, offset: const Offset(0, 4))],
         ),
-        child: (u.kringFoto == null || u.kringFoto!.isEmpty)
-            ? const Center(child: Icon(Icons.person_rounded,
-                color: kPeach, size: 40))
-            : null,
-      )),
-      const SizedBox(height: 16),
-      Center(child: Text(u.kringNaam.isNotEmpty ? u.kringNaam : 'Een kring',
-          style: const TextStyle(fontSize: 24,
-              fontWeight: FontWeight.w900, color: kBrown))),
-      const SizedBox(height: 4),
-      Center(child: Text(
-        u.uitnodigerNaam != null && u.uitnodigerNaam!.isNotEmpty
-            ? 'Uitgenodigd door ${u.uitnodigerNaam}'
-            : 'Uitgenodigd door familie',
-        style: const TextStyle(fontSize: 13, color: kTextMuted))),
-      const SizedBox(height: 16),
-
-      Center(child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-        decoration: BoxDecoration(color: plekChipKleur,
-            borderRadius: BorderRadius.circular(8)),
-        child: Text(plekChipTekst,
-            style: const TextStyle(fontSize: 11,
-                fontWeight: FontWeight.w800, color: kWhite,
-                letterSpacing: 0.4)),
-      )),
+        child: Column(children: [
+          Container(
+            width: 96, height: 96,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle, color: kPeachPale,
+              border: Border.all(color: kPeach, width: 3),
+              image: (u.kringFoto != null && u.kringFoto!.isNotEmpty)
+                  ? DecorationImage(image: NetworkImage(u.kringFoto!),
+                      fit: BoxFit.cover)
+                  : null,
+            ),
+            child: (u.kringFoto == null || u.kringFoto!.isEmpty)
+                ? const Center(child: Icon(Icons.person_rounded,
+                    color: kPeach, size: 44))
+                : null,
+          ),
+          const SizedBox(height: 16),
+          Text(u.kringNaam.isNotEmpty ? u.kringNaam : 'Een kring',
+              textAlign: TextAlign.center,
+              style: const TextStyle(fontSize: 22,
+                  fontWeight: FontWeight.w900, color: kBrown)),
+          const SizedBox(height: 4),
+          Text(
+            u.uitnodigerNaam != null && u.uitnodigerNaam!.isNotEmpty
+                ? 'Uitgenodigd door ${u.uitnodigerNaam}'
+                : 'Uitgenodigd door familie',
+            textAlign: TextAlign.center,
+            style: const TextStyle(fontSize: 13, color: kTextMuted)),
+          const SizedBox(height: 14),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            decoration: BoxDecoration(color: plekChipKleur,
+                borderRadius: BorderRadius.circular(8)),
+            child: Text(plekChipTekst,
+                style: const TextStyle(fontSize: 11,
+                    fontWeight: FontWeight.w800, color: kWhite,
+                    letterSpacing: 0.4)),
+          ),
+        ]),
+      ),
       const SizedBox(height: 24),
 
       if (!u.ruimte) ..._kringVolBlok()
@@ -357,33 +374,14 @@ class _AcceptUitnodigSchermState extends State<AcceptUitnodigScherm> {
   ];
 
   List<Widget> _keuzeKnoppen() => [
-    GestureDetector(
+    OWKnop(
+      label: 'Ik heb al een account',
       onTap: () => setState(() => _toonInlogVelden = true),
-      child: Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          gradient: const LinearGradient(colors: [kPeach, kRose]),
-          borderRadius: BorderRadius.circular(14),
-          boxShadow: [BoxShadow(color: kPeach.withOpacity(0.3),
-              blurRadius: 14, offset: const Offset(0, 6))]),
-        child: const Center(child: Text('Ik heb al een account',
-            style: TextStyle(fontSize: 15,
-                fontWeight: FontWeight.w900, color: kWhite))),
-      ),
     ),
     const SizedBox(height: 12),
-    GestureDetector(
+    OWKnopSecundair(
+      label: 'Maak een nieuw account aan',
       onTap: () => _naarGastSignup(),
-      child: Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: kWhite,
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: kPeach, width: 2)),
-        child: const Center(child: Text('Maak een nieuw account aan',
-            style: TextStyle(fontSize: 15,
-                fontWeight: FontWeight.w900, color: kPeach))),
-      ),
     ),
   ];
 
@@ -445,12 +443,14 @@ class _AcceptUitnodigSchermState extends State<AcceptUitnodigScherm> {
     const Text('Log in met je bestaande account',
         style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900,
             color: kBrown)),
+    const SizedBox(height: 16),
+    OWInvoer(emoji: '📧', label: 'E-MAILADRES', hint: 'voorbeeld@email.nl',
+        controller: _emailCtrl,
+        toetsenbord: TextInputType.emailAddress,
+        hoofdletters: TextCapitalization.none),
     const SizedBox(height: 12),
-    _input('📧', 'E-mailadres', 'voorbeeld@email.nl', _emailCtrl, false),
-    const SizedBox(height: 10),
-    _input('🔒', 'Wachtwoord', 'Je wachtwoord', _wachtwoordCtrl, true),
-    // V9 2.12-a-1: 'Wachtwoord vergeten?'-link voor gasten met
-    // bestaand account dat ze niet meer kunnen herinneren.
+    OWInvoer(emoji: '🔒', label: 'WACHTWOORD', hint: 'Je wachtwoord',
+        controller: _wachtwoordCtrl, verborgen: true),
     const SizedBox(height: 8),
     Center(child: TextButton(
       onPressed: _wachtwoordVergetenAanvragen,
@@ -461,55 +461,11 @@ class _AcceptUitnodigSchermState extends State<AcceptUitnodigScherm> {
     ),
     const SizedBox(height: 8),
 
-    GestureDetector(
+    OWKnop(
+      label: 'Inloggen en deelnemen',
       onTap: _bezigInloggen ? null : _gastInloggen,
-      child: Opacity(opacity: _bezigInloggen ? 0.5 : 1.0,
-        child: Container(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            gradient: const LinearGradient(colors: [kPeach, kRose]),
-            borderRadius: BorderRadius.circular(14),
-            boxShadow: [BoxShadow(color: kPeach.withOpacity(0.3),
-                blurRadius: 14, offset: const Offset(0, 6))]),
-          child: Center(child: _bezigInloggen
-              ? const Row(mainAxisSize: MainAxisSize.min, children: [
-                  SizedBox(width: 20, height: 20,
-                      child: CircularProgressIndicator(
-                          color: kWhite, strokeWidth: 3)),
-                  SizedBox(width: 12),
-                  Text('Bezig...',
-                      style: TextStyle(fontSize: 15,
-                          fontWeight: FontWeight.w900, color: kWhite)),
-                ])
-              : const Text('Inloggen en deelnemen',
-                  style: TextStyle(fontSize: 15,
-                      fontWeight: FontWeight.w900, color: kWhite))),
-        ),
-      ),
+      bezig: _bezigInloggen,
     ),
     const SizedBox(height: 24),
   ];
-
-  /// Input-widget identiek aan setup_wizard._input (verbleekte kopie
-  /// zodat AcceptScherm zelfstandig is — geen import-cycle risico).
-  Widget _input(String emoji, String label, String hint,
-      TextEditingController ctrl, bool verborgen) =>
-      Container(
-        decoration: BoxDecoration(color: kWhite,
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: kPeachLight, width: 2)),
-        child: Row(children: [
-          Padding(padding: const EdgeInsets.only(left: 16),
-              child: Text(emoji, style: const TextStyle(fontSize: 20))),
-          Expanded(child: TextField(controller: ctrl, obscureText: verborgen,
-            style: const TextStyle(color: kBrown,
-                fontWeight: FontWeight.w700),
-            decoration: InputDecoration(
-              hintText: hint, labelText: label,
-              labelStyle: const TextStyle(color: kTextMuted, fontSize: 12),
-              hintStyle: const TextStyle(color: kPeachLight),
-              contentPadding: const EdgeInsets.fromLTRB(12, 16, 16, 16),
-              border: InputBorder.none))),
-        ]),
-      );
 }

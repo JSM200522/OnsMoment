@@ -7,6 +7,8 @@ import '../../services/device_modus_service.dart';
 import '../../services/uitnodiging_service.dart';
 import '../../theme/kleuren.dart';
 import '../../widgets/normaal_scaffold.dart';
+import '../../widgets/ow_knop.dart';
+import '../../widgets/ow_invoer.dart';
 
 /// Signup-pad voor uitgenodigde gast zonder bestaand account (V9 2.5-a-3-b).
 ///
@@ -190,120 +192,86 @@ class _GastSignupSchermState extends State<GastSignupScherm> {
       body: Padding(
         padding: const EdgeInsets.all(20),
         child: ListView(children: [
-          // Mini-preview van de kring waar gast lid van wordt.
+          const SizedBox(height: 4),
+          // Warme kring-kaart met foto, naam en uitnodiger.
           Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(color: kPeachPale,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: kPeachLight, width: 1.5)),
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: kWhite,
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(color: kPeachLight, width: 2),
+              boxShadow: [BoxShadow(color: kPeach.withOpacity(0.08),
+                  blurRadius: 12, offset: const Offset(0, 4))],
+            ),
             child: Row(children: [
-              Container(width: 40, height: 40,
+              Container(width: 52, height: 52,
                 decoration: BoxDecoration(shape: BoxShape.circle,
-                    color: kCream,
+                    color: kPeachPale,
                     border: Border.all(color: kPeach, width: 2),
                     image: (u.kringFoto != null && u.kringFoto!.isNotEmpty)
                         ? DecorationImage(image: NetworkImage(u.kringFoto!),
                             fit: BoxFit.cover) : null),
                 child: (u.kringFoto == null || u.kringFoto!.isEmpty)
                     ? const Icon(Icons.person_rounded,
-                        color: kPeach, size: 22)
+                        color: kPeach, size: 26)
                     : null),
-              const SizedBox(width: 12),
+              const SizedBox(width: 14),
               Expanded(child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start, children: [
                   Text('Lid worden van '
                       '${u.kringNaam.isNotEmpty ? u.kringNaam : 'de kring'}',
-                      style: const TextStyle(fontSize: 13,
-                          fontWeight: FontWeight.w800, color: kBrown)),
+                      style: const TextStyle(fontSize: 14,
+                          fontWeight: FontWeight.w900, color: kBrown)),
                   if (u.uitnodigerNaam != null && u.uitnodigerNaam!.isNotEmpty)
-                    Padding(padding: const EdgeInsets.only(top: 2),
+                    Padding(padding: const EdgeInsets.only(top: 4),
                       child: Text('Uitgenodigd door ${u.uitnodigerNaam}',
-                          style: const TextStyle(fontSize: 11,
+                          style: const TextStyle(fontSize: 12,
                               color: kTextMuted))),
                 ])),
             ]),
           ),
-          const SizedBox(height: 20),
+          const SizedBox(height: 24),
 
           const Text('Maak je account aan',
-              style: TextStyle(fontSize: 24, fontWeight: FontWeight.w900,
+              style: TextStyle(fontSize: 28, fontWeight: FontWeight.w900,
                   color: kBrown, height: 1.2)),
-          const SizedBox(height: 6),
+          const SizedBox(height: 8),
           const Text('Daarna word je meteen lid van de kring.',
               style: TextStyle(fontSize: 14, color: kTextMuted, height: 1.4)),
+          const SizedBox(height: 24),
+
+          OWInvoer(emoji: '👤', label: 'JOUW VOORNAAM', hint: 'Bijv. Sara',
+              controller: _naamCtrl),
+          const SizedBox(height: 12),
+          OWInvoer(emoji: '📧', label: 'E-MAILADRES', hint: 'voorbeeld@email.nl',
+              controller: _emailCtrl,
+              toetsenbord: TextInputType.emailAddress,
+              hoofdletters: TextCapitalization.none),
+          const SizedBox(height: 12),
+          OWInvoer(emoji: '🔒', label: 'WACHTWOORD', hint: 'Minimaal 6 tekens',
+              controller: _wachtwoordCtrl, verborgen: true),
           const SizedBox(height: 20),
 
-          _input('👤', 'Jouw voornaam', 'Bijv. Sara', _naamCtrl, false),
-          const SizedBox(height: 10),
-          _input('📧', 'E-mailadres', 'voorbeeld@email.nl',
-              _emailCtrl, false),
-          const SizedBox(height: 10),
-          _input('🔒', 'Wachtwoord', 'Minimaal 6 tekens',
-              _wachtwoordCtrl, true),
-          const SizedBox(height: 20),
-
-          GestureDetector(
+          OWKnop(
+            label: 'Aanmelden en deelnemen',
             onTap: _bezig ? null : _aanmelden,
-            child: Opacity(opacity: _bezig ? 0.5 : 1.0,
-              child: Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  gradient: const LinearGradient(colors: [kPeach, kRose]),
-                  borderRadius: BorderRadius.circular(14),
-                  boxShadow: [BoxShadow(color: kPeach.withOpacity(0.3),
-                      blurRadius: 14, offset: const Offset(0, 6))]),
-                child: Center(child: _bezig
-                    ? const Row(mainAxisSize: MainAxisSize.min, children: [
-                        SizedBox(width: 20, height: 20,
-                            child: CircularProgressIndicator(
-                                color: kWhite, strokeWidth: 3)),
-                        SizedBox(width: 12),
-                        Text('Bezig...',
-                            style: TextStyle(fontSize: 15,
-                                fontWeight: FontWeight.w900, color: kWhite)),
-                      ])
-                    : const Text('Aanmelden en deelnemen',
-                        style: TextStyle(fontSize: 15,
-                            fontWeight: FontWeight.w900, color: kWhite))),
-              ),
-            ),
+            bezig: _bezig,
           ),
           const SizedBox(height: 16),
 
           Container(
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(color: kCream,
-                borderRadius: BorderRadius.circular(10),
+                borderRadius: BorderRadius.circular(12),
                 border: Border.all(color: kPeachLight, width: 1.5)),
             child: const Text(
               '💡 Je gegevens worden alleen gebruikt om je toegang te geven '
-              'tot deze kring. De ontvanger-info (foto, dagelijkse momenten) '
+              'tot deze kring. De ontvanger-info (foto, herkenningsgeluid) '
               'is al ingesteld door de uitnodiger.',
-              style: TextStyle(fontSize: 12, color: kTextMuted, height: 1.4)),
+              style: TextStyle(fontSize: 12, color: kTextMuted, height: 1.5)),
           ),
         ]),
       ),
     );
   }
-
-  Widget _input(String emoji, String label, String hint,
-      TextEditingController ctrl, bool verborgen) =>
-      Container(
-        decoration: BoxDecoration(color: kWhite,
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: kPeachLight, width: 2)),
-        child: Row(children: [
-          Padding(padding: const EdgeInsets.only(left: 16),
-              child: Text(emoji, style: const TextStyle(fontSize: 20))),
-          Expanded(child: TextField(controller: ctrl, obscureText: verborgen,
-            style: const TextStyle(color: kBrown,
-                fontWeight: FontWeight.w700),
-            decoration: InputDecoration(
-              hintText: hint, labelText: label,
-              labelStyle: const TextStyle(color: kTextMuted, fontSize: 12),
-              hintStyle: const TextStyle(color: kPeachLight),
-              contentPadding: const EdgeInsets.fromLTRB(12, 16, 16, 16),
-              border: InputBorder.none))),
-        ]),
-      );
 }
