@@ -36,8 +36,6 @@ class KringAanmakenScherm extends StatefulWidget {
 
 class _KringAanmakenSchermState extends State<KringAanmakenScherm> {
   final _naamCtrl = TextEditingController();
-  final _lievelingsdingenCtrl = TextEditingController();
-  final _woonplaatsCtrl = TextEditingController();
   final _noodNaamCtrl = TextEditingController();
   final _noodTelCtrl = TextEditingController();
 
@@ -61,8 +59,6 @@ class _KringAanmakenSchermState extends State<KringAanmakenScherm> {
   void dispose() {
     _naamCtrl.removeListener(_herbouw);
     _naamCtrl.dispose();
-    _lievelingsdingenCtrl.dispose();
-    _woonplaatsCtrl.dispose();
     _noodNaamCtrl.dispose();
     _noodTelCtrl.dispose();
     _geluidPreviewPlayer.dispose();
@@ -147,8 +143,6 @@ class _KringAanmakenSchermState extends State<KringAanmakenScherm> {
         eigenaarUid: uid,
         ontvangerNaam: naam,
         foto: fotoUrl,
-        lievelingsdingen: _lievelingsdingenCtrl.text.trim(),
-        woonplaats: _woonplaatsCtrl.text.trim(),
         noodcontactNaam: _noodNaamCtrl.text.trim(),
         noodcontactTel: _noodTelCtrl.text.trim(),
         herkenningsgeluid: _gekozenGeluid,
@@ -298,9 +292,8 @@ class _KringAanmakenSchermState extends State<KringAanmakenScherm> {
                 style: TextStyle(color: kTextMuted, fontSize: 12)))),
           const SizedBox(height: 24),
 
-          _sectieKop('👤 Naam en informatie',
-              'De naam staat op het home-scherm. Extra info helpt de kring '
-              'gerichte berichten te sturen.'),
+          _sectieKop('👤 Naam en noodcontact',
+              'De naam staat op het home-scherm. Noodcontact is optioneel.'),
           const SizedBox(height: 12),
           _input('👵', 'Naam van je dierbare',
               'Bijv. Oma, Opa, Mam, Pap...',
@@ -308,13 +301,6 @@ class _KringAanmakenSchermState extends State<KringAanmakenScherm> {
           const SizedBox(height: 6),
           const Text('Zo verschijnt zijn/haar naam in de app en bij berichten.',
               style: TextStyle(fontSize: 12, color: kTextMuted, height: 1.4)),
-          const SizedBox(height: 10),
-          _input('💕', 'Lievelingsdingen (optioneel)',
-              'Bijv. tulpen, koffie, oude foto\'s',
-              _lievelingsdingenCtrl, false),
-          const SizedBox(height: 10),
-          _input('🏠', 'Vroegere woonplaats (optioneel)',
-              'Bijv. Volendam', _woonplaatsCtrl, false),
           const SizedBox(height: 10),
           _input('🆘', 'Noodcontact naam (optioneel)',
               'Bijv. Dochter Sara', _noodNaamCtrl, false),

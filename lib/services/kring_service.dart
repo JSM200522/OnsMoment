@@ -32,8 +32,6 @@ class KringService {
     required String eigenaarUid,
     required String ontvangerNaam,
     String? foto,
-    String? lievelingsdingen,
-    String? woonplaats,
     String? noodcontactNaam,
     String? noodcontactTel,
     String herkenningsgeluid = 'twinkel',
@@ -47,12 +45,6 @@ class KringService {
       id: id,
       naam: ontvangerNaam,
       foto: (foto == null || foto.isEmpty) ? null : foto,
-      lievelingsdingen: (lievelingsdingen == null || lievelingsdingen.isEmpty)
-          ? null
-          : lievelingsdingen,
-      woonplaats: (woonplaats == null || woonplaats.isEmpty)
-          ? null
-          : woonplaats,
       noodcontactNaam: (noodcontactNaam == null || noodcontactNaam.isEmpty)
           ? null
           : noodcontactNaam,

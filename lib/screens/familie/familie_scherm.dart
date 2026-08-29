@@ -3705,7 +3705,7 @@ class _InstellingenTabState extends State<InstellingenTab> {
           _emailStatusSectie(
               FirebaseAuth.instance.currentUser?.email ?? ''),
         _item('👵', 'Ontvanger-profiel',
-            'Naam, foto, lievelingsdingen en herkenningsgeluid', () {
+            'Naam, foto, herkenningsgeluid en noodcontact', () {
           Navigator.push(context, MaterialPageRoute(
               builder: (c) => const OntvangerInfoScherm()));
         }),
@@ -5739,8 +5739,6 @@ class OntvangerInfoScherm extends StatefulWidget {
 
 class _OntvangerInfoSchermState extends State<OntvangerInfoScherm> {
   final _naamCtrl = TextEditingController();
-  final _lievelingsdingenCtrl = TextEditingController();
-  final _woonplaatsCtrl = TextEditingController();
   final _noodNaamCtrl = TextEditingController();
   final _noodTelCtrl = TextEditingController();
   Uint8List? _fotoBytes;
@@ -5816,9 +5814,6 @@ class _OntvangerInfoSchermState extends State<OntvangerInfoScherm> {
       _kringIdVoorOpslaan = kringId;
       _kringDocBestaat = kringExists;
       _naamCtrl.text = _kies(k, 'naam', g, 'ontvangerNaam');
-      _lievelingsdingenCtrl.text =
-          _kies(k, 'lievelingsdingen', g, 'lievelingsdingen');
-      _woonplaatsCtrl.text = _kies(k, 'woonplaats', g, 'woonplaats');
       _noodNaamCtrl.text =
           _kies(k, 'noodcontactNaam', g, 'noodcontactNaam');
       _noodTelCtrl.text = _kies(k, 'noodcontactTel', g, 'noodcontactTel');
@@ -5859,10 +5854,6 @@ class _OntvangerInfoSchermState extends State<OntvangerInfoScherm> {
             style: TextStyle(fontSize: 11, color: kTextMuted))),
         const SizedBox(height: 24),
         _veld('👤', 'Naam', _naamCtrl),
-        const SizedBox(height: 10),
-        _veld('💕', 'Lievelingsdingen', _lievelingsdingenCtrl),
-        const SizedBox(height: 10),
-        _veld('🏠', 'Vroegere woonplaats', _woonplaatsCtrl),
         const SizedBox(height: 10),
         _veld('🆘', 'Noodcontact naam', _noodNaamCtrl),
         const SizedBox(height: 10),
@@ -5974,8 +5965,6 @@ class _OntvangerInfoSchermState extends State<OntvangerInfoScherm> {
         FirebaseFirestore.instance.collection('gebruikers').doc(uid), {
           'ontvangerNaam': _naamCtrl.text.trim(),
           'ontvangerFoto': fotoUrl,
-          'lievelingsdingen': _lievelingsdingenCtrl.text.trim(),
-          'woonplaats': _woonplaatsCtrl.text.trim(),
           'noodcontactNaam': _noodNaamCtrl.text.trim(),
           'noodcontactTel': _noodTelCtrl.text.trim(),
           'herkenningsgeluid': _gekozenGeluid,
@@ -5990,8 +5979,6 @@ class _OntvangerInfoSchermState extends State<OntvangerInfoScherm> {
               .doc(_kringIdVoorOpslaan!), {
             'naam': _naamCtrl.text.trim(),
             'foto': fotoUrl,
-            'lievelingsdingen': _lievelingsdingenCtrl.text.trim(),
-            'woonplaats': _woonplaatsCtrl.text.trim(),
             'noodcontactNaam': _noodNaamCtrl.text.trim(),
             'noodcontactTel': _noodTelCtrl.text.trim(),
             'herkenningsgeluid': _gekozenGeluid,

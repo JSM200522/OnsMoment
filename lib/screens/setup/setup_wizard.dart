@@ -36,8 +36,6 @@ class _SetupWizardState extends State<SetupWizard> {
   final _emailCtrl = TextEditingController();
   final _wachtwoordCtrl = TextEditingController();
   final _ontvangerNaamCtrl = TextEditingController();
-  final _lievelingsdingenCtrl = TextEditingController();
-  final _woonplaatsCtrl = TextEditingController();
   final _noodNaamCtrl = TextEditingController();
   final _noodTelCtrl = TextEditingController();
 
@@ -173,8 +171,6 @@ class _SetupWizardState extends State<SetupWizard> {
         if (nieuweRol == 'ontvanger') {
           _naamCtrl.clear();
           _ontvangerNaamCtrl.clear();
-          _lievelingsdingenCtrl.clear();
-          _woonplaatsCtrl.clear();
           _noodNaamCtrl.clear();
           _noodTelCtrl.clear();
           _profielFotoBytes = null;
@@ -312,7 +308,7 @@ class _SetupWizardState extends State<SetupWizard> {
         ),
         // Dots — buiten de PageView zodat ze nooit overlappen met CTA
         Padding(
-          padding: const EdgeInsets.symmetric(vertical: 14),
+          padding: const EdgeInsets.symmetric(vertical: 10),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: List.generate(3, (i) => GestureDetector(
@@ -351,9 +347,9 @@ class _SetupWizardState extends State<SetupWizard> {
                     fontWeight: FontWeight.w700,
                     decoration: TextDecoration.underline)),
           ),
-          const SizedBox(height: 24),
+          const SizedBox(height: 16),
         ] else
-          const SizedBox(height: 90),
+          const SizedBox(height: 70),
       ]),
     );
   }
@@ -364,44 +360,60 @@ class _SetupWizardState extends State<SetupWizard> {
     required String kop,
     required List<String> alineas,
   }) {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.fromLTRB(24, 40, 24, 16),
-      child: Column(
-        children: [
-          Container(
-            height: 200,
-            width: double.infinity,
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                colors: blobKleuren,
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
+    // Compact op korte schermen zodat álles binnen beeld past;
+    // wat overloopt is alsnog scrollbaar via SingleChildScrollView.
+    return LayoutBuilder(builder: (context, constraints) {
+      final kort = constraints.maxHeight < 620;
+      final blobHoogte = kort ? 130.0 : 170.0;
+      final emojiGrootte = kort ? 52.0 : 64.0;
+      final topPadding = kort ? 16.0 : 28.0;
+      final naBlob = kort ? 18.0 : 22.0;
+      final naKop = kort ? 10.0 : 14.0;
+      final alineaSpacing = kort ? 6.0 : 8.0;
+      final kopGrootte = kort ? 22.0 : 24.0;
+      final alineaGrootte = kort ? 14.0 : 15.0;
+
+      return SingleChildScrollView(
+        padding: EdgeInsets.fromLTRB(24, topPadding, 24, 8),
+        child: Column(
+          children: [
+            Container(
+              height: blobHoogte,
+              width: double.infinity,
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: blobKleuren,
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                borderRadius: BorderRadius.circular(24),
               ),
-              borderRadius: BorderRadius.circular(28),
+              child: Center(
+                child: Text(emoji, style: TextStyle(fontSize: emojiGrootte)),
+              ),
             ),
-            child: Center(
-              child: Text(emoji, style: const TextStyle(fontSize: 72)),
-            ),
-          ),
-          const SizedBox(height: 28),
-          Text(kop,
-              textAlign: TextAlign.center,
-              style: const TextStyle(
-                  fontSize: 26,
-                  fontWeight: FontWeight.w900,
-                  color: kBrown,
-                  height: 1.25)),
-          const SizedBox(height: 16),
-          ...alineas.map((a) => Padding(
-            padding: const EdgeInsets.only(bottom: 10),
-            child: Text(a,
+            SizedBox(height: naBlob),
+            Text(kop,
                 textAlign: TextAlign.center,
-                style: const TextStyle(
-                    fontSize: 15, color: kTextMuted, height: 1.6)),
-          )),
-        ],
-      ),
-    );
+                style: TextStyle(
+                    fontSize: kopGrootte,
+                    fontWeight: FontWeight.w900,
+                    color: kBrown,
+                    height: 1.25)),
+            SizedBox(height: naKop),
+            ...alineas.map((a) => Padding(
+              padding: EdgeInsets.only(bottom: alineaSpacing),
+              child: Text(a,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                      fontSize: alineaGrootte,
+                      color: kTextMuted,
+                      height: 1.5)),
+            )),
+          ],
+        ),
+      );
+    });
   }
 
   // ───────────────────────────────────────────────────
@@ -660,8 +672,8 @@ class _SetupWizardState extends State<SetupWizard> {
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: kPeachLight, width: 1.5)),
       child: const Text(
-        '💡 Lievelingsdingen, woonplaats, noodcontact en dagelijkse '
-        'momenten stel je in via Instellingen nadat je de app hebt gestart.',
+        '💡 Noodcontact en dagelijkse momenten stel je in via '
+        'Instellingen nadat je de app hebt gestart.',
         style: TextStyle(fontSize: 12, color: kTextMuted, height: 1.5)),
     ),
   ]);
@@ -821,8 +833,6 @@ class _SetupWizardState extends State<SetupWizard> {
         'gebruikersNaam': _naamCtrl.text.trim(),
         'ontvangerNaam': _ontvangerNaamCtrl.text.trim(),
         'ontvangerFoto': profielFotoUrl,
-        'lievelingsdingen': _lievelingsdingenCtrl.text.trim(),
-        'woonplaats': _woonplaatsCtrl.text.trim(),
         'noodcontactNaam': _noodNaamCtrl.text.trim(),
         'noodcontactTel': _noodTelCtrl.text.trim(),
         'herkenningsgeluid': _gekozenGeluid,
@@ -842,8 +852,6 @@ class _SetupWizardState extends State<SetupWizard> {
         eigenaarUid: uid,
         ontvangerNaam: _ontvangerNaamCtrl.text.trim(),
         foto: profielFotoUrl,
-        lievelingsdingen: _lievelingsdingenCtrl.text.trim(),
-        woonplaats: _woonplaatsCtrl.text.trim(),
         noodcontactNaam: _noodNaamCtrl.text.trim(),
         noodcontactTel: _noodTelCtrl.text.trim(),
         herkenningsgeluid: _gekozenGeluid,
@@ -1088,13 +1096,6 @@ class _SetupWizardState extends State<SetupWizard> {
                       Text(k.naam.isNotEmpty ? k.naam : 'Onbenoemde kring',
                           style: const TextStyle(fontSize: 16,
                               fontWeight: FontWeight.w800, color: kBrown)),
-                      if (k.lievelingsdingen != null
-                          && k.lievelingsdingen!.isNotEmpty)
-                        Padding(padding: const EdgeInsets.only(top: 2),
-                          child: Text(k.lievelingsdingen!,
-                              style: const TextStyle(fontSize: 12,
-                                  color: kTextMuted, height: 1.3),
-                              maxLines: 1, overflow: TextOverflow.ellipsis)),
                     ])),
                   if (bezigDeze)
                     const SizedBox(width: 16, height: 16,

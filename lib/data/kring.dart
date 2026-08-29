@@ -23,8 +23,6 @@ class Kring {
   final String id;
   final String naam;
   final String? foto;
-  final String? lievelingsdingen;
-  final String? woonplaats;
   final String? noodcontactNaam;
   final String? noodcontactTel;
   final String herkenningsgeluid;
@@ -41,8 +39,6 @@ class Kring {
     required this.id,
     required this.naam,
     this.foto,
-    this.lievelingsdingen,
-    this.woonplaats,
     this.noodcontactNaam,
     this.noodcontactTel,
     this.herkenningsgeluid = 'twinkel',
@@ -62,8 +58,6 @@ class Kring {
       id: doc.id,
       naam: data['naam'] as String? ?? '',
       foto: data['foto'] as String?,
-      lievelingsdingen: data['lievelingsdingen'] as String?,
-      woonplaats: data['woonplaats'] as String?,
       noodcontactNaam: data['noodcontactNaam'] as String?,
       noodcontactTel: data['noodcontactTel'] as String?,
       herkenningsgeluid: data['herkenningsgeluid'] as String? ?? 'twinkel',
@@ -87,8 +81,6 @@ class Kring {
     return {
       'naam': naam,
       'foto': foto,
-      'lievelingsdingen': lievelingsdingen,
-      'woonplaats': woonplaats,
       'noodcontactNaam': noodcontactNaam,
       'noodcontactTel': noodcontactTel,
       'herkenningsgeluid': herkenningsgeluid,
