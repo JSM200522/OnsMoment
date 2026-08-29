@@ -34,9 +34,35 @@ class UitnodigingService {
 
   /// Strip alle non-alfanumerieke chars (streepjes, spaties, newlines,
   /// emojis-niet-aanwezig). Tolerant voor wat de gebruiker overtypt of
-  /// uit een gedeelde tekst plakt.
+  /// uit een gedeelde tekst plakt. Casing blijft onaangeraakt — de
+  /// directe doc-lookup is case-sensitive; case-insensitive fallback
+  /// gebeurt via [_zoekTokenDocRefCaseInsensitief].
   static String normaliseerTokenInput(String input) {
     return input.replaceAll(RegExp(r'[^A-Za-z0-9]'), '');
+  }
+
+  /// Zoekt het token-doc via een case-insensitive query op het
+  /// [tokenLower]-veld. Fallback voor gasten die de code met verkeerde
+  /// hoofdletters overtypen. Geeft null als niets gevonden of query faalt.
+  ///
+  /// Werkt alleen op tokens die het [tokenLower]-veld hebben — bij oude
+  /// tokens backfilt [zorgVoorToken] het veld zodra de eigenaar
+  /// 'Uitnodig' opnieuw opent.
+  static Future<DocumentSnapshot?> _zoekTokenDocCaseInsensitief(
+      String genormaliseerdToken) async {
+    if (genormaliseerdToken.isEmpty) return null;
+    try {
+      final snap = await FirebaseFirestore.instance
+          .collection('uitnodig_tokens')
+          .where('tokenLower', isEqualTo: genormaliseerdToken.toLowerCase())
+          .limit(1)
+          .get();
+      if (snap.docs.isEmpty) return null;
+      return snap.docs.first;
+    } catch (e) {
+      debugPrint('🔗 [UitnodigingService] case-insensitive lookup faalde: $e');
+      return null;
+    }
   }
 
   // ─── Service-methods ──────────────────────────────────────────────
@@ -65,9 +91,20 @@ class UitnodigingService {
       if (bestaand != null && bestaand.isNotEmpty) {
         // Sanity-check: lookup-doc moet ook bestaan. Bij mismatch
         // (bv. handmatig verwijderd) door naar nieuwe-token-pad.
-        final lookup = await FirebaseFirestore.instance
-            .collection('uitnodig_tokens').doc(bestaand).get();
+        final lookupRef = FirebaseFirestore.instance
+            .collection('uitnodig_tokens').doc(bestaand);
+        final lookup = await lookupRef.get();
         if (lookup.exists) {
+          // Backfill: bestaande tokens (van vóór de case-insensitive
+          // fallback) missen tokenLower. Voeg toe zodat de gast
+          // case-insensitive kan valideren. Fail-soft — geen blokkade
+          // op de uitnodig-flow als de update faalt.
+          final data = lookup.data() ?? const <String, dynamic>{};
+          if (data['tokenLower'] == null) {
+            try {
+              await lookupRef.update({'tokenLower': bestaand.toLowerCase()});
+            } catch (_) {}
+          }
           return (token: bestaand, fout: null);
         }
       }
@@ -111,6 +148,10 @@ class UitnodigingService {
         'uitnodigerNaam': uitnodigerNaam,
         'huidigeLedenCache': huidigeLeden,
         'maxLedenCache': maxLeden,
+        // Case-insensitive lookup-helper: gasten kunnen de code met een
+        // andere casing overtypen; valideer/accepteer valt terug op een
+        // query op dit veld als directe doc-lookup faalt.
+        'tokenLower': nieuwToken.toLowerCase(),
       });
       batch.update(kringRef, {
         'uitnodigToken': nieuwToken,
@@ -146,20 +187,27 @@ class UitnodigingService {
       return (uitnodiging: null, fout: UitnodigingFout.notFound);
     }
     try {
-      final tokenDoc = await FirebaseFirestore.instance
+      DocumentSnapshot? tokenDoc = await FirebaseFirestore.instance
           .collection('uitnodig_tokens').doc(token).get();
       if (!tokenDoc.exists) {
-        return (uitnodiging: null, fout: UitnodigingFout.notFound);
+        // Case-insensitive fallback: gast heeft de code met andere
+        // hoofdletters overgetypt. Werkt op tokens met tokenLower-veld.
+        tokenDoc = await _zoekTokenDocCaseInsensitief(token);
+        if (tokenDoc == null || !tokenDoc.exists) {
+          return (uitnodiging: null, fout: UitnodigingFout.notFound);
+        }
       }
-      final data = tokenDoc.data() ?? const <String, dynamic>{};
+      final canonicalToken = tokenDoc.id;
+      final data = (tokenDoc.data() as Map<String, dynamic>?) ??
+          const <String, dynamic>{};
       final kringId = data['kringId'] as String? ?? '';
       if (kringId.isEmpty) {
         return (uitnodiging: null, fout: UitnodigingFout.notFound);
       }
       return (
         uitnodiging: Uitnodiging(
-          token: token,
-          displayToken: formatTokenVoorDisplay(token),
+          token: canonicalToken,
+          displayToken: formatTokenVoorDisplay(canonicalToken),
           kringId: kringId,
           kringNaam: data['kringNaam'] as String? ?? '',
           kringFoto: data['kringFoto'] as String?,
@@ -195,12 +243,18 @@ class UitnodigingService {
       return (success: false, fout: UitnodigingFout.notFound);
     }
     try {
-      final tokenSnap = await FirebaseFirestore.instance
+      DocumentSnapshot? tokenSnap = await FirebaseFirestore.instance
           .collection('uitnodig_tokens').doc(rawToken).get();
       if (!tokenSnap.exists) {
-        return (success: false, fout: UitnodigingFout.notFound);
+        // Case-insensitive fallback (gelijk aan valideer): gast typte
+        // de code met verkeerde hoofdletters.
+        tokenSnap = await _zoekTokenDocCaseInsensitief(rawToken);
+        if (tokenSnap == null || !tokenSnap.exists) {
+          return (success: false, fout: UitnodigingFout.notFound);
+        }
       }
-      final tokenData = tokenSnap.data() ?? const <String, dynamic>{};
+      final tokenData = (tokenSnap.data() as Map<String, dynamic>?) ??
+          const <String, dynamic>{};
       final kringId = tokenData['kringId'] as String? ?? '';
       final aangemaaktDoor = tokenData['aangemaaktDoor'] as String?;
       if (kringId.isEmpty) {

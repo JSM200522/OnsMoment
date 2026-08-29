@@ -236,6 +236,11 @@ class _AcceptUitnodigSchermState extends State<AcceptUitnodigScherm> {
               controller: _tokenCtrl,
               textAlign: TextAlign.center,
               textCapitalization: TextCapitalization.none,
+              // Voorkomt dat mobiele toetsenborden tekens 'verbeteren' of
+              // eerste letter hoofdgevoelig maken bij overtypen van code.
+              autocorrect: false,
+              enableSuggestions: false,
+              keyboardType: TextInputType.visiblePassword,
               decoration: const InputDecoration(
                 hintText: 'aB3c-D4eF-5gH6-iJ7k-lM8n',
                 hintStyle: TextStyle(color: kPeachLight, letterSpacing: 1.2),
