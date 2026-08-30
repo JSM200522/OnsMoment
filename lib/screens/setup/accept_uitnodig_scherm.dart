@@ -170,6 +170,9 @@ class _AcceptUitnodigSchermState extends State<AcceptUitnodigScherm> {
           'De kring uit deze uitnodiging bestaat niet meer.',
       UitnodigingFout.notFound =>
           'De uitnodiging is niet meer geldig.',
+      UitnodigingFout.permissionGeweigerd =>
+          'Deze uitnodiging kon niet worden geaccepteerd. Vraag de '
+          'uitnodiger om een nieuwe code.',
       _ => 'Even een netwerkprobleem. Probeer opnieuw.',
     };
     _toonFout(tekst);

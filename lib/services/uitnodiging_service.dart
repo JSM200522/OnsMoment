@@ -95,16 +95,29 @@ class UitnodigingService {
             .collection('uitnodig_tokens').doc(bestaand);
         final lookup = await lookupRef.get();
         if (lookup.exists) {
-          // Backfill: bestaande tokens (van vóór de case-insensitive
-          // fallback) missen tokenLower. Voeg toe zodat de gast
-          // case-insensitive kan valideren. Fail-soft — geen blokkade
-          // op de uitnodig-flow als de update faalt.
+          // Cache-refresh: eigenaar opent Uitnodig-dialog → dit is hét
+          // moment om huidigeLedenCache/maxLedenCache te verversen zodat
+          // accepteer() een verse vol-check kan doen. Ook backfill van
+          // tokenLower (van vóór case-insensitive fallback). Alles
+          // fail-soft — de uitnodig-flow blijft werken als update faalt.
           final data = lookup.data() ?? const <String, dynamic>{};
-          if (data['tokenLower'] == null) {
-            try {
-              await lookupRef.update({'tokenLower': bestaand.toLowerCase()});
-            } catch (_) {}
-          }
+          try {
+            final kring = Kring.fromFirestore(kringSnap);
+            final ledenCount =
+                await kringRef.collection('leden').count().get();
+            final huidigeLeden = ledenCount.count ?? 0;
+            final tier =
+                await ApparaatService.krijgTier(kring.eigenaarUid);
+            final maxLeden = ApparaatService.limietPerTier(tier);
+            final refresh = <String, Object>{
+              'huidigeLedenCache': huidigeLeden,
+              'maxLedenCache': maxLeden,
+            };
+            if (data['tokenLower'] == null) {
+              refresh['tokenLower'] = bestaand.toLowerCase();
+            }
+            await lookupRef.update(refresh);
+          } catch (_) {}
           return (token: bestaand, fout: null);
         }
       }
@@ -224,16 +237,29 @@ class UitnodigingService {
   }
 
   /// Voegt [gebruikerUid] als gast-membership toe aan de kring waar
-  /// [token] naar wijst. Idempotent: als de gebruiker al lid is,
-  /// returnt [UitnodigingFout.alLid] zonder schade.
+  /// [token] naar wijst.
   ///
-  /// **Race-mitigatie (Optie A, bekende beperking)**: doet vlak vóór de
-  /// membership-write een nieuwe `.count()` op de leden-subcollectie om
-  /// te checken dat de kring nog niet vol is. Dit dekt het normale geval
-  /// (sub-seconde tussen valideer en accept) maar is niet 100% atomic
-  /// — twee gasten die tegelijk de laatste plek opeisen kunnen allebei
-  /// slagen. Voor latere fase: Firestore-transaction met expliciet
-  /// teller-veld op kring-doc.
+  /// Post-rule-activatie (FASE B): de gast mag géén reads doen op de
+  /// kring, de leden-subcollectie of het eigenaar-gebruikersdoc — hij
+  /// is nog geen lid. Deze flow is daarom gestript tot:
+  ///
+  /// 1. token-doc lezen (uitnodig_tokens is publiek leesbaar per rule)
+  /// 2. vol-check via cache in het token-doc (huidigeLedenCache/maxLedenCache)
+  /// 3. eigen gebruikers-doc lezen voor weergaveNaam (eigen uid → OK)
+  /// 4. membership-write met viaToken (rule verifieert token + kring)
+  ///
+  /// **Personen-limiet-handhaving**: primair via cache in het token-doc,
+  /// die door `zorgVoorToken()` wordt ververst zodra de eigenaar de
+  /// uitnodig-dialog opent. Race-window: 2+ gasten die tegelijk joinen
+  /// bij een bijna-volle kring kunnen de cache gelijk zien en samen
+  /// slagen (bekende beperking, was er ook vóór de rule-activatie).
+  /// Latere strikte handhaving: teller op kring-doc + rule-check, of
+  /// een Cloud Function-proxy.
+  ///
+  /// **Al-lid detectie**: de write is idempotent (`.set()` overschrijft
+  /// het eigen membership-doc met dezelfde velden). Een gast die
+  /// tweemaal joint krijgt geen fout — de UI navigeert simpelweg naar
+  /// de kring-UI en ziet zichzelf al als lid.
   static Future<({bool success, UitnodigingFout? fout})> accepteer({
     required String token,
     required String gebruikerUid,
@@ -242,12 +268,14 @@ class UitnodigingService {
     if (rawToken.isEmpty || gebruikerUid.isEmpty) {
       return (success: false, fout: UitnodigingFout.notFound);
     }
+    DocumentSnapshot? tokenSnap;
+    String kringId = '';
+    String? aangemaaktDoor;
     try {
-      DocumentSnapshot? tokenSnap = await FirebaseFirestore.instance
+      tokenSnap = await FirebaseFirestore.instance
           .collection('uitnodig_tokens').doc(rawToken).get();
       if (!tokenSnap.exists) {
-        // Case-insensitive fallback (gelijk aan valideer): gast typte
-        // de code met verkeerde hoofdletters.
+        // Case-insensitive fallback: gast typte code met verkeerde casing.
         tokenSnap = await _zoekTokenDocCaseInsensitief(rawToken);
         if (tokenSnap == null || !tokenSnap.exists) {
           return (success: false, fout: UitnodigingFout.notFound);
@@ -255,65 +283,67 @@ class UitnodigingService {
       }
       final tokenData = (tokenSnap.data() as Map<String, dynamic>?) ??
           const <String, dynamic>{};
-      final kringId = tokenData['kringId'] as String? ?? '';
-      final aangemaaktDoor = tokenData['aangemaaktDoor'] as String?;
+      kringId = tokenData['kringId'] as String? ?? '';
+      aangemaaktDoor = tokenData['aangemaaktDoor'] as String?;
       if (kringId.isEmpty) {
         return (success: false, fout: UitnodigingFout.notFound);
       }
 
-      final kringRef = FirebaseFirestore.instance
-          .collection('kringen').doc(kringId);
-      final kringSnap = await kringRef.get();
-      if (!kringSnap.exists) {
-        return (success: false, fout: UitnodigingFout.kringNotFound);
-      }
-      final kring = Kring.fromFirestore(kringSnap);
-
-      // Al lid? Geen membership-write nodig, maar return alLid zodat de
-      // UI iets duidelijks kan tonen.
-      final lidRef = kringRef.collection('leden').doc(gebruikerUid);
-      final lidSnap = await lidRef.get();
-      if (lidSnap.exists) {
-        return (success: false, fout: UitnodigingFout.alLid);
-      }
-
-      // Optie A race-mitigatie: recount vlak voor de write.
-      final ledenCount = await kringRef.collection('leden').count().get();
-      final huidigeLeden = ledenCount.count ?? 0;
-      final tier = await ApparaatService.krijgTier(kring.eigenaarUid);
-      final maxLeden = ApparaatService.limietPerTier(tier);
-      if (huidigeLeden >= maxLeden) {
+      // Vol-check via cache. De eigenaar ververst deze cache bij elke
+      // opening van de uitnodig-dialog (zie zorgVoorToken).
+      final huidigeLeden = (tokenData['huidigeLedenCache'] as int?) ?? 0;
+      final maxLeden = (tokenData['maxLedenCache'] as int?) ?? 0;
+      if (maxLeden > 0 && huidigeLeden >= maxLeden) {
         return (success: false, fout: UitnodigingFout.kringVol);
       }
-
-      // V9 2.8-a-1: lees eigen familieNaam (eigen uid -> geen cross-user)
-      // om als weergaveNaam in de leden-doc te denormaliseren. Voorkomt
-      // dat de kringleden-lijst per lid een cross-user read moet doen.
-      String? weergaveNaam;
-      try {
-        final eigenDoc = await FirebaseFirestore.instance
-            .collection('gebruikers').doc(gebruikerUid).get();
-        final naam = eigenDoc.data()?['familieNaam'] as String?;
-        if (naam != null && naam.isNotEmpty) weergaveNaam = naam;
-      } catch (_) {}
-
-      final membership = Membership(
-        userUid: gebruikerUid,
-        rol: AccountRol.gast,
-        gejoindOp: DateTime.now(), // direct overschreven met serverTimestamp
-        uitgenodigdDoor: aangemaaktDoor,
-        weergaveNaam: weergaveNaam,
-        // Canonieke token-id (uit tokenSnap.id) i.p.v. rawToken zodat de
-        // Firestore-rule case-insensitief joinen accepteert.
-        viaToken: tokenSnap.id,
-      );
-
-      final batch = FirebaseFirestore.instance.batch();
-      batch.set(lidRef, membership.toFirestoreMap(bijCreate: true));
-      await batch.commit();
-      return (success: true, fout: null);
+    } on FirebaseException catch (e) {
+      debugPrint('🔗 [UitnodigingService] token-read faalde: ${e.code}');
+      return (success: false, fout: UitnodigingFout.netwerk);
     } catch (e) {
-      debugPrint('🔗 [UitnodigingService] accepteer faalde: $e');
+      debugPrint('🔗 [UitnodigingService] token-read faalde: $e');
+      return (success: false, fout: UitnodigingFout.netwerk);
+    }
+
+    // Eigen gebruikers-doc lezen voor weergaveNaam. Eigen uid → OK onder
+    // de rules. Fail-soft: bij fout blijft weergaveNaam null.
+    String? weergaveNaam;
+    try {
+      final eigenDoc = await FirebaseFirestore.instance
+          .collection('gebruikers').doc(gebruikerUid).get();
+      final naam = eigenDoc.data()?['familieNaam'] as String?;
+      if (naam != null && naam.isNotEmpty) weergaveNaam = naam;
+    } catch (_) {}
+
+    final membership = Membership(
+      userUid: gebruikerUid,
+      rol: AccountRol.gast,
+      gejoindOp: DateTime.now(), // direct overschreven met serverTimestamp
+      uitgenodigdDoor: aangemaaktDoor,
+      weergaveNaam: weergaveNaam,
+      // Canonieke token-id (uit tokenSnap.id) i.p.v. rawToken zodat de
+      // Firestore-rule case-insensitief joinen accepteert.
+      viaToken: tokenSnap.id,
+    );
+
+    final lidRef = FirebaseFirestore.instance
+        .collection('kringen').doc(kringId)
+        .collection('leden').doc(gebruikerUid);
+    try {
+      await lidRef.set(membership.toFirestoreMap(bijCreate: true));
+      return (success: true, fout: null);
+    } on FirebaseException catch (e) {
+      debugPrint('🔗 [UitnodigingService] membership-write faalde: ${e.code}');
+      // Onderscheid tussen rule-weigering en netwerk zodat de UI een
+      // passende melding kan tonen.
+      if (e.code == 'permission-denied') {
+        return (success: false, fout: UitnodigingFout.permissionGeweigerd);
+      }
+      if (e.code == 'unavailable' || e.code == 'deadline-exceeded') {
+        return (success: false, fout: UitnodigingFout.netwerk);
+      }
+      return (success: false, fout: UitnodigingFout.netwerk);
+    } catch (e) {
+      debugPrint('🔗 [UitnodigingService] membership-write faalde: $e');
       return (success: false, fout: UitnodigingFout.netwerk);
     }
   }

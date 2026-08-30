@@ -64,6 +64,11 @@ enum UitnodigingFout {
   /// Gebruiker is al lid van deze kring; opnieuw accepteren is een no-op.
   alLid,
 
-  /// Generieke fout (permission-denied, offline, onverwachte exception).
+  /// Firestore weigert de write (rule-mismatch, veld-eis niet gehaald).
+  /// Zeldzaam na strip van accepteer(); toont een neutrale melding zodat
+  /// de gebruiker weet dat het niet aan het netwerk lag.
+  permissionGeweigerd,
+
+  /// Echte netwerk-/serverfout (offline, timeout, unavailable).
   netwerk,
 }

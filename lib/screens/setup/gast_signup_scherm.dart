@@ -147,6 +147,11 @@ class _GastSignupSchermState extends State<GastSignupScherm> {
           _toonFout('De uitnodiging is niet meer geldig.');
           Navigator.of(context).pop('reset');
           break;
+        case UitnodigingFout.permissionGeweigerd:
+          _toonFout('Deze uitnodiging kon niet worden geaccepteerd. '
+              'Vraag de uitnodiger om een nieuwe code.');
+          Navigator.of(context).pop('reset');
+          break;
         default:
           _toonFout('Even een netwerkprobleem. Probeer opnieuw.');
       }
