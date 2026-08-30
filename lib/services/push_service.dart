@@ -8,6 +8,8 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'apparaat_service.dart';
+import 'bel_callkit_service.dart';
+import 'callkit_flag_service.dart';
 import 'device_modus_service.dart';
 import 'kring_service.dart';
 
@@ -546,6 +548,31 @@ class PushService {
     // _verwerkLokaalNotificatieTik al vuurde voor dezelfde callId.
     // Fallback: _inkomendGesprekOpen-vlag in _OntvangerRouterState.
     if (incomingCallNotifier.value?.callId == call.callId) return;
+
+    // BEL-B3: als de callkit-flag aan staat EN dit apparaat NIET in
+    // vergrendelde modus staat, laat de native call-UI (ConnectionService)
+    // de melding tonen. Event-stream (BelCallkitService.luisterEvents)
+    // publiceert de call vervolgens op incomingCallNotifier bij Opnemen.
+    // In vergrendelde modus draait de kiosk-flow (foreground app +
+    // InkomendGesprekScherm) — die mag niet gedupliceerd worden door B.
+    // Fail-soft: als show faalt, val terug op de bestaande foreground-flow.
+    final modus = DeviceModusService.weergaveModusNotifier.value;
+    final vergrendeld = modus == DeviceModusService.VERGRENDELD;
+    if (!vergrendeld && CallkitFlagService.isEnabledSync()) {
+      unawaited(BelCallkitService.showCallkit(
+        callId: call.callId,
+        callerName: call.callerName,
+        fcmData: Map<String, dynamic>.from(msg.data),
+      ).then((getoond) {
+        if (!getoond) {
+          // B faalde → val terug op oude foreground-pad.
+          if (incomingCallNotifier.value?.callId != call.callId) {
+            incomingCallNotifier.value = call;
+          }
+        }
+      }));
+      return;
+    }
     incomingCallNotifier.value = call;
   }
 
@@ -592,6 +619,10 @@ Future<void> _backgroundHandler(RemoteMessage message) async {
           await plugin.cancel(1001 + i);
         }
       } catch (_) {}
+      // BEL-B: ook de eventuele native call-UI sluiten als B actief was.
+      if (callId is String && callId.isNotEmpty) {
+        await BelCallkitService.beeindigCallkit(callId);
+      }
     }
   } catch (e) {
     debugPrint('⚠️ FCM background handler faalde: $e');
@@ -714,6 +745,41 @@ Future<void> _achtergrondGesprekNotificatie(
     Map<String, dynamic> data) async {
   final callerName = _achtergrondStrUit(data, 'callerName', 'Familie');
   final callId = _achtergrondStrUit(data, 'callId', '');
+
+  // BEL-B7: vergrendelde-modus guard — die modus draait de app altijd
+  // voorgrond en gebruikt het foreground-pad; achtergrond-notificatie
+  // is daar hooguit een fallback. Native call-UI (B) zou daar dubbel
+  // triggeren of het kiosk-scherm verstoren. Skip B in vergrendeld.
+  final modus = await DeviceModusService.krijgWeergaveModus();
+  final vergrendeld = modus == DeviceModusService.VERGRENDELD;
+
+  // BEL-B4: probeer native call-UI (ConnectionService) alleen als flag
+  // aan én niet vergrendeld. Bij succes: BEL-A2 herhaal-loop overslaan
+  // (voorkomt dubbele melding + dubbele beltoon). Bij falen: val terug
+  // op de bestaande Optie-A path (local notification + herhaal-loop).
+  var bViaCallkit = false;
+  if (!vergrendeld && callId.isNotEmpty) {
+    try {
+      final flagAan = await CallkitFlagService.isEnabled();
+      if (flagAan) {
+        bViaCallkit = await BelCallkitService.showCallkit(
+          callId: callId,
+          callerName: callerName,
+          fcmData: data,
+        );
+      }
+    } catch (e) {
+      debugPrint('⚠️ B4 flag-check/show faalde (val terug op A): $e');
+      bViaCallkit = false;
+    }
+  }
+
+  if (bViaCallkit) {
+    // B6: A2-herhaal-loop overslaan; native call-UI regelt beltoon +
+    // Opnemen/Weigeren via event-stream in de main-isolate.
+    _actieveGesprekId = callId; // Alleen voor cancel-cleanup-hook.
+    return;
+  }
 
   final plugin = FlutterLocalNotificationsPlugin();
   await plugin.initialize(

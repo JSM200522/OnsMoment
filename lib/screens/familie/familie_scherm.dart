@@ -15,6 +15,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../services/apparaat_service.dart';
+import '../../services/callkit_flag_service.dart';
 import '../../services/device_modus_service.dart';
 import '../../services/dagelijks_audio_service.dart';
 import '../../services/kiosk_service.dart';
@@ -3897,12 +3898,82 @@ class _InstellingenTabState extends State<InstellingenTab> {
           await FirebaseAuth.instance.signOut();
         }),
         const SizedBox(height: 30),
-        Center(child: Opacity(opacity: 0.85,
-            child: Image.asset('assets/images/logo.png', height: 48))),
+        Center(child: GestureDetector(
+          // BEL-B verborgen dev-toggle: long-press op logo opent de
+          // callkit-flag-override-dialog. Voor testers zonder Firebase
+          // Console-toegang. Niet zichtbaar aangekondigd — bewust
+          // 'verborgen' zodat het geen productie-UI is.
+          onLongPress: () => _toonCallkitDevToggle(context),
+          child: Opacity(opacity: 0.85,
+              child: Image.asset('assets/images/logo.png', height: 48)),
+        )),
         const SizedBox(height: 8),
         const Center(child: Text('Ons Moment v7',
             style: TextStyle(fontSize: 11, color: kTextMuted))),
       ]),
+    );
+  }
+
+  Future<void> _toonCallkitDevToggle(BuildContext context) async {
+    final huidig = await CallkitFlagService.leesLokaleOverride();
+    final effectief = await CallkitFlagService.isEnabled();
+    if (!context.mounted) return;
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20)),
+        backgroundColor: kCream,
+        title: const Text('Callkit dev-toggle',
+            style: TextStyle(fontSize: 17, fontWeight: FontWeight.w900,
+                color: kBrown)),
+        content: Column(mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text('Effectief nu: ${effectief ? "AAN" : "UIT"}',
+              style: const TextStyle(fontSize: 13,
+                  fontWeight: FontWeight.w800, color: kBrown)),
+          const SizedBox(height: 6),
+          Text('Lokale override: '
+              '${huidig == null ? "geen (remote bepaalt)" : huidig ? "AAN" : "UIT"}',
+              style: const TextStyle(fontSize: 12, color: kTextMuted)),
+          const SizedBox(height: 10),
+          const Text('Effectief bij volgende inkomend gesprek. Bij '
+              'twijfel: herstart de app.',
+              style: TextStyle(fontSize: 12, color: kTextMuted,
+                  height: 1.3)),
+        ]),
+        actions: [
+          TextButton(
+            onPressed: () async {
+              await CallkitFlagService.wisLokaleOverride();
+              if (context.mounted) Navigator.of(ctx).pop();
+            },
+            child: const Text('Wis override',
+                style: TextStyle(color: kTextMuted)),
+          ),
+          TextButton(
+            onPressed: () async {
+              await CallkitFlagService.zetLokaleOverride(false);
+              if (context.mounted) Navigator.of(ctx).pop();
+            },
+            child: const Text('Zet UIT',
+                style: TextStyle(color: kRood,
+                    fontWeight: FontWeight.w800)),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+                backgroundColor: kPeach, foregroundColor: kWhite,
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12))),
+            onPressed: () async {
+              await CallkitFlagService.zetLokaleOverride(true);
+              if (context.mounted) Navigator.of(ctx).pop();
+            },
+            child: const Text('Zet AAN',
+                style: TextStyle(fontWeight: FontWeight.w800)),
+          ),
+        ],
+      ),
     );
   }
 

@@ -12,6 +12,7 @@ import 'screens/tablet/inkomend_gesprek_scherm.dart';
 import 'screens/videobellen/gesprek_scherm.dart';
 import 'services/apparaat_service.dart';
 import 'services/bel_callkit_service.dart';
+import 'services/callkit_flag_service.dart';
 import 'services/device_modus_service.dart';
 import 'services/crash_service.dart';
 import 'services/push_service.dart';
@@ -50,9 +51,15 @@ void main() async {
   await PushService.initApp();
   // BEL-B2: fire-and-forget callkit-plugin warm-up. Volledig async,
   // niet ge-awaited, alle fouten intern gevangen — mag onmogelijk de
-  // app-opstart blokkeren of crashen. De bel-flow loopt in deze fase
-  // nog volledig via Optie A (FCM data-only + local-notification).
+  // app-opstart blokkeren of crashen.
   unawaited(BelCallkitService.warmupProbe());
+  // BEL-B3-B7 flag-warmup: async lookup zodat CallkitFlagService.
+  // isEnabledSync() vanaf ~1s na app-start een verse waarde heeft.
+  // Fail-soft naar OFF bij Firestore-fout — Optie A blijft dan dragen.
+  unawaited(CallkitFlagService.isEnabled());
+  // BEL-B5: event-stream luisteraar voor Opnemen/Weigeren-taps in de
+  // native call-UI. Idempotent + fail-soft.
+  unawaited(BelCallkitService.luisterEvents());
   runApp(const OnsMomentApp());
 }
 

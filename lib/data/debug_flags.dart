@@ -27,3 +27,12 @@ const bool DEBUG_VIDEOBELLEN = true;
 /// Zet op false als de testresultaten negatief zijn; bij false gedraagt
 /// de app zich exact als vóór deze feature.
 const bool DEBUG_KIOSK = true;
+
+/// BEL-B: harde compile-time kill-switch voor Optie B (ConnectionService/
+/// TelecomManager via flutter_callkit_incoming). Zet op TRUE als de
+/// callkit-code op een toestel catastrofaal faalt en de remote flag +
+/// dev-override niet snel genoeg bereikbaar zijn. Bij TRUE draait de
+/// app 100% op Optie A (BEL-A1..A4), ongeacht Firestore/SharedPreferences.
+/// Standaard FALSE — remote/lokale flag bepaalt dan of B daadwerkelijk
+/// aan gaat. Zie CallkitFlagService voor de 3-laags beslislogica.
+const bool CALLKIT_HARD_UIT = false;

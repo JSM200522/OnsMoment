@@ -422,6 +422,21 @@ describe('leden — gast-accept via token', () => {
 });
 
 // ──────────────────────────────────────────────
+// CONFIG — feature-flags publiek leesbaar
+// ──────────────────────────────────────────────
+describe('config/features — feature-flag read', () => {
+  test('L39: gast (niet ingelogd) leest config/features', async () => {
+    const db = alsGast(env).firestore();
+    await assertSucceeds(getDoc(doc(db, 'config', 'features')));
+  });
+
+  test('L40: eigenaarA leest config/features (voor CallkitFlagService)', async () => {
+    const db = alsEigenaarA(env).firestore();
+    await assertSucceeds(getDoc(doc(db, 'config', 'features')));
+  });
+});
+
+// ──────────────────────────────────────────────
 // APPARATEN — cross-uid read (bel-lijst)
 // ──────────────────────────────────────────────
 describe('apparaten — cross-uid read voor bellijst', () => {

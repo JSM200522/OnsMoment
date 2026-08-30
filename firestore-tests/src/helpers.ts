@@ -158,6 +158,11 @@ export async function seedData(env: RulesTestEnvironment): Promise<void> {
       tokenLower: TOKEN_B_RAW.toLowerCase(),
     });
 
+    // Feature-flags doc — remote CallkitFlagService leest hier vanaf.
+    await setDoc(doc(db, 'config', 'features'), {
+      callkitEnabled: false,
+    });
+
     // Apparaat voor eigenaarB (voor cross-uid bel-lees-test)
     await setDoc(doc(db, 'gebruikers', EIGENAAR_B_UID), {
       naam: 'Eigenaar B',

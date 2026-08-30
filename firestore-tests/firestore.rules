@@ -96,6 +96,15 @@ service cloud.firestore {
       allow read: if isIngelogd() && resource.data.userUid == request.auth.uid;
     }
 
+    // App-brede feature-flags. Elk client mag lezen (nodig voor de
+    // 3-laags CallkitFlagService bij app-init); writes gaan uitsluitend
+    // via Firebase Console/Admin SDK. Client-writes blokkeren voorkomt
+    // dat een gebruiker de flag voor zichzelf kan aanzetten via REST.
+    match /config/{docId} {
+      allow read: if true;
+      allow write: if false;
+    }
+
     // Uitnodig-tokens: publiek leesbaar (gast valideert vóór inlog), maar
     // alleen kring-eigenaar mag creëren/muteren.
     //

@@ -473,6 +473,25 @@ describe('gast-accept — aanvallen', () => {
 });
 
 // ──────────────────────────────────────────────
+// CONFIG — feature-flags writes zijn dicht
+// ──────────────────────────────────────────────
+describe('config/features — aanvallen', () => {
+  test('A48: eigenaarA probeert callkitEnabled te wijzigen (moet falen)', async () => {
+    const db = alsEigenaarA(env).firestore();
+    await assertFails(
+      updateDoc(doc(db, 'config', 'features'), { callkitEnabled: true }),
+    );
+  });
+
+  test('A49: gast (niet ingelogd) probeert config/features aan te maken', async () => {
+    const db = alsGast(env).firestore();
+    await assertFails(
+      setDoc(doc(db, 'config', 'nepje'), { callkitEnabled: true }),
+    );
+  });
+});
+
+// ──────────────────────────────────────────────
 // APPARATEN — cross-uid aanvallen
 // ──────────────────────────────────────────────
 describe('apparaten — cross-uid aanvallen', () => {
