@@ -38,6 +38,10 @@ dependencies:
   # (iOS-integratie zit in de package; web is no-op — geen call daar dankzij
   # kIsWeb-guard in VideoCallService).
   permission_handler: ^11.3.1
+  # Optie B — ConnectionService/TelecomManager (Android) + CallKit (iOS).
+  # B1: alleen toegevoegd als dependency; nog geen code-gebruik. Bij B2
+  # volgt manifest-config + PhoneAccount-registratie.
+  flutter_callkit_incoming: ^2.5.0
 
 dependency_overrides:
   record_android: 1.2.0
