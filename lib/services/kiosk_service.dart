@@ -79,4 +79,28 @@ class KioskService {
     if (kIsWeb) return;
     try { await _channel.invokeMethod<void>('requestFullScreenIntent'); } catch (_) {}
   }
+
+  /// BEL-A4: true als de app is uitgezonderd van battery-optimalisatie.
+  /// Op Android < 6 (Marshmallow) bestaat de feature niet → altijd true.
+  static Future<bool> isBatteryOptimizationUit() async {
+    if (kIsWeb) return true;
+    try {
+      return await _channel.invokeMethod<bool>('isBatteryOptimizationUit')
+          ?? true;
+    } catch (_) {
+      return true;
+    }
+  }
+
+  /// BEL-A4: toont het Android-systeemdialoog waarmee de gebruiker deze
+  /// app kan uitzonderen van battery-optimalisatie. No-op op web en op
+  /// API < 23. Samsung heeft een tweede laag ("Sleeping apps") die
+  /// alleen handmatig via Instellingen kan — de aanroeper toont
+  /// daarvoor een aparte uitleg.
+  static Future<void> vraagBatteryOptimizationUit() async {
+    if (kIsWeb) return;
+    try {
+      await _channel.invokeMethod<void>('vraagBatteryOptimizationUit');
+    } catch (_) {}
+  }
 }

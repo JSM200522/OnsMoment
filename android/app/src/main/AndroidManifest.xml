@@ -23,6 +23,11 @@
          Vereist op Samsung/Xiaomi dat de gebruiker de app handmatig toevoegt
          aan de fabrikant-specifieke autostart-lijst. -->
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
+    <!-- BEL-A4: laat de app zichzelf uitzonderen van battery-optimalisatie
+         zodat FCM-berichten bij dichte app betrouwbaar blijven aankomen.
+         Prompt wordt in de meldingen-modus getoond na eerste opstart.
+         Play Store-review vereist rechtvaardiging (calling app). -->
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS"/>
 
     <application
         android:label="Ons Moment"
@@ -96,6 +101,11 @@
         <intent>
             <action android:name="android.intent.action.PROCESS_TEXT"/>
             <data android:mimeType="text/plain"/>
+        </intent>
+        <!-- BEL-A4: nodig om te checken of het battery-opt Settings-intent
+             bestaat (Android 11+ package visibility). -->
+        <intent>
+            <action android:name="android.settings.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS"/>
         </intent>
     </queries>
 </manifest>

@@ -13,9 +13,11 @@ import 'package:just_audio/just_audio.dart';
 import 'package:http/http.dart' as http;
 import 'package:url_launcher/url_launcher.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../../services/apparaat_service.dart';
 import '../../services/device_modus_service.dart';
 import '../../services/dagelijks_audio_service.dart';
+import '../../services/kiosk_service.dart';
 import '../../services/push_service.dart';
 import '../../theme/kleuren.dart';
 import '../../data/geluiden.dart';
@@ -1202,6 +1204,150 @@ class _StuurTabState extends State<StuurTab> {
     });
     DeviceModusService.actieveKringNotifier
         .addListener(_opActieveKringWissel);
+
+    // BEL-A3+A4: alleen in meldingen-modus (alsOntvanger:true) op
+    // Android — checks voor full-screen-intent (Android 14+) en
+    // battery-optimization. Vergrendelde modus (TabletScherm) doet dit
+    // al zelfstandig; familie-app op eigen telefoon krijgt geen calls
+    // en heeft deze prompts niet nodig.
+    if (widget.alsOntvanger && !kIsWeb && DEBUG_VIDEOBELLEN) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _checkBelPromptsMeldingenModus();
+      });
+    }
+  }
+
+  static const String _kFsiDismissTs = 'bel_fsi_dismiss_ts';
+  static const String _kBattOptDismissTs = 'bel_battopt_dismiss_ts';
+  static const int _promptDismissDagen = 7;
+
+  Future<void> _checkBelPromptsMeldingenModus() async {
+    if (!mounted) return;
+    // Sequentieel: eerst FSI (kritiek voor lock-screen), dan battery-opt.
+    final fsiOk = await KioskService.kanFullScreenIntent();
+    if (!mounted) return;
+    if (!fsiOk && await _promptNietUitgesteld(_kFsiDismissTs)) {
+      if (!mounted) return;
+      final klaar = Completer<void>();
+      _toonFsiDialogMeldingen(onDone: klaar.complete);
+      await klaar.future;
+      if (!mounted) return;
+    }
+    final battOk = await KioskService.isBatteryOptimizationUit();
+    if (!mounted) return;
+    if (!battOk && await _promptNietUitgesteld(_kBattOptDismissTs)) {
+      if (!mounted) return;
+      _toonBatteryOptDialogMeldingen();
+    }
+  }
+
+  Future<bool> _promptNietUitgesteld(String key) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final ts = prefs.getInt(key);
+      if (ts == null) return true;
+      final laatste = DateTime.fromMillisecondsSinceEpoch(ts);
+      return DateTime.now().difference(laatste).inDays >= _promptDismissDagen;
+    } catch (_) {
+      return true;
+    }
+  }
+
+  Future<void> _noteerDismiss(String key) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setInt(key, DateTime.now().millisecondsSinceEpoch);
+    } catch (_) {}
+  }
+
+  void _toonFsiDialogMeldingen({required VoidCallback onDone}) {
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20)),
+        title: const Text('Gesprek op volledig scherm',
+            style: TextStyle(fontWeight: FontWeight.w900,
+                color: kBrown, fontSize: 17)),
+        content: const Text(
+            'Geef toestemming zodat een inkomend videogesprek groot in '
+            'beeld komt — ook als het scherm uit staat.\n\n'
+            'Zonder deze instelling verschijnt het gesprek als een '
+            'kleine melding bovenaan.',
+            style: TextStyle(fontSize: 14, color: kBrown)),
+        actions: [
+          TextButton(
+            onPressed: () async {
+              await _noteerDismiss(_kFsiDismissTs);
+              if (mounted) Navigator.of(ctx).pop();
+              onDone();
+            },
+            child: const Text('Later',
+                style: TextStyle(color: kTextMuted)),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+                backgroundColor: kPeach, foregroundColor: kWhite,
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12))),
+            onPressed: () {
+              Navigator.of(ctx).pop();
+              KioskService.vraagFullScreenIntent();
+              onDone();
+            },
+            child: const Text('Instelling openen',
+                style: TextStyle(fontWeight: FontWeight.w800)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _toonBatteryOptDialogMeldingen() {
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20)),
+        title: const Text('Zet batterij-optimalisatie uit',
+            style: TextStyle(fontWeight: FontWeight.w900,
+                color: kBrown, fontSize: 17)),
+        content: const Text(
+            'Android kan Ons Moment stiller zetten als hij denkt dat de '
+            'app "in slaap" is — dan mist je dierbare berichten en '
+            'inkomende gesprekken.\n\n'
+            'Zet dit uit zodat berichten en oproepen altijd aankomen, '
+            'ook als de app dicht is.\n\n'
+            'Extra bij Samsung: kijk ook bij Instellingen → Apparaat- '
+            'onderhoud → Batterij → Achtergrondgebruikslimieten en '
+            'haal Ons Moment uit "Slapende apps" / "Diep slapende apps".',
+            style: TextStyle(fontSize: 13, color: kBrown, height: 1.4)),
+        actions: [
+          TextButton(
+            onPressed: () async {
+              await _noteerDismiss(_kBattOptDismissTs);
+              if (mounted) Navigator.of(ctx).pop();
+            },
+            child: const Text('Later',
+                style: TextStyle(color: kTextMuted)),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+                backgroundColor: kPeach, foregroundColor: kWhite,
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12))),
+            onPressed: () {
+              Navigator.of(ctx).pop();
+              KioskService.vraagBatteryOptimizationUit();
+            },
+            child: const Text('Zet uit',
+                style: TextStyle(fontWeight: FontWeight.w800)),
+          ),
+        ],
+      ),
+    );
   }
 
   void _opActieveKringWissel() {
