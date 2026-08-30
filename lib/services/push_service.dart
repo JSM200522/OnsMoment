@@ -579,6 +579,19 @@ Future<void> _backgroundHandler(RemoteMessage message) async {
       await _achtergrondMomentNotificatie(message.data);
     } else if (message.data['type'] == 'inkomend_gesprek') {
       await _achtergrondGesprekNotificatie(message.data);
+    } else if (message.data['type'] == 'gesprek_geannuleerd') {
+      // BEL-A2: beller heeft opgehangen — stop de herhaal-loop en veeg
+      // de melding weg zodat de callee geen ghost-rinkel meer krijgt.
+      final callId = message.data['callId'];
+      if (callId is String && _actieveGesprekId == callId) {
+        _actieveGesprekId = null;
+      }
+      try {
+        final plugin = FlutterLocalNotificationsPlugin();
+        for (var i = 0; i < 5; i++) {
+          await plugin.cancel(1001 + i);
+        }
+      } catch (_) {}
     }
   } catch (e) {
     debugPrint('⚠️ FCM background handler faalde: $e');
@@ -700,6 +713,7 @@ Future<void> _achtergrondMomentNotificatie(
 Future<void> _achtergrondGesprekNotificatie(
     Map<String, dynamic> data) async {
   final callerName = _achtergrondStrUit(data, 'callerName', 'Familie');
+  final callId = _achtergrondStrUit(data, 'callId', '');
 
   final plugin = FlutterLocalNotificationsPlugin();
   await plugin.initialize(
@@ -709,8 +723,59 @@ Future<void> _achtergrondGesprekNotificatie(
     onDidReceiveBackgroundNotificationResponse: _achtergrondNotificatieActie,
   );
 
+  // BEL-A2 (Samsung-cutoff-omzeiling): Samsung One UI kapt notification-
+  // sounds af op ~15s. In plaats van één show() met stille rest, tonen
+  // we DEZELFDE melding elke 8s opnieuw (~4x = ~32s ring-tijd). Elke show
+  // triggert een nieuwe sound-play op OS-niveau. Bij Weiger/Opnemen
+  // stopt de loop via _actieveGesprekId (top-level flag, gedeeld tussen
+  // isolate-invocaties zolang de VM leeft).
+  //
+  // Beperking: dit isolate kan door OS gedood worden op zeer agressieve
+  // Samsungs; dan stopt de loop na de eerste show. Volledige rotsvaste
+  // fix = native foreground service (post-launch upgrade).
+  _actieveGesprekId = callId;
+  await _toonGesprekNotificatie(plugin, callerName, data, notificationId: 1001);
+  unawaited(_herhaalGesprekMelding(plugin, callerName, data, callId));
+}
+
+/// Top-level vlag om herhaal-loops te stoppen bij Weiger/Opnemen.
+/// Enkel gebruikt in het achtergrond-isolate.
+String? _actieveGesprekId;
+
+Future<void> _herhaalGesprekMelding(
+    FlutterLocalNotificationsPlugin plugin,
+    String callerName,
+    Map<String, dynamic> data,
+    String callId) async {
+  const herhalingen = 3; // ~3x 8s na de eerste = totaal ~32s
+  const interval = Duration(seconds: 8);
+  for (int i = 0; i < herhalingen; i++) {
+    await Future<void>.delayed(interval);
+    // Stop als user Weiger/Opnemen heeft getikt (flag gewijzigd door
+    // _achtergrondNotificatieActie) of als een nieuwe call is binnengekomen.
+    if (_actieveGesprekId != callId) return;
+    try {
+      // Nieuw ID per iteratie zodat OS de sound opnieuw afspeelt
+      // (dezelfde ID + update wordt als 'in progress' beschouwd en
+      // speelt de sound vaak niet opnieuw).
+      final id = 1001 + i + 1;
+      await _toonGesprekNotificatie(plugin, callerName, data,
+          notificationId: id);
+      // Ruim oude ID op zodat er visueel maar 1 melding staat.
+      await plugin.cancel(id - 1);
+    } catch (_) {
+      return;
+    }
+  }
+}
+
+Future<void> _toonGesprekNotificatie(
+    FlutterLocalNotificationsPlugin plugin,
+    String callerName,
+    Map<String, dynamic> data,
+    {required int notificationId}) async {
   await plugin.show(
-    1001,
+    notificationId,
     'Inkomend videogesprek',
     '$callerName wil videobellen',
     const NotificationDetails(
@@ -763,6 +828,11 @@ Future<void> _achtergrondGesprekNotificatie(
 /// beller-app een `gesprek_geannuleerd`-FCM krijgt en direct stopt.
 @pragma('vm:entry-point')
 void _achtergrondNotificatieActie(NotificationResponse response) {
+  // Stop de herhaal-loop van BEL-A2 (voor zowel Opnemen als Weigeren).
+  // Deze flag wordt door _herhaalGesprekMelding gecheckt zodat de
+  // marimba niet meer opnieuw afgaat na een user-actie.
+  _actieveGesprekId = null;
+
   if (response.actionId != 'decline') return;
   final payload = response.payload;
   if (payload == null || payload.isEmpty) return;
