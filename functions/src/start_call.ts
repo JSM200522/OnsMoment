@@ -250,6 +250,11 @@ export const startVideoCall = onCall(
         calleeToken,
         kringId,
         autoAnswer: autoAnswer ? 'true' : 'false',
+        // Stap 1 fix — bellerApparaatId meesturen zodat de callee (bij
+        // Weigeren op melding met dichte app) kan cancelVideoCall(...)
+        // richten op het beller-apparaat en zo de call actief kan stoppen
+        // (niet alleen de eigen notificatie sluiten).
+        bellerApparaatId,
       },
       android: {
         priority: 'high',

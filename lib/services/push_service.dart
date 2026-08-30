@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:ui' show Color;
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
@@ -751,12 +752,56 @@ Future<void> _achtergrondGesprekNotificatie(
 /// app NIET in de voorgrond staat (vereist door flutter_local_notifications
 /// zodra er een action met showsUserInterface:false bestaat).
 ///
-/// Voor 'Weigeren' is geen actie nodig: cancelNotification:true heeft de
-/// notificatie al verwijderd. 'Opnemen' (showsUserInterface:true) bereikt
-/// dit pad nooit — die brengt de app naar de voorgrond en triggert
-/// onDidReceiveNotificationResponse in de hoofd-isolate.
+/// 'Opnemen' (showsUserInterface:true) bereikt dit pad NIET — die brengt de
+/// app naar de voorgrond en triggert onDidReceiveNotificationResponse in de
+/// hoofd-isolate.
+///
+/// 'Weigeren' (showsUserInterface:false) komt hier binnen. cancelNotification
+/// heeft de melding al weggehaald op OS-niveau, maar de LiveKit-room bij de
+/// beller loopt door tot z'n eigen timeout — vanuit de callee gezien voelt
+/// dat als "weigeren doet niks". Fix: roep cancelVideoCall aan zodat de
+/// beller-app een `gesprek_geannuleerd`-FCM krijgt en direct stopt.
 @pragma('vm:entry-point')
 void _achtergrondNotificatieActie(NotificationResponse response) {
-  // Geen verdere afhandeling — 'Weigeren' is via cancelNotification:true
-  // al afgehandeld op OS-niveau.
+  if (response.actionId != 'decline') return;
+  final payload = response.payload;
+  if (payload == null || payload.isEmpty) return;
+  // Async werk niet awaiten — de callback moet snel terugkeren zodat het
+  // OS de melding sluit. Fire-and-forget met eigen error-handling.
+  unawaited(_stuurAchtergrondCancel(payload));
+}
+
+/// Roept cancelVideoCall aan vanuit het achtergrond-isolate zodat de
+/// beller-app stopt met bellen wanneer de callee 'Weigeren' tikt bij
+/// gesloten app.
+///
+/// Fail-soft: bij missende velden, netwerk-fout of auth-fout blijft de
+/// call-cancel achterwege. De beller valt terug op zijn eigen 45s-timeout.
+/// Nooit throwen — dit isolate heeft geen UI om een fout aan te tonen.
+Future<void> _stuurAchtergrondCancel(String payload) async {
+  try {
+    final data = jsonDecode(payload);
+    if (data is! Map) return;
+    final kringId = data['kringId'];
+    final callId = data['callId'];
+    final bellerApparaatId = data['bellerApparaatId'];
+    if (kringId is! String || kringId.isEmpty) return;
+    if (callId is! String || callId.isEmpty) return;
+    if (bellerApparaatId is! String || bellerApparaatId.isEmpty) return;
+
+    // Firebase kan door OS zijn afgesloten sinds het _backgroundHandler-
+    // pad; idempotente init is veilig.
+    await Firebase.initializeApp();
+
+    final callable = FirebaseFunctions
+        .instanceFor(region: 'europe-west1')
+        .httpsCallable('cancelVideoCall');
+    await callable.call<dynamic>(<String, dynamic>{
+      'kringId': kringId,
+      'callId': callId,
+      'doelApparaatId': bellerApparaatId,
+    });
+  } catch (e) {
+    debugPrint('⚠️ achtergrond-weiger cancelCall faalde: $e');
+  }
 }
