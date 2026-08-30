@@ -126,14 +126,20 @@ class _KringAanmakenSchermState extends State<KringAanmakenScherm> {
 
       // V9 2.8-a-1: lees eigen familieNaam zodat eigenaar-leden-doc
       // het weergaveNaam-veld krijgt (denormalisatie voor kringleden-
-      // lijst). Eigen uid -> geen cross-user issue. Fail-soft naar
-      // leeg bij rules- of netwerk-fout.
+      // lijst). Tegelijk checken of proefStart ontbreekt (gast-signup
+      // schrijft dat niet — pas bij eigenaar-worden is de 14-dagen
+      // teller relevant). Eigen uid -> geen cross-user issue. Fail-soft.
       String eigenaarNaam = '';
+      bool proefStartOntbreekt = false;
       try {
         final eigenDoc = await FirebaseFirestore.instance
             .collection('gebruikers').doc(uid).get();
-        final n = eigenDoc.data()?['familieNaam'] as String?;
+        final data = eigenDoc.data();
+        final n = data?['familieNaam'] as String?;
         if (n != null && n.isNotEmpty) eigenaarNaam = n;
+        // Alleen zetten als veld ontbreekt — bestaande proef mag niet
+        // gereset worden door aanmaak van een extra kring (Groot-tier).
+        proefStartOntbreekt = data?['proefStart'] == null;
       } catch (_) {}
 
       final batch = FirebaseFirestore.instance.batch();
@@ -148,10 +154,19 @@ class _KringAanmakenSchermState extends State<KringAanmakenScherm> {
         herkenningsgeluid: _gekozenGeluid,
         eigenaarNaam: eigenaarNaam,
       );
-      // Server-side teller: Firestore-rules checken kringAantal < tierLimit
+      // Server-side teller: Firestore-rules checken kringAantal < tierLimit.
+      // proefStart-backfill voor gast-die-eigenaar-wordt zodat het
+      // PakketKeuzeScherm de 14-dagen teller kan tonen en de trial-lock
+      // (FASE C) niet direct dichtklapt.
+      final gebruikersUpdate = <String, Object>{
+        'kringAantal': FieldValue.increment(1),
+      };
+      if (proefStartOntbreekt) {
+        gebruikersUpdate['proefStart'] = FieldValue.serverTimestamp();
+      }
       batch.update(
           FirebaseFirestore.instance.collection('gebruikers').doc(uid),
-          {'kringAantal': FieldValue.increment(1)});
+          gebruikersUpdate);
 
       const defaults = [
         {'emoji': '☀️', 'label': 'Goedemorgen', 'uur': 8,  'minuut': 30},
