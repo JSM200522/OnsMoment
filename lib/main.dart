@@ -9,6 +9,7 @@ import 'screens/setup/setup_wizard.dart';
 import 'screens/familie/familie_scherm.dart';
 import 'screens/tablet/tablet_scherm.dart';
 import 'screens/tablet/inkomend_gesprek_scherm.dart';
+import 'screens/videobellen/auto_opnemen_waarschuwing_scherm.dart';
 import 'screens/videobellen/gesprek_scherm.dart';
 import 'services/apparaat_service.dart';
 import 'services/bel_callkit_service.dart';
@@ -315,10 +316,28 @@ class _OntvangerRouterState extends State<_OntvangerRouter> {
       //       de melding blijft zichtbaar met actieknoppen tot tik of
       //       45s-timeout.
       if (call.autoAnswer) {
+        // BEL-C FIX5: nooit ongewaarschuwd een camera openen bij de
+        // dierbare. Toon eerst ~2.5s een dementie-vriendelijk schermpje
+        // met marimba + "X belt jou — we nemen zo op…", pop dat weg
+        // en dan pas GesprekScherm. Warm en menselijk ipv abrupt.
+        //
+        // pushReplacement in de onKlaar-callback zorgt dat het waarschuw-
+        // scherm netjes uit de stack verdwijnt zodat een terug-swipe uit
+        // GesprekScherm niet terugvalt naar dit tussenscherm.
         await navigator.push(MaterialPageRoute<void>(
-          builder: (_) => GesprekScherm(
-            remoteNaam: call.callerName,
-            tokenToJoin: call.calleeToken,
+          fullscreenDialog: true,
+          builder: (dialogCtx) => AutoOpnemenWaarschuwingScherm(
+            callerName: call.callerName,
+            onKlaar: () {
+              Navigator.of(dialogCtx).pushReplacement(
+                MaterialPageRoute<void>(
+                  builder: (_) => GesprekScherm(
+                    remoteNaam: call.callerName,
+                    tokenToJoin: call.calleeToken,
+                  ),
+                ),
+              );
+            },
           ),
         ));
         return;
