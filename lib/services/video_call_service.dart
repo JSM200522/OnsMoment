@@ -229,6 +229,28 @@ class VideoCallService {
       _room = null;
       roomNotifier.value = null;
     });
+    // BEL-D FIX4: als de tegenpartij ophangt, disconnect de LOKALE room
+    // ook zodat GesprekScherm bij BEIDE kanten sluit. Zonder deze listener
+    // bleef de andere kant in GesprekScherm hangen met een "Wachten tot
+    // X verschijnt…"-overlay tot de gebruiker zelf ophing.
+    //
+    // Waarom veilig bij netwerk-haperingen: LiveKit's client houdt eerst
+    // een re-connect-window aan (10-15s standaard) voordat een participant
+    // als 'disconnected' wordt gemarkeerd. Korte glitches vuren dit event
+    // NIET; alleen echt weggevallen deelnemers. Daarnaast controleren we
+    // remoteParticipants.isEmpty vóór we hangen — als er nog anderen in
+    // de room zitten (multi-party in latere fase) blijven we hangen.
+    listener.on<ParticipantDisconnectedEvent>((event) {
+      final actieveRoom = _room;
+      if (actieveRoom == null) return;
+      if (actieveRoom.remoteParticipants.isEmpty) {
+        debugPrint('📞 VideoCallService: laatste remote-participant weg — '
+            'sluit lokale room (identity=${event.participant.identity})');
+        // Fire-and-forget hangup: idempotent en synchroon-resettend, dus
+        // een tweede tap of dispose kan hier bovenop zonder schade.
+        unawaited(hangup());
+      }
+    });
     try {
       await room.connect(livekitUrl, token);
       await room.localParticipant?.setCameraEnabled(true);
