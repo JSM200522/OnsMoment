@@ -107,8 +107,14 @@ class BelCallkitService {
           isImportant: true,
         ),
       );
+      debugPrint('☎️ BelCallkitService.showCallkit → plugin-invoke '
+          'callId=$callId caller="$callerName"');
       await FlutterCallkitIncoming.showCallkitIncoming(params);
       _laatsteShowGelukt = true;
+      debugPrint('✅ BelCallkitService.showCallkit OK — native call-UI '
+          'getriggerd (callId=$callId). PhoneAccount/ConnectionService '
+          'binding wordt door plugin lazy afgehandeld; falen daar komt '
+          'via een separate onEvent-error.');
       return true;
     } catch (e, st) {
       _laatsteShowGelukt = false;
@@ -170,27 +176,68 @@ class BelCallkitService {
         } catch (_) {}
       }
 
+      // callId zit zowel in de CallKitParams.id (data['id']) als in de
+      // originele fcmData['callId']. Eerste is autoritair — dat is wat we
+      // aan de plugin hebben doorgegeven bij showCallkit.
+      final callId = () {
+        final vanuitPlugin = data['id'];
+        if (vanuitPlugin is String && vanuitPlugin.isNotEmpty) {
+          return vanuitPlugin;
+        }
+        final vanuitFcm = fcmData?['callId'];
+        return (vanuitFcm is String && vanuitFcm.isNotEmpty) ? vanuitFcm : '';
+      }();
+
       switch (event.event) {
         case Event.actionCallAccept:
+          debugPrint('☎️ BelCallkitService event: Opnemen (callId=$callId)');
           if (fcmData != null) {
             _publiceerAccept(fcmData);
           }
+          // BEL-B FIX3: expliciet endCall zodat de native call-UI +
+          // ringing-notificatie direct verdwijnen. Zonder deze aanroep
+          // blijft de melding op sommige Android-builds hangen tot de
+          // 45s-timeout van CallKitParams.duration.
+          if (callId.isNotEmpty) {
+            await _veiligBeeindig(callId);
+          }
           break;
         case Event.actionCallDecline:
+          debugPrint('☎️ BelCallkitService event: Weigeren (callId=$callId)');
           if (fcmData != null) {
             await _stuurCancelNaarBeller(fcmData);
+          }
+          // BEL-B FIX3: expliciet endCall — spiegel van accept-pad. Ook
+          // hier is sluiten van de native UI onze verantwoordelijkheid;
+          // de plugin garandeert dat niet consistent per firmware.
+          if (callId.isNotEmpty) {
+            await _veiligBeeindig(callId);
           }
           break;
         case Event.actionCallEnded:
         case Event.actionCallTimeout:
           // Ring-tijd voorbij of remote hangup — geen extra actie nodig,
           // native UI is al gesloten. Alleen loggen.
+          debugPrint('☎️ BelCallkitService event: ended/timeout '
+              '(callId=$callId)');
           break;
         default:
           break;
       }
     } catch (e, st) {
       debugPrint('⚠️ BelCallkitService event-verwerking faalde: $e\n$st');
+    }
+  }
+
+  /// Interne wrapper rond [beeindigCallkit] met alleen extra logging zodat
+  /// we in de traces zien of het endCall-pad daadwerkelijk liep na accept/
+  /// decline. Fail-soft — plugin-fouten mogen de bel-flow niet raken.
+  static Future<void> _veiligBeeindig(String callId) async {
+    try {
+      await FlutterCallkitIncoming.endCall(callId);
+      debugPrint('☎️ BelCallkitService: endCall verzonden (callId=$callId)');
+    } catch (e) {
+      debugPrint('⚠️ BelCallkitService.endCall faalde (callId=$callId): $e');
     }
   }
 

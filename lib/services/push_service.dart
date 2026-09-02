@@ -558,12 +558,18 @@ class PushService {
     // Fail-soft: als show faalt, val terug op de bestaande foreground-flow.
     final modus = DeviceModusService.weergaveModusNotifier.value;
     final vergrendeld = modus == DeviceModusService.VERGRENDELD;
-    if (!vergrendeld && CallkitFlagService.isEnabledSync()) {
+    final flagAan = CallkitFlagService.isEnabledSync();
+    debugPrint('☎️ BEL-B3 fg-check: callId=${call.callId} '
+        'modus=${modus ?? "onbekend"} vergrendeld=$vergrendeld '
+        'flag=$flagAan → ${!vergrendeld && flagAan ? "PROBEER OPTIE B" : "OPTIE A"}');
+    if (!vergrendeld && flagAan) {
       unawaited(BelCallkitService.showCallkit(
         callId: call.callId,
         callerName: call.callerName,
         fcmData: Map<String, dynamic>.from(msg.data),
       ).then((getoond) {
+        debugPrint('☎️ BEL-B3 fg-result: callId=${call.callId} '
+            'showCallkit=${getoond ? "GELUKT (B actief)" : "GEFAALD (val terug op A)"}');
         if (!getoond) {
           // B faalde → val terug op oude foreground-pad.
           if (incomingCallNotifier.value?.callId != call.callId) {
@@ -761,17 +767,25 @@ Future<void> _achtergrondGesprekNotificatie(
   if (!vergrendeld && callId.isNotEmpty) {
     try {
       final flagAan = await CallkitFlagService.isEnabled();
+      debugPrint('☎️ BEL-B4 bg-check: callId=$callId '
+          'vergrendeld=$vergrendeld flag=$flagAan → '
+          '${flagAan ? "PROBEER OPTIE B" : "OPTIE A"}');
       if (flagAan) {
         bViaCallkit = await BelCallkitService.showCallkit(
           callId: callId,
           callerName: callerName,
           fcmData: data,
         );
+        debugPrint('☎️ BEL-B4 bg-result: callId=$callId '
+            'showCallkit=${bViaCallkit ? "GELUKT (B actief, A2-loop overslaan)" : "GEFAALD (val terug op A + herhaal-loop)"}');
       }
     } catch (e) {
       debugPrint('⚠️ B4 flag-check/show faalde (val terug op A): $e');
       bViaCallkit = false;
     }
+  } else {
+    debugPrint('☎️ BEL-B4 bg-check: SKIP — '
+        'vergrendeld=$vergrendeld callId=${callId.isEmpty ? "leeg" : callId}');
   }
 
   if (bViaCallkit) {

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -101,22 +102,38 @@ class CallkitFlagService {
     }
   }
 
-  /// Zet de lokale override (true/false) en invalideer de cache zodat
-  /// de volgende isEnabled() de nieuwe waarde teruggeeft.
+  /// Zet de lokale override (true/false) en werkt de cache METEEN bij
+  /// zodat [isEnabledSync] direct de nieuwe waarde teruggeeft — geen
+  /// app-restart of extra bel-cycle nodig om B te activeren na dev-toggle.
+  ///
+  /// Waarom niet alleen invalidateCache(): [isEnabledSync] leest _cache
+  /// direct en returnt false bij null. Zonder eager set zou het na Zet AAN
+  /// bij de eerstvolgende inkomende bel nog steeds Optie A pakken; pas na
+  /// een async isEnabled()-warmup zou B triggeren. Bij override kennen we
+  /// de waarde al — direct in de cache zetten is veilig en correct.
   static Future<void> zetLokaleOverride(bool waarde) async {
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setBool(_prefsKey, waarde);
-      invalideerCache();
+      _cache = waarde;
+      debugPrint('☎️ CallkitFlagService: lokale override gezet op $waarde '
+          '(cache direct bijgewerkt)');
     } catch (_) {}
   }
 
-  /// Wist de lokale override. Volgende isEnabled() valt terug op remote.
+  /// Wist de lokale override. Cache wordt gereset EN meteen opnieuw
+  /// warm gemaakt vanuit remote/laag-3 zodat [isEnabledSync] niet
+  /// tijdelijk op false blijft hangen tussen wissen en volgende lookup.
   static Future<void> wisLokaleOverride() async {
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.remove(_prefsKey);
-      invalideerCache();
+      _cache = null;
+      // Fire-and-forget re-warm — als remote lookup faalt valt hij zelf
+      // fail-soft terug op false, geen extra actie nodig hier.
+      unawaited(isEnabled());
+      debugPrint('☎️ CallkitFlagService: lokale override gewist '
+          '(cache gereset + async re-warm gestart)');
     } catch (_) {}
   }
 }
