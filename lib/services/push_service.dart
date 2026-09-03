@@ -551,6 +551,20 @@ class PushService {
     // Fallback: _inkomendGesprekOpen-vlag in _OntvangerRouterState.
     if (incomingCallNotifier.value?.callId == call.callId) return;
 
+    // BEL-E2: auto-answer bypasst B volledig. De native call-UI toont
+    // altijd een tap-om-op-te-nemen-melding — dat botst met de bedoeling
+    // van "automatisch opnemen". Bij autoAnswer=true dus direct de A-flow:
+    // notifier → AutoOpnemenWaarschuwingScherm → GesprekScherm. Geen
+    // callkit-melding, geen dubbele ringtone. Consistent voor foreground:
+    // de app is open, de dierbare krijgt binnen 2.5s het waarschuwscherm
+    // + camera-open.
+    if (call.autoAnswer) {
+      debugPrint('☎️ BEL-E2 fg: autoAnswer=true → skip callkit, '
+          'direct notifier (callId=${call.callId})');
+      incomingCallNotifier.value = call;
+      return;
+    }
+
     // BEL-B3 + BEL-E1: één gate, één pad. Als callkit-flag aan én niet
     // vergrendeld → probeer Optie B synchroon (await). Slaagt B, dan A
     // wordt NOOIT geraakt in dezelfde FCM-cyclus. Faalt B, dan (en
@@ -750,6 +764,9 @@ Future<void> _achtergrondGesprekNotificatie(
     Map<String, dynamic> data) async {
   final callerName = _achtergrondStrUit(data, 'callerName', 'Familie');
   final callId = _achtergrondStrUit(data, 'callId', '');
+  // BEL-E2: server-side autoAnswer-vlag ook in achtergrond-isolate uitlezen.
+  // FCM-waarden zijn altijd strings; 'true' is de enige truthy waarde.
+  final autoAnswer = data['autoAnswer'] == 'true';
 
   // BEL-B7: vergrendelde-modus guard — die modus draait de app altijd
   // voorgrond en gebruikt het foreground-pad; achtergrond-notificatie
@@ -758,12 +775,14 @@ Future<void> _achtergrondGesprekNotificatie(
   final modus = await DeviceModusService.krijgWeergaveModus();
   final vergrendeld = modus == DeviceModusService.VERGRENDELD;
 
-  // BEL-B4: probeer native call-UI (ConnectionService) alleen als flag
-  // aan én niet vergrendeld. Bij succes: BEL-A2 herhaal-loop overslaan
-  // (voorkomt dubbele melding + dubbele beltoon). Bij falen: val terug
-  // op de bestaande Optie-A path (local notification + herhaal-loop).
+  // BEL-B4 + BEL-E2: probeer native call-UI (ConnectionService) alleen als
+  // flag aan én niet vergrendeld ÉN autoAnswer NIET aan staat. Auto-answer
+  // + callkit botsen: callkit vereist een tap, Android verbiedt een dichte
+  // app auto-launchen. In beide gevallen wint dus A: de heads-up-notif met
+  // Opnemen-knop (actionId=='accept' forceert dan autoAnswer=true en de
+  // main-flow springt direct naar het waarschuwingsscherm + GesprekScherm).
   var bViaCallkit = false;
-  if (!vergrendeld && callId.isNotEmpty) {
+  if (!vergrendeld && !autoAnswer && callId.isNotEmpty) {
     try {
       final flagAan = await CallkitFlagService.isEnabled();
       debugPrint('☎️ BEL-B4 bg-check: callId=$callId '
@@ -784,7 +803,8 @@ Future<void> _achtergrondGesprekNotificatie(
     }
   } else {
     debugPrint('☎️ BEL-B4 bg-check: SKIP — '
-        'vergrendeld=$vergrendeld callId=${callId.isEmpty ? "leeg" : callId}');
+        'vergrendeld=$vergrendeld autoAnswer=$autoAnswer '
+        'callId=${callId.isEmpty ? "leeg" : callId}');
   }
 
   if (bViaCallkit) {
