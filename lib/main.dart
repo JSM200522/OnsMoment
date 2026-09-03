@@ -61,6 +61,13 @@ void main() async {
   // BEL-B5: event-stream luisteraar voor Opnemen/Weigeren-taps in de
   // native call-UI. Idempotent + fail-soft.
   unawaited(BelCallkitService.luisterEvents());
+  // BEL-E4: cold-start replay. Als de app door een callkit-accept vanuit
+  // killed-state werd opgestart, is het actionCallAccept-event al gefired
+  // vóór luisterEvents attached. Zonder deze replay komt de user in de
+  // app maar zit hij niet in het gesprek. activeCalls() → geaccepteerde
+  // call → notifier met autoAnswer=true → main-flow springt naar het
+  // waarschuwingsscherm + GesprekScherm.
+  unawaited(BelCallkitService.replayGeaccepteerdeCalls());
   runApp(const OnsMomentApp());
 }
 

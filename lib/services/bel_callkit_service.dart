@@ -160,6 +160,68 @@ class BelCallkitService {
     }
   }
 
+  /// BEL-E4: cold-start replay voor dichte-app-accepts.
+  ///
+  /// Probleem: als de app KILLED was en de user tikt Opnemen in de
+  /// callkit-heads-up, dan opent Android de Flutter-activity → main()
+  /// draait → luisterEvents() wordt geregistreerd. Maar het
+  /// actionCallAccept-event was al gefired VÓÓR de listener attached.
+  /// Zonder replay komt de gebruiker in de app maar zit hij niet in
+  /// het gesprek.
+  ///
+  /// Oplossing: bij app-start (na luisterEvents) checken we
+  /// FlutterCallkitIncoming.activeCalls(). Als er een call bij zit met
+  /// isAccepted=true, reconstrueren we de IncomingCall uit de opgeslagen
+  /// extra['fcmDataJson'] en publiceren met autoAnswer=true zodat de
+  /// main-flow direct naar GesprekScherm springt (via het waarschuw-
+  /// scherm-pad — geen tap meer nodig).
+  ///
+  /// Idempotent + fail-soft: onbekende structuur → skip. Meerdere calls →
+  /// alleen de eerste geaccepteerde wordt gerepubliceerd. Op iOS geeft
+  /// activeCalls een CallKit-lijst; op Android alleen de laatste call
+  /// (voldoende voor ons single-gesprek-model).
+  static Future<void> replayGeaccepteerdeCalls() async {
+    if (kIsWeb) return;
+    try {
+      final ruw = await FlutterCallkitIncoming.activeCalls();
+      if (ruw is! List) {
+        debugPrint('☎️ BEL-E4 replay: geen actieve calls (result=$ruw)');
+        return;
+      }
+      for (final entry in ruw) {
+        if (entry is! Map) continue;
+        final isAccepted = entry['isAccepted'];
+        if (isAccepted != true) continue;
+        final extra = entry['extra'];
+        if (extra is! Map) continue;
+        final fcmDataJson = extra['fcmDataJson'];
+        if (fcmDataJson is! String || fcmDataJson.isEmpty) continue;
+        Map<String, dynamic>? fcmData;
+        try {
+          fcmData = jsonDecode(fcmDataJson) as Map<String, dynamic>;
+        } catch (_) {
+          continue;
+        }
+        final callId = fcmData['callId'];
+        debugPrint('☎️ BEL-E4 replay: geaccepteerde call gevonden — '
+            'publiceer autoAnswer=true (callId=$callId)');
+        _publiceerAccept(fcmData);
+        // Endcall zodat de callkit-state niet blijft rondzweven na
+        // een succesvolle replay — voorkomt dat een volgende cold-start
+        // dezelfde call opnieuw replayed.
+        if (callId is String && callId.isNotEmpty) {
+          await _veiligBeeindig(callId);
+        }
+        return; // Enkel de eerste geaccepteerde call; volgende negeren.
+      }
+      debugPrint('☎️ BEL-E4 replay: geen accepted-call in de lijst '
+          '(${ruw.length} entries)');
+    } catch (e, st) {
+      debugPrint('⚠️ BEL-E4 replay faalde (val terug op geen-gesprek): '
+          '$e\n$st');
+    }
+  }
+
   static Future<void> _verwerkEvent(CallEvent? event) async {
     if (event == null) return;
     try {
