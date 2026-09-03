@@ -325,11 +325,12 @@ class BelCallkitService {
   }
 
   static void _publiceerAccept(Map<String, dynamic> fcmData) {
-    // Forceer autoAnswer=true zodat de main-flow direct naar
-    // GesprekScherm springt (analoog aan actionId=='accept' in de
-    // Optie-A-notificatietik-flow).
+    // BEL-P2: zet handmatigGeaccepteerd i.p.v. autoAnswer. Callkit-accept
+    // is een bewuste tik door de callee — het waarschuwingsscherm ("we
+    // nemen zo op…") hoort daar niet bij. Main-flow springt direct naar
+    // GesprekScherm. autoAnswer blijft de server-side kring-waarde.
     final aangepast = Map<String, dynamic>.from(fcmData);
-    aangepast['autoAnswer'] = 'true';
+    aangepast['handmatigGeaccepteerd'] = 'true';
     final call = IncomingCall.uitFcmData(aangepast);
     if (call == null) return;
     if (PushService.incomingCallNotifier.value?.callId == call.callId) {

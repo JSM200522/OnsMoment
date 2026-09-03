@@ -37,6 +37,15 @@ class IncomingCall {
   /// het kring-doc — niet client-side op te stellen door de beller.
   /// Default false bij ontbrekend veld (backward-compat met pre-V4 FCM).
   final bool autoAnswer;
+  /// BEL-P2: true als de callee al bewust heeft opgenomen (callkit
+  /// accept-event, notif-actionId=='accept', of cold-start replay). De
+  /// main-flow springt dan DIRECT naar GesprekScherm — geen inkomend-
+  /// gesprek-scherm meer (dat zou dubbel voelen) en géén auto-opnemen-
+  /// waarschuwingsscherm (dat is voor onaangekondigde auto-answer, niet
+  /// voor bewust getikt-opnemen). Onafhankelijk van [autoAnswer]: de
+  /// server-side kring-instelling blijft leidend voor onverwachte auto-
+  /// opnemen; deze vlag zegt "gebruiker heeft de intentie bewezen".
+  final bool handmatigGeaccepteerd;
 
   const IncomingCall({
     required this.roomName,
@@ -46,6 +55,7 @@ class IncomingCall {
     required this.kringId,
     required this.ontvangenOp,
     this.autoAnswer = false,
+    this.handmatigGeaccepteerd = false,
   });
 
   /// Bouwt uit een FCM-data-map. Returnt null als één van de vereiste
@@ -74,6 +84,10 @@ class IncomingCall {
       // FCM-waarden zijn altijd strings; 'true' is de enige truthy waarde.
       // Ontbrekend veld → false (backward-compat).
       autoAnswer: data['autoAnswer'] == 'true',
+      // BEL-P2: dezelfde string-conventie; wordt intern gezet door
+      // callkit-accept-event, notif-actionId=='accept' en cold-start
+      // replay via een aangepaste kopie van de fcm-data-map.
+      handmatigGeaccepteerd: data['handmatigGeaccepteerd'] == 'true',
     );
   }
 }
@@ -376,9 +390,12 @@ class PushService {
   /// Onbekende of lege payloads worden genegeerd (fail-safe).
   ///
   /// [actionId]: 'accept' als de gebruiker de 'Opnemen'-actieknop tikte —
-  /// dan wordt autoAnswer geforceerd op true zodat [_verwerkInkomendGesprek]
-  /// altijd direct naar GesprekScherm springt, ook als de kring autoAnswer
-  /// normaal uit heeft staan. De gebruiker heeft immers bewust getikt.
+  /// dan wordt handmatigGeaccepteerd geforceerd op true zodat
+  /// [_verwerkInkomendGesprek] DIRECT naar GesprekScherm springt (geen
+  /// tussenscherm, geen waarschuwingsscherm — de gebruiker heeft immers
+  /// bewust getikt). BEL-P2 vervangt de oude autoAnswer-force die de
+  /// callee door het "we nemen zo op…"-scherm liet lopen na handmatig
+  /// opnemen.
   static void _verwerkLokaalNotificatieTik(String payload,
       {String? actionId}) {
     if (payload.isEmpty) return;
@@ -387,9 +404,10 @@ class PushService {
       if (data['type'] == 'inkomend_gesprek') {
         var call = IncomingCall.uitFcmData(data);
         if (call != null) {
-          // 'Opnemen'-knop getikt → forceer autoAnswer zodat het gesprek
-          // direct opent zonder InkomendGesprekScherm tussendoor.
-          if (actionId == 'accept' && !call.autoAnswer) {
+          // 'Opnemen'-knop getikt → zet handmatigGeaccepteerd zodat het
+          // gesprek direct opent zonder InkomendGesprekScherm en zonder
+          // waarschuwingsscherm. autoAnswer blijft de server-side waarde.
+          if (actionId == 'accept' && !call.handmatigGeaccepteerd) {
             call = IncomingCall(
               roomName: call.roomName,
               callId: call.callId,
@@ -397,7 +415,8 @@ class PushService {
               calleeToken: call.calleeToken,
               kringId: call.kringId,
               ontvangenOp: call.ontvangenOp,
-              autoAnswer: true,
+              autoAnswer: call.autoAnswer,
+              handmatigGeaccepteerd: true,
             );
           }
           // De-dup laag 1: sla over als dit gesprek al in de notifier staat.

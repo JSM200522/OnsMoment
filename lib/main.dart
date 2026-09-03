@@ -305,6 +305,21 @@ class _OntvangerRouterState extends State<_OntvangerRouter> {
     _huidigeInkomendCallId = call.callId;
     try {
       final navigator = Navigator.of(context);
+      // BEL-P2: handmatig geaccepteerd (callkit-accept, notif-'Opnemen',
+      // cold-start replay) → DIRECT GesprekScherm. Geen tussenscherm en
+      // geen waarschuwingsscherm — de callee heeft al bewust getikt en
+      // heeft die tussenstap niet nodig. Auto-answer-scherm is voor
+      // onaangekondigde server-side auto-open (de kwetsbare dierbare die
+      // niet actief tikt).
+      if (call.handmatigGeaccepteerd) {
+        await navigator.push(MaterialPageRoute<void>(
+          builder: (_) => GesprekScherm(
+            remoteNaam: call.callerName,
+            tokenToJoin: call.calleeToken,
+          ),
+        ));
+        return;
+      }
       // autoAnswer=true via drie paden:
       //   (1) Kiosk/rustige modus — app altijd voorgrond: FCM-foreground
       //       → _publiceerInkomendGesprek → hier → direct GesprekScherm.
