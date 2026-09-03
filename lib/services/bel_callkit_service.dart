@@ -165,16 +165,18 @@ class BelCallkitService {
   /// Probleem: als de app KILLED was en de user tikt Opnemen in de
   /// callkit-heads-up, dan opent Android de Flutter-activity → main()
   /// draait → luisterEvents() wordt geregistreerd. Maar het
-  /// actionCallAccept-event was al gefired VÓÓR de listener attached.
-  /// Zonder replay komt de gebruiker in de app maar zit hij niet in
-  /// het gesprek.
+  /// actionCallAccept-event was al gefired VÓÓR de listener attached
+  /// (onEvent is een broadcast-stream, niet buffered), en de plugin's
+  /// TransparentActivity roept sendBroadcast(ACCEPT) fire-and-forget aan
+  /// direct voordat hij de MainActivity start — dus de eerste
+  /// activeCalls()-lookup uit Flutter kan RACEN met de native
+  /// BroadcastReceiver die isAccepted=true naar SharedPrefs schrijft.
   ///
-  /// Oplossing: bij app-start (na luisterEvents) checken we
-  /// FlutterCallkitIncoming.activeCalls(). Als er een call bij zit met
-  /// isAccepted=true, reconstrueren we de IncomingCall uit de opgeslagen
-  /// extra['fcmDataJson'] en publiceren met autoAnswer=true zodat de
-  /// main-flow direct naar GesprekScherm springt (via het waarschuw-
-  /// scherm-pad — geen tap meer nodig).
+  /// BEL-P1: fix is retry-poll — probeer ~10× met 400ms delay (~4s max)
+  /// totdat een isAccepted=true call verschijnt, of tot de user zelf
+  /// tijdens die tijd al iets doet. Uitgebreide logging zodat we in
+  /// production kunnen zien: replay aangeroepen? poll #N: X entries,
+  /// Y accepted? call gevonden? publiceren?
   ///
   /// Idempotent + fail-soft: onbekende structuur → skip. Meerdere calls →
   /// alleen de eerste geaccepteerde wordt gerepubliceerd. Op iOS geeft
@@ -182,44 +184,63 @@ class BelCallkitService {
   /// (voldoende voor ons single-gesprek-model).
   static Future<void> replayGeaccepteerdeCalls() async {
     if (kIsWeb) return;
-    try {
-      final ruw = await FlutterCallkitIncoming.activeCalls();
-      if (ruw is! List) {
-        debugPrint('☎️ BEL-E4 replay: geen actieve calls (result=$ruw)');
-        return;
-      }
-      for (final entry in ruw) {
-        if (entry is! Map) continue;
-        final isAccepted = entry['isAccepted'];
-        if (isAccepted != true) continue;
-        final extra = entry['extra'];
-        if (extra is! Map) continue;
-        final fcmDataJson = extra['fcmDataJson'];
-        if (fcmDataJson is! String || fcmDataJson.isEmpty) continue;
-        Map<String, dynamic>? fcmData;
-        try {
-          fcmData = jsonDecode(fcmDataJson) as Map<String, dynamic>;
-        } catch (_) {
-          continue;
+    debugPrint('☎️ BEL-P1 replay: aangeroepen — start poll (max ~4s)');
+    const maxPogingen = 10;
+    const pogingDelay = Duration(milliseconds: 400);
+    for (var poging = 1; poging <= maxPogingen; poging++) {
+      try {
+        final ruw = await FlutterCallkitIncoming.activeCalls();
+        if (ruw is! List) {
+          debugPrint('☎️ BEL-P1 replay poll #$poging: '
+              'result geen List ($ruw) — skip poging');
+        } else {
+          final accepted = ruw
+              .whereType<Map>()
+              .where((e) => e['isAccepted'] == true)
+              .toList();
+          debugPrint('☎️ BEL-P1 replay poll #$poging: '
+              '${ruw.length} entries, ${accepted.length} accepted');
+          for (final entry in accepted) {
+            final extra = entry['extra'];
+            if (extra is! Map) {
+              debugPrint('☎️ BEL-P1 replay: accepted call zonder extra — skip');
+              continue;
+            }
+            final fcmDataJson = extra['fcmDataJson'];
+            if (fcmDataJson is! String || fcmDataJson.isEmpty) {
+              debugPrint('☎️ BEL-P1 replay: extra zonder fcmDataJson — skip');
+              continue;
+            }
+            Map<String, dynamic>? fcmData;
+            try {
+              fcmData = jsonDecode(fcmDataJson) as Map<String, dynamic>;
+            } catch (e) {
+              debugPrint('☎️ BEL-P1 replay: fcmDataJson decode faalde: $e');
+              continue;
+            }
+            final callId = fcmData['callId'];
+            debugPrint('☎️ BEL-P1 replay: geaccepteerde call gevonden na '
+                'poll #$poging — publiceer (callId=$callId)');
+            _publiceerAccept(fcmData);
+            // Endcall zodat de callkit-state niet blijft rondzweven na
+            // een succesvolle replay — voorkomt dat een volgende cold-
+            // start dezelfde call opnieuw replayed.
+            if (callId is String && callId.isNotEmpty) {
+              await _veiligBeeindig(callId);
+            }
+            return; // Enkel de eerste geaccepteerde call; klaar.
+          }
         }
-        final callId = fcmData['callId'];
-        debugPrint('☎️ BEL-E4 replay: geaccepteerde call gevonden — '
-            'publiceer autoAnswer=true (callId=$callId)');
-        _publiceerAccept(fcmData);
-        // Endcall zodat de callkit-state niet blijft rondzweven na
-        // een succesvolle replay — voorkomt dat een volgende cold-start
-        // dezelfde call opnieuw replayed.
-        if (callId is String && callId.isNotEmpty) {
-          await _veiligBeeindig(callId);
-        }
-        return; // Enkel de eerste geaccepteerde call; volgende negeren.
+      } catch (e, st) {
+        debugPrint('⚠️ BEL-P1 replay poll #$poging fout '
+            '(volgende poging): $e\n$st');
       }
-      debugPrint('☎️ BEL-E4 replay: geen accepted-call in de lijst '
-          '(${ruw.length} entries)');
-    } catch (e, st) {
-      debugPrint('⚠️ BEL-E4 replay faalde (val terug op geen-gesprek): '
-          '$e\n$st');
+      if (poging < maxPogingen) {
+        await Future<void>.delayed(pogingDelay);
+      }
     }
+    debugPrint('☎️ BEL-P1 replay: geen geaccepteerde call na $maxPogingen '
+        'pogingen — replay klaar (geen actie)');
   }
 
   static Future<void> _verwerkEvent(CallEvent? event) async {
