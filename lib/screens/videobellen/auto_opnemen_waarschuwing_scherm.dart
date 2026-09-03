@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:audio_session/audio_session.dart';
 import 'package:flutter/material.dart';
 import 'package:just_audio/just_audio.dart';
 import '../../theme/kleuren.dart';
@@ -49,6 +50,18 @@ class _AutoOpnemenWaarschuwingSchermState
 
   Future<void> _startGeluid() async {
     try {
+      // BEL-E5: gebruik notificationRingtone-routing (STREAM_RING) zodat de
+      // marimba luid en herkenbaar is — spiegelt de audio-attributes van de
+      // beller-ringback (BelScherm) en van InkomendGesprekScherm. Zonder
+      // deze attributes zou GesprekScherm's aanstaande LiveKit-connect de
+      // media-stream direct dempen (MODE_IN_COMMUNICATION) net wanneer de
+      // waarschuwing hoorbaar moet zijn.
+      await _speler.setAndroidAudioAttributes(
+        const AndroidAudioAttributes(
+          usage: AndroidAudioUsage.notificationRingtone,
+          contentType: AndroidAudioContentType.sonification,
+        ),
+      );
       await _speler.setAsset('assets/sounds/marimba.wav');
       // Eén keer afspelen — de wachtduur is korter dan de sample dus
       // een loop is overbodig en zou halverwege afgekapt worden.

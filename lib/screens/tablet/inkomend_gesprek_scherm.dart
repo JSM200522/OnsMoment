@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:audio_session/audio_session.dart';
 import 'package:flutter/material.dart';
 import 'package:just_audio/just_audio.dart';
 import '../../services/push_service.dart';
@@ -59,6 +60,17 @@ class _InkomendGesprekSchermState extends State<InkomendGesprekScherm> {
 
   Future<void> _startRingtone() async {
     try {
+      // BEL-E5: STREAM_RING-routing zodat de ringtone luid en beltoon-
+      // volume gebonden is (matched een echt inkomend gesprek). Blijft
+      // ook hoorbaar als LiveKit later een audio-communication-session
+      // opzet — de audio-focus valt niet weg tijdens de wachten-op-
+      // beantwoorden-fase.
+      await _ringtone.setAndroidAudioAttributes(
+        const AndroidAudioAttributes(
+          usage: AndroidAudioUsage.notificationRingtone,
+          contentType: AndroidAudioContentType.sonification,
+        ),
+      );
       await _ringtone.setAsset('assets/sounds/marimba.wav');
       await _ringtone.setLoopMode(LoopMode.one);
       await _ringtone.play();

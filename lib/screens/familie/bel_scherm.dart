@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:audio_session/audio_session.dart';
 import 'package:flutter/material.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:livekit_client/livekit_client.dart';
@@ -108,6 +109,20 @@ class _BelSchermState extends State<BelScherm> {
 
   Future<void> _startRingback() async {
     try {
+      // BEL-E5: LiveKit.setMicrophoneEnabled(true) zet AudioManager op
+      // MODE_IN_COMMUNICATION. Media-stream playback (just_audio default)
+      // wordt dan door de OS gedempt of stil-gerouteerd. Door usage op
+      // notificationRingtone te zetten routeert Android de marimba via
+      // STREAM_RING — die overleeft de communication-mode, precies zoals
+      // een systeem-beltoon dat doet bij een echt gesprek. contentType
+      // sonification signaleert 'kort signaal', matched het karakter van
+      // een ringback-toon.
+      await _ringbackPlayer.setAndroidAudioAttributes(
+        const AndroidAudioAttributes(
+          usage: AndroidAudioUsage.notificationRingtone,
+          contentType: AndroidAudioContentType.sonification,
+        ),
+      );
       await _ringbackPlayer.setAsset('assets/sounds/marimba.wav');
       await _ringbackPlayer.setLoopMode(LoopMode.one);
       await _ringbackPlayer.play();

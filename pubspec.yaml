@@ -20,6 +20,11 @@ dependencies:
   firebase_crashlytics: ^3.5.0
   flutter_local_notifications: ^17.1.2
   just_audio: ^0.9.36
+  # BEL-E5: expliciete dep zodat we AndroidAudioAttributes kunnen zetten
+  # op de ringback/marimba-spelers. Al transitief via just_audio, maar
+  # direct declareren voorkomt implicit-open-dependency-lint en pint de
+  # major-versie voor onze audio-attribuut-code.
+  audio_session: ^0.1.21
   record: ^5.1.0
   image_picker: ^1.0.7
   file_picker: ^8.0.0+1
