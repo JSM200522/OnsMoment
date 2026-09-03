@@ -310,10 +310,12 @@ class PushService {
       // [incomingCallNotifier] zodat tablet_scherm het scherm kan
       // openen — daar is Firestore geen bron van waarheid want de
       // callee-token zit in de FCM-data.
-      FirebaseMessaging.onMessage.listen((msg) {
+      FirebaseMessaging.onMessage.listen((msg) async {
         debugPrint('🔔 FCM foreground: ${msg.messageId} '
             'data=${msg.data} notification=${msg.notification?.title}');
-        _publiceerInkomendGesprek(msg);
+        // Await zodat de B-of-A-beslissing sequentieel loopt: als B slaagt
+        // wordt A NOOIT geraakt (geen fire-and-forget-race).
+        await _publiceerInkomendGesprek(msg);
         _publiceerGeannuleerdGesprek(msg);
       });
 
@@ -535,7 +537,7 @@ class PushService {
   ///
   /// Als het type wél matcht maar velden missen: waarschuwing loggen en
   /// notifier ongemoeid laten. Beter dan een half-scherm met lege naam.
-  static void _publiceerInkomendGesprek(RemoteMessage msg) {
+  static Future<void> _publiceerInkomendGesprek(RemoteMessage msg) async {
     if (msg.data['type'] != 'inkomend_gesprek') return;
     final call = IncomingCall.uitFcmData(msg.data);
     if (call == null) {
@@ -549,13 +551,12 @@ class PushService {
     // Fallback: _inkomendGesprekOpen-vlag in _OntvangerRouterState.
     if (incomingCallNotifier.value?.callId == call.callId) return;
 
-    // BEL-B3: als de callkit-flag aan staat EN dit apparaat NIET in
-    // vergrendelde modus staat, laat de native call-UI (ConnectionService)
-    // de melding tonen. Event-stream (BelCallkitService.luisterEvents)
-    // publiceert de call vervolgens op incomingCallNotifier bij Opnemen.
-    // In vergrendelde modus draait de kiosk-flow (foreground app +
-    // InkomendGesprekScherm) — die mag niet gedupliceerd worden door B.
-    // Fail-soft: als show faalt, val terug op de bestaande foreground-flow.
+    // BEL-B3 + BEL-E1: één gate, één pad. Als callkit-flag aan én niet
+    // vergrendeld → probeer Optie B synchroon (await). Slaagt B, dan A
+    // wordt NOOIT geraakt in dezelfde FCM-cyclus. Faalt B, dan (en
+    // uitsluitend dan) val terug op A. In vergrendelde modus draait de
+    // kiosk-flow (foreground app + InkomendGesprekScherm) — die mag niet
+    // gedupliceerd worden door B.
     final modus = DeviceModusService.weergaveModusNotifier.value;
     final vergrendeld = modus == DeviceModusService.VERGRENDELD;
     final flagAan = CallkitFlagService.isEnabledSync();
@@ -563,20 +564,18 @@ class PushService {
         'modus=${modus ?? "onbekend"} vergrendeld=$vergrendeld '
         'flag=$flagAan → ${!vergrendeld && flagAan ? "PROBEER OPTIE B" : "OPTIE A"}');
     if (!vergrendeld && flagAan) {
-      unawaited(BelCallkitService.showCallkit(
+      final getoond = await BelCallkitService.showCallkit(
         callId: call.callId,
         callerName: call.callerName,
         fcmData: Map<String, dynamic>.from(msg.data),
-      ).then((getoond) {
-        debugPrint('☎️ BEL-B3 fg-result: callId=${call.callId} '
-            'showCallkit=${getoond ? "GELUKT (B actief)" : "GEFAALD (val terug op A)"}');
-        if (!getoond) {
-          // B faalde → val terug op oude foreground-pad.
-          if (incomingCallNotifier.value?.callId != call.callId) {
-            incomingCallNotifier.value = call;
-          }
-        }
-      }));
+      );
+      debugPrint('☎️ BEL-B3 fg-result: callId=${call.callId} '
+          'showCallkit=${getoond ? "GELUKT (B actief, A wordt overgeslagen)" : "GEFAALD (val terug op A)"}');
+      if (getoond) return; // BEL-E1: B is de gate, A blijft dicht.
+      // B faalde → val terug op de bestaande foreground-pad.
+      if (incomingCallNotifier.value?.callId != call.callId) {
+        incomingCallNotifier.value = call;
+      }
       return;
     }
     incomingCallNotifier.value = call;
@@ -789,9 +788,13 @@ Future<void> _achtergrondGesprekNotificatie(
   }
 
   if (bViaCallkit) {
-    // B6: A2-herhaal-loop overslaan; native call-UI regelt beltoon +
-    // Opnemen/Weigeren via event-stream in de main-isolate.
-    _actieveGesprekId = callId; // Alleen voor cancel-cleanup-hook.
+    // BEL-E1: één gate, één pad. B slaagt → NIETS extra tonen. Geen
+    // lokale notificatie, geen A2-herhaal-loop. Native call-UI regelt
+    // beltoon + Opnemen/Weigeren via event-stream in de main-isolate.
+    // _actieveGesprekId is de enige state die A vasthoudt — nodig voor
+    // de cancel-cleanup-hook (gesprek_geannuleerd FCM sluit óók callkit).
+    _actieveGesprekId = callId;
+    debugPrint('☎️ BEL-E1 bg: B actief — A2-loop + lokale notif overgeslagen');
     return;
   }
 
