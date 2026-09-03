@@ -3,6 +3,7 @@ import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter/foundation.dart';
 import 'package:livekit_client/livekit_client.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'bel_callkit_service.dart';
 
 /// VideoCallService — LiveKit-integratie voor de videobel-functie.
 ///
@@ -276,6 +277,15 @@ class VideoCallService {
   /// State wordt SYNCHROON gereset vóór we disconnect awaiten, zodat
   /// een ophang-knop voelt-als-direct-reagerend en een tweede tap niet
   /// dezelfde room nogmaals disconnect.
+  ///
+  /// BEL-E3: naast LiveKit ook ALTIJD BelCallkitService.beeindigAlles()
+  /// aanroepen. Als het gesprek via callkit (Optie B) is opgezet, blijft
+  /// zonder deze cleanup de native call-UI hangen tot de eigen 45s-timeout
+  /// — die ghost-UI blokkeert de audio-focus en kan een volgende bel
+  /// verstoren. cancelVideoCall in de Cloud Function is de bron van
+  /// waarheid voor de tegenpartij; deze lokale endAllCalls is puur
+  /// state-opruiming voor het eigen toestel. Fail-soft: eventuele
+  /// plugin-fout mag hangup niet blokkeren.
   static Future<void> hangup() async {
     if (kIsWeb) return;
     final room = _room;
@@ -284,6 +294,10 @@ class VideoCallService {
     _listener = null;
     roomNotifier.value = null;
     await listener?.dispose();
+    // Fire-and-forget: eventuele callkit-plugin-hikjes mogen de
+    // LiveKit-disconnect niet vertragen. beeindigAlles is idempotent
+    // en veilig als er geen actieve callkit-UI is.
+    unawaited(BelCallkitService.beeindigAlles());
     if (room == null) return;
     try {
       await room.disconnect();
