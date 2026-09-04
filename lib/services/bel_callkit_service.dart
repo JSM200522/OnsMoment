@@ -105,6 +105,13 @@ class BelCallkitService {
           incomingCallNotificationChannelName: 'Inkomend gesprek',
           missedCallNotificationChannelName: 'Gemiste gesprekken',
           isImportant: true,
+          // BEL-Q1: expliciet aanvragen dat de call-UI over het lock-
+          // screen mag verschijnen. Zonder deze vlag toont de plugin op
+          // Android 14+ de melding hooguit in de meldingenlade. In
+          // combinatie met USE_FULL_SCREEN_INTENT (manifest) en de
+          // special-permission-prompt (BEL-Q2) geeft dit de gewenste
+          // prominente heads-up + lock-screen call-UI.
+          isShowFullLockedScreen: true,
         ),
       );
       debugPrint('☎️ BelCallkitService.showCallkit → plugin-invoke '
