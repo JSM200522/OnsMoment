@@ -112,7 +112,13 @@ class BelCallkitService {
           'fcmDataJson': jsonEncode(fcmData),
         },
         android: const AndroidParams(
-          isCustomNotification: true,
+          // BEL-Q4: was true met eigen custom-layout notif — die is op
+          // Android 12+ minder betrouwbaar dan de standaard CallStyle.
+          // Op false gebruikt de plugin de native heads-up + full-screen
+          // call-UI die door Android zelf gerenderd wordt. Visueel
+          // prominenter en beter compatible met OS-versies (One UI,
+          // ColorOS, MIUI hebben eigen custom-layouts die soms falen).
+          isCustomNotification: false,
           isShowLogo: false,
           ringtonePath: 'system_ringtone_default',
           backgroundColor: '#FF9B71',
