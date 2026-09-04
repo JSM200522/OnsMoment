@@ -47,6 +47,21 @@ class BelCallkitService {
       // showCallkitIncoming (B3/B4).
       await FlutterCallkitIncoming.endAllCalls();
       debugPrint('☎️ BelCallkitService: warm-up probe OK');
+      // BEL-Q3: de plugin heeft z'n eigen POST_NOTIFICATIONS-runtime-
+      // prompt op Android 13+. firebase_messaging.requestPermission()
+      // vraagt hetzelfde recht, maar de plugin kan een bekeken/geweigerd-
+      // status apart bijhouden voor z'n eigen incoming-call-channel. Deze
+      // extra call is idempotent (Android toont de prompt maar 1×) en
+      // fail-soft — geen effect op oudere Android of als toestemming al
+      // gegeven is.
+      try {
+        await FlutterCallkitIncoming.requestNotificationPermission(
+            <String, dynamic>{});
+        debugPrint('☎️ BEL-Q3: requestNotificationPermission verzonden');
+      } catch (e) {
+        debugPrint('⚠️ BEL-Q3: requestNotificationPermission faalde '
+            '(niet blocking): $e');
+      }
     } catch (e, st) {
       // Bewust breed vangnet — een fout hier mag ONMOGELIJK de app-opstart
       // beïnvloeden. Optie A blijft de bel-flow dragen.
