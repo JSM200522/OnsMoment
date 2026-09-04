@@ -16,6 +16,7 @@ import 'services/bel_callkit_service.dart';
 import 'services/callkit_flag_service.dart';
 import 'services/device_modus_service.dart';
 import 'services/crash_service.dart';
+import 'services/full_screen_intent_service.dart';
 import 'services/push_service.dart';
 import 'data/debug_flags.dart';
 import 'theme/kleuren.dart';
@@ -419,6 +420,16 @@ class _OntvangerRouterState extends State<_OntvangerRouter> {
       valueListenable: DeviceModusService.weergaveModusNotifier,
       builder: (context, weergave, _) {
         if (weergave == DeviceModusService.MELDINGEN) {
+          // BEL-Q2: check FULL_SCREEN_INTENT special-permission zodra de
+          // ontvanger in meldingen-modus staat. Fire-and-forget na de
+          // eerste frame zodat de dialog niet in build() zelf spawnt.
+          // De service is idempotent (1× per app-start) en fail-soft.
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (!context.mounted) return;
+            unawaited(
+              FullScreenIntentService.controleerEnPromptAlsNodig(context),
+            );
+          });
           return const FamilieScherm(alsOntvanger: true);
         }
         // 'vergrendeld' of null (backwards compat) → kiosk
