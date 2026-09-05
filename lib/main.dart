@@ -19,6 +19,7 @@ import 'services/device_modus_service.dart';
 import 'services/crash_service.dart';
 import 'services/full_screen_intent_service.dart';
 import 'services/push_service.dart';
+import 'services/video_call_service.dart';
 import 'data/debug_flags.dart';
 import 'theme/kleuren.dart';
 
@@ -313,6 +314,17 @@ class _OntvangerRouterState extends State<_OntvangerRouter> {
     if (!mounted) return;
     _inkomendGesprekOpen = true;
     _huidigeInkomendCallId = call.callId;
+    // BEL-R3: eigen apparaatId ophalen zodat GesprekScherm bij dispose het
+    // server-side bezet-slot kan opruimen. DeviceModusService.krijgApparaatId
+    // is SharedPreferences-gebacked (cached), dus vrijwel synchroon.
+    // Fail-soft: bij onverwacht falen valt cleanup terug op de 5-min TTL.
+    String? mijnApparaatId;
+    try {
+      mijnApparaatId = await DeviceModusService.krijgApparaatId();
+    } catch (e) {
+      debugPrint('⚠️ BEL-R3: apparaatId ophalen faalde: $e');
+    }
+    if (!mounted) return;
     try {
       final navigator = Navigator.of(context);
       // BEL-P2: handmatig geaccepteerd (callkit-accept, notif-'Opnemen',
@@ -326,6 +338,9 @@ class _OntvangerRouterState extends State<_OntvangerRouter> {
           builder: (_) => GesprekScherm(
             remoteNaam: call.callerName,
             tokenToJoin: call.calleeToken,
+            // BEL-R3: bezet-slot cleanup bij dispose van GesprekScherm.
+            ontvangerApparaatId: mijnApparaatId,
+            callId: call.callId,
           ),
         ));
         return;
@@ -366,6 +381,9 @@ class _OntvangerRouterState extends State<_OntvangerRouter> {
                   builder: (_) => GesprekScherm(
                     remoteNaam: call.callerName,
                     tokenToJoin: call.calleeToken,
+                    // BEL-R3: bezet-slot cleanup bij dispose.
+                    ontvangerApparaatId: mijnApparaatId,
+                    callId: call.callId,
                   ),
                 ),
               );
@@ -388,6 +406,18 @@ class _OntvangerRouterState extends State<_OntvangerRouter> {
             Navigator.of(navigator.context).pop();
           },
           onAfgewezen: () {
+            // BEL-R3: server-side bezet-slot expliciet opruimen bij
+            // 'Niet nu' — anders blijft de reservering staan tot de
+            // 5-min TTL en kan een volgende beller niet meteen door.
+            // Beller-kant valt sowieso al terug op de 45s callkit-
+            // timeout; we voegen hier geen cancelCall aan toe om de
+            // huidige weiger-flow niet uit te breiden.
+            if (mijnApparaatId != null) {
+              unawaited(VideoCallService.beeindigActiefGesprek(
+                ontvangerApparaatId: mijnApparaatId,
+                callId: call.callId,
+              ));
+            }
             Navigator.of(navigator.context).pop();
           },
         ),
@@ -399,6 +429,9 @@ class _OntvangerRouterState extends State<_OntvangerRouter> {
           builder: (_) => GesprekScherm(
             remoteNaam: call.callerName,
             tokenToJoin: call.calleeToken,
+            // BEL-R3: bezet-slot cleanup bij dispose.
+            ontvangerApparaatId: mijnApparaatId,
+            callId: call.callId,
           ),
         ));
       }

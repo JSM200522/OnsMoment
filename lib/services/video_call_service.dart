@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter/foundation.dart';
 import 'package:livekit_client/livekit_client.dart';
@@ -159,18 +160,72 @@ class VideoCallService {
     required String kringId,
     required String callId,
     required String doelApparaatId,
+    String? ontvangerApparaatId,
   }) async {
     final callable = FirebaseFunctions
         .instanceFor(region: 'europe-west1')
         .httpsCallable('cancelVideoCall');
-    final result = await callable.call<dynamic>(<String, dynamic>{
+    // BEL-R3: optionele ontvangerApparaatId doorgeven zodat server het
+    // bezet-slot direct opruimt en een 2e beller niet 5 min hoeft te
+    // wachten op TTL. Null overslaan om oude client-server-combinaties
+    // niet op invalid-argument te laten crashen.
+    final payload = <String, dynamic>{
       'kringId': kringId,
       'callId': callId,
       'doelApparaatId': doelApparaatId,
-    });
+    };
+    if (ontvangerApparaatId != null && ontvangerApparaatId.isNotEmpty) {
+      payload['ontvangerApparaatId'] = ontvangerApparaatId;
+    }
+    final result = await callable.call<dynamic>(payload);
     final data = result.data;
     if (data is! Map) return false;
     return data['verzonden'] == true;
+  }
+
+  /// BEL-R3: cleanup van het server-side bezet-slot na afloop van een
+  /// gesprek (hangup, timeout, remote-disconnect). Direct Firestore-
+  /// transactie op `actieveGesprekken/{ontvangerApparaatId}`: alleen
+  /// verwijderen als de opgeslagen [callId] matcht — zo kan een late
+  /// cleanup van een vorig gesprek nooit een verse reservering wegvegen.
+  ///
+  /// Fail-soft: elke fout wordt gelogd en verder genegeerd. De 5-min
+  /// TTL-policy op `expireAt` ruimt sowieso op als deze cleanup mist.
+  ///
+  /// Waarom Firestore-direct i.p.v. een callable: bespaart een round-
+  /// trip in een pad dat toch al onder tijdsdruk staat (dispose van
+  /// GesprekScherm) en houdt de wijziging compact voor deze fase. De
+  /// huidige rules (`if request.auth != null`) staan het toe; bij de
+  /// aanstaande rules-aanscherping (security FASE B) krijgt deze
+  /// collectie een gerichte regel die alleen kringleden write-toegang
+  /// geeft — geen extra code-wijziging nodig.
+  static Future<void> beeindigActiefGesprek({
+    required String ontvangerApparaatId,
+    required String callId,
+  }) async {
+    if (ontvangerApparaatId.isEmpty || callId.isEmpty) return;
+    final ref = FirebaseFirestore.instance
+        .collection('actieveGesprekken')
+        .doc(ontvangerApparaatId);
+    try {
+      await FirebaseFirestore.instance.runTransaction((tx) async {
+        final snap = await tx.get(ref);
+        if (!snap.exists) return;
+        final data = snap.data();
+        if (data == null) return;
+        if (data['callId'] != callId) {
+          debugPrint('☎️ BEL-R3 beeindigActiefGesprek: callId mismatch '
+              '(bewaarde=${data['callId']}, gevraagd=$callId) — niet delete');
+          return;
+        }
+        tx.delete(ref);
+      });
+      debugPrint('☎️ BEL-R3 beeindigActiefGesprek: slot verwijderd '
+          '(ontvanger=$ontvangerApparaatId, callId=$callId)');
+    } catch (e) {
+      debugPrint('⚠️ BEL-R3 beeindigActiefGesprek faalde '
+          '(niet blocking, TTL ruimt op): $e');
+    }
   }
 
   /// Runtime camera-permissie. Native: vraagt via [permission_handler] en

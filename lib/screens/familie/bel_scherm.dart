@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:audio_session/audio_session.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter/material.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:livekit_client/livekit_client.dart';
@@ -98,6 +99,29 @@ class _BelSchermState extends State<BelScherm> {
       }
       setState(() => _fase = _Fase.actief);
       unawaited(_startRingback());
+    } on FirebaseFunctionsException catch (e) {
+      // BEL-R3: server-side bezet-check kan een specifieke
+      // 'ontvanger_in_gesprek'-fout gooien. Details bevat de bellerNaam
+      // van de reeds-actieve call — tonen we in een NL-dialog i.p.v. de
+      // generieke fout-fase, en poppen dit scherm daarna zodat de
+      // gebruiker meteen op 'kies apparaat' terug is.
+      if (!mounted) return;
+      final details = e.details;
+      final isBezet = e.code == 'failed-precondition'
+          && details is Map
+          && details['code'] == 'ontvanger_in_gesprek';
+      if (isBezet) {
+        final bellerNaam =
+            (details['bellerNaam'] as String?)?.trim().isNotEmpty == true
+                ? (details['bellerNaam'] as String)
+                : 'iemand anders';
+        await _toonBezetDialogEnPop(bellerNaam);
+        return;
+      }
+      setState(() {
+        _fase = _Fase.fout;
+        _foutmelding = e.message ?? e.code;
+      });
     } catch (e) {
       if (!mounted) return;
       setState(() {
@@ -105,6 +129,32 @@ class _BelSchermState extends State<BelScherm> {
         _foutmelding = e.toString();
       });
     }
+  }
+
+  /// BEL-R3: warme NL-dialog voor de 'ontvanger al in gesprek'-situatie.
+  /// Bewust één actie ('Sluiten') zonder retry-knop — een 'probeer
+  /// opnieuw'-knop zou onbegrensd druk uitoefenen op de bezet-slot en de
+  /// UI verwarrend maken. Gebruiker sluit → keert terug naar de apparaat-
+  /// kies-lijst en kan zelf opnieuw tikken.
+  Future<void> _toonBezetDialogEnPop(String bellerNaam) async {
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('In gesprek'),
+        content: Text(
+          'Er is al iemand in gesprek met ${widget.doelNaam} '
+          '($bellerNaam). Probeer het straks nog eens.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('Sluiten'),
+          ),
+        ],
+      ),
+    );
+    if (!mounted) return;
+    Navigator.of(context).pop();
   }
 
   Future<void> _startRingback() async {
@@ -154,6 +204,10 @@ class _BelSchermState extends State<BelScherm> {
           kringId: widget.kringId,
           callId: callId,
           doelApparaatId: widget.doelApparaatId,
+          // BEL-R3: ontvanger = de gebelde tablet = doelApparaatId. Server
+          // ruimt hiermee direct het bezet-slot op zodat een 2e beller
+          // meteen door kan.
+          ontvangerApparaatId: widget.doelApparaatId,
         ).catchError((_) => false),
       );
     }
@@ -171,8 +225,16 @@ class _BelSchermState extends State<BelScherm> {
     if (_doorstroomNaarGesprek) return;
     _doorstroomNaarGesprek = true;
     unawaited(_stopRingback());
+    final cid = _callId;
     Navigator.of(context).pushReplacement(MaterialPageRoute<void>(
-      builder: (_) => GesprekScherm(remoteNaam: widget.doelNaam),
+      // BEL-R3: geef ontvangerApparaatId + callId mee zodat GesprekScherm
+      // bij dispose (hangup, back-swipe, remote-disconnect) het bezet-slot
+      // opruimt. Ontvanger = de gebelde tablet = widget.doelApparaatId.
+      builder: (_) => GesprekScherm(
+        remoteNaam: widget.doelNaam,
+        ontvangerApparaatId: widget.doelApparaatId,
+        callId: cid,
+      ),
     ));
   }
 
