@@ -3,8 +3,14 @@ import 'dart:convert';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/foundation.dart';
-import 'package:flutter_callkit_incoming/entities/entities.dart';
-import 'package:flutter_callkit_incoming/flutter_callkit_incoming.dart';
+// BEL-R1: overgestapt van hiennguyen92/flutter_callkit_incoming 2.5.0 naar
+// de maintained fork 3.1.2. In tegenstelling tot wat de README suggereert
+// re-exporteert de fork-barrel de entities NIET — ze worden alleen intern
+// geïmporteerd. Voor `CallEvent`, `CallKitParams`, `AndroidParams`,
+// `NotificationParams` moeten we `entities/entities.dart` daarom apart
+// importeren, zoals ook in de 2.5-versie het geval was.
+import 'package:flutter_callkit_incoming_maintained/entities/entities.dart';
+import 'package:flutter_callkit_incoming_maintained/flutter_callkit_incoming_maintained.dart';
 import 'push_service.dart';
 
 /// Wrapper rond flutter_callkit_incoming voor de Optie B ConnectionService-
@@ -79,6 +85,15 @@ class BelCallkitService {
 
   static StreamSubscription<CallEvent?>? _eventSub;
 
+  /// BEL-R1: fork 3.1.0+ heeft een sealed CallEvent-refactor (PR #772).
+  /// Bij accept/decline events krijgen we alleen `id` — de fcmData
+  /// (met kringId, bellerApparaatId, callerName) zit dan NIET meer in
+  /// de event-body. We cachen daarom `callId → fcmData` bij showCallkit
+  /// zodat we in _verwerkEvent zonder round-trip naar de plugin kunnen
+  /// bijkomen. Fallback (bij cold-start replay of gemiste cache-entry)
+  /// blijft `activeCalls()` — daar staat `extra['fcmDataJson']` nog op.
+  static final Map<String, Map<String, dynamic>> _fcmDataPerCallId = {};
+
   /// Toont de native call-UI (ConnectionService op Android, CallKit op
   /// iOS). Return `true` als de plugin de show succesvol heeft ontvangen
   /// — nog GEEN garantie dat het OS de UI toont (kan alsnog falen op
@@ -95,6 +110,12 @@ class BelCallkitService {
   }) async {
     if (kIsWeb) return false;
     try {
+      // BEL-R1: `textAccept`/`textDecline` staan in fork 3.1.x op
+      // AndroidParams (voorheen op CallKitParams-niveau). `isFullScreen`
+      // (PR #633) is nieuw en zorgt dat de callkit als volledig scherm
+      // wordt getoond in plaats van als losse notificatie — cruciaal om
+      // op A14+ prominent binnen te komen, ook als het OS de heads-up
+      // wegdrukt vanwege ontbrekende USE_FULL_SCREEN_INTENT-toestemming.
       final params = CallKitParams(
         id: callId,
         nameCaller: callerName,
@@ -102,8 +123,6 @@ class BelCallkitService {
         handle: 'Videogesprek',
         type: 1, // video
         duration: 45000, // 45s ring-timeout (matcht bestaande V3-4)
-        textAccept: 'Opnemen',
-        textDecline: 'Weigeren',
         missedCallNotification: const NotificationParams(
           showNotification: false,
           isShowCallback: false,
@@ -133,8 +152,19 @@ class BelCallkitService {
           // special-permission-prompt (BEL-Q2) geeft dit de gewenste
           // prominente heads-up + lock-screen call-UI.
           isShowFullLockedScreen: true,
+          // BEL-R1: PR #633. Nieuwe fork-flag die de plugin een full-
+          // screen activity laat starten. Werkt samen met (niet in
+          // plaats van) isShowFullLockedScreen.
+          isFullScreen: true,
+          textAccept: 'Opnemen',
+          textDecline: 'Weigeren',
         ),
       );
+      // BEL-R1: cache fcmData vóór de plugin-call zodat het accept-event
+      // (dat alleen callId meestuurt) meteen bij de originele FCM-payload
+      // kan komen, ook als activeCalls() op sommige firmware een fractie
+      // later pas terug is.
+      _fcmDataPerCallId[callId] = fcmData;
       debugPrint('☎️ BelCallkitService.showCallkit → plugin-invoke '
           'callId=$callId caller="$callerName"');
       await FlutterCallkitIncoming.showCallkitIncoming(params);
@@ -217,47 +247,39 @@ class BelCallkitService {
     const pogingDelay = Duration(milliseconds: 400);
     for (var poging = 1; poging <= maxPogingen; poging++) {
       try {
-        final ruw = await FlutterCallkitIncoming.activeCalls();
-        if (ruw is! List) {
-          debugPrint('☎️ BEL-P1 replay poll #$poging: '
-              'result geen List ($ruw) — skip poging');
-        } else {
-          final accepted = ruw
-              .whereType<Map>()
-              .where((e) => e['isAccepted'] == true)
-              .toList();
-          debugPrint('☎️ BEL-P1 replay poll #$poging: '
-              '${ruw.length} entries, ${accepted.length} accepted');
-          for (final entry in accepted) {
-            final extra = entry['extra'];
-            if (extra is! Map) {
-              debugPrint('☎️ BEL-P1 replay: accepted call zonder extra — skip');
-              continue;
-            }
-            final fcmDataJson = extra['fcmDataJson'];
-            if (fcmDataJson is! String || fcmDataJson.isEmpty) {
-              debugPrint('☎️ BEL-P1 replay: extra zonder fcmDataJson — skip');
-              continue;
-            }
-            Map<String, dynamic>? fcmData;
-            try {
-              fcmData = jsonDecode(fcmDataJson) as Map<String, dynamic>;
-            } catch (e) {
-              debugPrint('☎️ BEL-P1 replay: fcmDataJson decode faalde: $e');
-              continue;
-            }
-            final callId = fcmData['callId'];
-            debugPrint('☎️ BEL-P1 replay: geaccepteerde call gevonden na '
-                'poll #$poging — publiceer (callId=$callId)');
-            _publiceerAccept(fcmData);
-            // Endcall zodat de callkit-state niet blijft rondzweven na
-            // een succesvolle replay — voorkomt dat een volgende cold-
-            // start dezelfde call opnieuw replayed.
-            if (callId is String && callId.isNotEmpty) {
-              await _veiligBeeindig(callId);
-            }
-            return; // Enkel de eerste geaccepteerde call; klaar.
+        // BEL-R1: activeCalls() retourneert in fork 3.1.x een
+        // List<CallKitParams>. `isAccepted` en `extra` zijn nu velden
+        // op het object (voorheen kaarten met dynamische keys).
+        final calls = await FlutterCallkitIncoming.activeCalls();
+        final accepted = calls.where((c) => c.isAccepted).toList();
+        debugPrint('☎️ BEL-P1 replay poll #$poging: '
+            '${calls.length} entries, ${accepted.length} accepted');
+        for (final call in accepted) {
+          final fcmDataJson = call.extra?['fcmDataJson'];
+          if (fcmDataJson is! String || fcmDataJson.isEmpty) {
+            debugPrint('☎️ BEL-P1 replay: accepted call zonder '
+                'fcmDataJson — skip');
+            continue;
           }
+          Map<String, dynamic>? fcmData;
+          try {
+            fcmData = jsonDecode(fcmDataJson) as Map<String, dynamic>;
+          } catch (e) {
+            debugPrint('☎️ BEL-P1 replay: fcmDataJson decode faalde: $e');
+            continue;
+          }
+          final callId = call.id;
+          debugPrint('☎️ BEL-P1 replay: geaccepteerde call gevonden na '
+              'poll #$poging — publiceer (callId=$callId)');
+          _publiceerAccept(fcmData);
+          _fcmDataPerCallId.remove(callId);
+          // Endcall zodat de callkit-state niet blijft rondzweven na
+          // een succesvolle replay — voorkomt dat een volgende cold-
+          // start dezelfde call opnieuw replayed.
+          if (callId.isNotEmpty) {
+            await _veiligBeeindig(callId);
+          }
+          return; // Enkel de eerste geaccepteerde call; klaar.
         }
       } catch (e, st) {
         debugPrint('⚠️ BEL-P1 replay poll #$poging fout '
@@ -274,70 +296,91 @@ class BelCallkitService {
   static Future<void> _verwerkEvent(CallEvent? event) async {
     if (event == null) return;
     try {
-      final data = event.body is Map ? Map<String, dynamic>.from(
-          event.body as Map) : const <String, dynamic>{};
-      final extra = (data['extra'] is Map)
-          ? Map<String, dynamic>.from(data['extra'] as Map)
-          : const <String, dynamic>{};
-      final fcmDataJson = extra['fcmDataJson'];
-      Map<String, dynamic>? fcmData;
-      if (fcmDataJson is String && fcmDataJson.isNotEmpty) {
-        try {
-          fcmData = jsonDecode(fcmDataJson) as Map<String, dynamic>;
-        } catch (_) {}
-      }
-
-      // callId zit zowel in de CallKitParams.id (data['id']) als in de
-      // originele fcmData['callId']. Eerste is autoritair — dat is wat we
-      // aan de plugin hebben doorgegeven bij showCallkit.
-      final callId = () {
-        final vanuitPlugin = data['id'];
-        if (vanuitPlugin is String && vanuitPlugin.isNotEmpty) {
-          return vanuitPlugin;
-        }
-        final vanuitFcm = fcmData?['callId'];
-        return (vanuitFcm is String && vanuitFcm.isNotEmpty) ? vanuitFcm : '';
-      }();
-
-      switch (event.event) {
-        case Event.actionCallAccept:
-          debugPrint('☎️ BelCallkitService event: Opnemen (callId=$callId)');
+      // BEL-R1: fork 3.1.x — CallEvent is een sealed class met subtypes.
+      // Accept/decline/ended/timeout leveren alleen een `id`; de originele
+      // fcmData (met kringId, bellerApparaatId, callerNaam) halen we uit
+      // onze in-memory cache met fallback op de plugin's activeCalls().
+      switch (event) {
+        case CallEventActionCallAccept(:final id):
+          debugPrint('☎️ BelCallkitService event: Opnemen (callId=$id)');
+          final fcmData = await _haalFcmDataOp(id);
           if (fcmData != null) {
             _publiceerAccept(fcmData);
+          } else {
+            debugPrint('⚠️ BelCallkitService: geen fcmData voor accepted '
+                'callId=$id — publicatie overgeslagen');
           }
+          _fcmDataPerCallId.remove(id);
           // BEL-B FIX3: expliciet endCall zodat de native call-UI +
           // ringing-notificatie direct verdwijnen. Zonder deze aanroep
           // blijft de melding op sommige Android-builds hangen tot de
           // 45s-timeout van CallKitParams.duration.
-          if (callId.isNotEmpty) {
-            await _veiligBeeindig(callId);
+          if (id.isNotEmpty) {
+            await _veiligBeeindig(id);
           }
-          break;
-        case Event.actionCallDecline:
-          debugPrint('☎️ BelCallkitService event: Weigeren (callId=$callId)');
+        case CallEventActionCallDecline(:final id):
+          debugPrint('☎️ BelCallkitService event: Weigeren (callId=$id)');
+          final fcmData = await _haalFcmDataOp(id);
           if (fcmData != null) {
             await _stuurCancelNaarBeller(fcmData);
+          } else {
+            debugPrint('⚠️ BelCallkitService: geen fcmData voor declined '
+                'callId=$id — cancelCall overgeslagen');
           }
+          _fcmDataPerCallId.remove(id);
           // BEL-B FIX3: expliciet endCall — spiegel van accept-pad. Ook
           // hier is sluiten van de native UI onze verantwoordelijkheid;
           // de plugin garandeert dat niet consistent per firmware.
-          if (callId.isNotEmpty) {
-            await _veiligBeeindig(callId);
+          if (id.isNotEmpty) {
+            await _veiligBeeindig(id);
           }
-          break;
-        case Event.actionCallEnded:
-        case Event.actionCallTimeout:
+        case CallEventActionCallEnded(:final id):
           // Ring-tijd voorbij of remote hangup — geen extra actie nodig,
-          // native UI is al gesloten. Alleen loggen.
-          debugPrint('☎️ BelCallkitService event: ended/timeout '
-              '(callId=$callId)');
-          break;
+          // native UI is al gesloten. Wel de cache-entry opruimen zodat
+          // de map niet groeit.
+          debugPrint('☎️ BelCallkitService event: ended (callId=$id)');
+          _fcmDataPerCallId.remove(id);
+        case CallEventActionCallTimeout(:final id):
+          debugPrint('☎️ BelCallkitService event: timeout (callId=$id)');
+          _fcmDataPerCallId.remove(id);
         default:
+          // Overige events (incoming, connected, callback, toggle*) hebben
+          // geen actie nodig in ons flow.
           break;
       }
     } catch (e, st) {
       debugPrint('⚠️ BelCallkitService event-verwerking faalde: $e\n$st');
     }
+  }
+
+  /// BEL-R1: haalt de originele fcmData op voor een callId. Eerst uit
+  /// de in-memory cache (gevuld door [showCallkit] in dezelfde isolate);
+  /// als die miss geeft — bijvoorbeeld bij cold-start-accept of tijdens
+  /// een background-isolate — fallback op de plugin's [activeCalls] die
+  /// `extra['fcmDataJson']` heeft doorbewaard.
+  static Future<Map<String, dynamic>?> _haalFcmDataOp(String callId) async {
+    if (callId.isEmpty) return null;
+    final gecached = _fcmDataPerCallId[callId];
+    if (gecached != null) {
+      debugPrint('☎️ BEL-R1: fcmData uit in-memory cache (callId=$callId)');
+      return gecached;
+    }
+    try {
+      final calls = await FlutterCallkitIncoming.activeCalls();
+      for (final c in calls) {
+        if (c.id != callId) continue;
+        final fcmDataJson = c.extra?['fcmDataJson'];
+        if (fcmDataJson is String && fcmDataJson.isNotEmpty) {
+          debugPrint('☎️ BEL-R1: fcmData uit activeCalls() fallback '
+              '(callId=$callId)');
+          return jsonDecode(fcmDataJson) as Map<String, dynamic>;
+        }
+      }
+    } catch (e) {
+      debugPrint('⚠️ BEL-R1: activeCalls-fallback faalde voor '
+          'callId=$callId: $e');
+    }
+    return null;
   }
 
   /// Interne wrapper rond [beeindigCallkit] met alleen extra logging zodat

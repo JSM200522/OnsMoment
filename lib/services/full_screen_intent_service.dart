@@ -1,7 +1,14 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_callkit_incoming/flutter_callkit_incoming.dart';
+// BEL-R1: fork-import. `canUseFullScreenIntent()` en
+// `requestFullIntentPermission()` zijn in fork 3.1.x ongewijzigd van
+// signature, maar retourneren nu strikt `Future<bool>` (voorheen dynamic).
+// Dat betekent dat de eerdere defensieve "resultaat != false = magGebruiken"
+// nu een echte bool-check kan zijn — cruciaal om de prompt daadwerkelijk
+// te triggeren zodra Android 14+ de special-permission niet heeft verleend.
+// (Deze file gebruikt geen entities, dus alleen de main barrel volstaat.)
+import 'package:flutter_callkit_incoming_maintained/flutter_callkit_incoming_maintained.dart';
 import '../theme/kleuren.dart';
 import 'callkit_flag_service.dart';
 
@@ -35,24 +42,42 @@ class FullScreenIntentService {
   /// Aanroepen vanuit de ontvanger-router zodra de weergaveModus op
   /// MELDINGEN staat en de callkit-flag aan is. Web is een no-op.
   static Future<void> controleerEnPromptAlsNodig(BuildContext context) async {
-    if (kIsWeb) return;
-    if (_promptGetoondDezeSessie) return;
+    debugPrint('☎️ BEL-Q2: controleerEnPromptAlsNodig aangeroepen');
+    if (kIsWeb) {
+      debugPrint('☎️ BEL-Q2: web — skip');
+      return;
+    }
+    if (_promptGetoondDezeSessie) {
+      debugPrint('☎️ BEL-Q2: prompt deze sessie al getoond — skip');
+      return;
+    }
     try {
       final flagAan = await CallkitFlagService.isEnabled();
-      if (!flagAan) return;
-      final resultaat = await FlutterCallkitIncoming.canUseFullScreenIntent();
-      // Plugin geeft dynamic terug — behandel alles behalve expliciet
-      // false als "wel toegestaan" (defensief: fout in plugin-response
-      // mag geen valse prompt geven).
-      final magGebruiken = resultaat != false;
-      debugPrint('☎️ BEL-Q2: canUseFullScreenIntent=$resultaat '
-          '(magGebruiken=$magGebruiken)');
-      if (magGebruiken) return;
-      if (!context.mounted) return;
+      if (!flagAan) {
+        debugPrint('☎️ BEL-Q2: callkit-flag uit — skip prompt');
+        return;
+      }
+      // BEL-R1: fork retourneert strikt `Future<bool>`. Gebruik expliciete
+      // bool-vergelijking (i.p.v. dynamische `!= false`) — dat was in 2.5.0
+      // de vermoedelijke reden waarom de prompt bij de tester niet
+      // verscheen: de plugin gaf een non-bool terug die als "wel toegestaan"
+      // werd geïnterpreteerd terwijl de special-permission ontbrak.
+      final magGebruiken = await FlutterCallkitIncoming.canUseFullScreenIntent();
+      debugPrint('☎️ BEL-Q2: canUseFullScreenIntent → $magGebruiken '
+          '(type=${magGebruiken.runtimeType})');
+      if (magGebruiken) {
+        debugPrint('☎️ BEL-Q2: toestemming al verleend — geen prompt');
+        return;
+      }
+      if (!context.mounted) {
+        debugPrint('☎️ BEL-Q2: context niet meer mounted — skip prompt');
+        return;
+      }
       _promptGetoondDezeSessie = true;
+      debugPrint('☎️ BEL-Q2: toon warme prompt (toestemming ontbreekt)');
       await _toonPrompt(context);
-    } catch (e) {
-      debugPrint('⚠️ BEL-Q2: check faalde (skip prompt): $e');
+    } catch (e, st) {
+      debugPrint('⚠️ BEL-Q2: check faalde (skip prompt): $e\n$st');
     }
   }
 
@@ -92,10 +117,14 @@ class FullScreenIntentService {
             onPressed: () async {
               Navigator.of(dialogCtx).pop();
               try {
-                await FlutterCallkitIncoming.requestFullIntentPermission();
-                debugPrint('☎️ BEL-Q2: requestFullIntentPermission verzonden');
-              } catch (e) {
-                debugPrint('⚠️ BEL-Q2: request faalde: $e');
+                final r = await FlutterCallkitIncoming
+                    .requestFullIntentPermission();
+                debugPrint('☎️ BEL-Q2: requestFullIntentPermission → $r '
+                    '(Android opent nu de special-permission-pagina; '
+                    'return-value is enkel of het intent kon worden '
+                    'gestart — niet of de gebruiker toestemt)');
+              } catch (e, st) {
+                debugPrint('⚠️ BEL-Q2: request faalde: $e\n$st');
               }
             },
             style: ElevatedButton.styleFrom(

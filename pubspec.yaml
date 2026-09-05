@@ -44,9 +44,15 @@ dependencies:
   # kIsWeb-guard in VideoCallService).
   permission_handler: ^11.3.1
   # Optie B — ConnectionService/TelecomManager (Android) + CallKit (iOS).
-  # B1: alleen toegevoegd als dependency; nog geen code-gebruik. Bij B2
-  # volgt manifest-config + PhoneAccount-registratie.
-  flutter_callkit_incoming: ^2.5.0
+  # BEL-R1: overgestapt van hiennguyen92/flutter_callkit_incoming 2.5.0
+  # naar de maintained fork 3.1.2. Bevat de vier fixes die onze bugs
+  # oplossen: #551 accept-in-killed-state, #630 decline/end op lockscreen
+  # A14+, #633 isFullScreen-flag, #666 A14+-compat. Vereist Java 17+ (staat
+  # al gepind in android/app/build.gradle: sourceCompatibility VERSION_17
+  # + jvmTarget '17'). Dart SDK ≥3.0.0 vereist (wij: 3.3.x via Flutter
+  # 3.19.6). Package-import verandert naar
+  # `package:flutter_callkit_incoming_maintained/flutter_callkit_incoming_maintained.dart`.
+  flutter_callkit_incoming_maintained: ^3.1.2
 
 dependency_overrides:
   record_android: 1.2.0
