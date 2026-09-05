@@ -14,6 +14,7 @@ import 'screens/videobellen/gesprek_scherm.dart';
 import 'services/apparaat_service.dart';
 import 'services/bel_callkit_service.dart';
 import 'services/callkit_flag_service.dart';
+import 'services/callkit_launch_service.dart';
 import 'services/device_modus_service.dart';
 import 'services/crash_service.dart';
 import 'services/full_screen_intent_service.dart';
@@ -68,6 +69,14 @@ void main() async {
   // app maar zit hij niet in het gesprek. activeCalls() → geaccepteerde
   // call → notifier met autoAnswer=true → main-flow springt naar het
   // waarschuwingsscherm + GesprekScherm.
+  //
+  // BEL-R2: onder plugin 2.5.x is activeCalls()-state bij cold-start niet
+  // betrouwbaar (bewaard in memory, niet cross-process). CallkitLaunchService
+  // is daarom de PRIMAIRE route: MainActivity.kt leest het launch-intent
+  // dat de plugin naar de app stuurt bij 'Opnemen', en levert de originele
+  // fcmData alsnog aan. E4-replay blijft als tweede vangnet — beide paden
+  // eindigen in _publiceerAccept en zijn callId-idempotent.
+  unawaited(CallkitLaunchService.initApp());
   unawaited(BelCallkitService.replayGeaccepteerdeCalls());
   runApp(const OnsMomentApp());
 }
