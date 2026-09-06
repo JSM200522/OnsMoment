@@ -50,14 +50,69 @@ class _GesprekSchermState extends State<GesprekScherm> {
   String _foutmelding = '';
   bool _gepop = false;
 
+  /// BEL-S2 defensieve laag. Als de tegenpartij weggaat maar
+  /// VideoCallService's ParticipantDisconnectedEvent-listener om welke
+  /// reden dan ook zou missen (LiveKit-race, subscription-fout), dan
+  /// blijft de gebruiker anders in de "Wachten tot X verschijnt…"-overlay
+  /// hangen. Deze timer pop't ons scherm alsnog na ~5s stilte.
+  ///
+  /// Alleen bewapend nadat we ooit een remote hebben GEZIEN — voorkomt
+  /// dat het scherm bij de START-fase (nog niemand verbonden) meteen
+  /// weer sluit. Cancel bij nieuwe remote of eigen ophangen.
+  bool _kregOoitRemote = false;
+  Timer? _remoteWegTimer;
+  Room? _huidigeRoom;
+
   @override
   void initState() {
     super.initState();
     _fase = widget.tokenToJoin != null ? _Fase.verbinden : _Fase.actief;
     VideoCallService.roomNotifier.addListener(_opRoomChange);
+    _volgHuidigeRoom();
     if (widget.tokenToJoin != null) {
       _startJoin();
     }
+  }
+
+  /// Attach een luisteraar aan de actuele room (Room is ChangeNotifier).
+  /// Rebind bij room-wissel via [_opRoomChange]. Idempotent — dubbele
+  /// attach doet niets.
+  void _volgHuidigeRoom() {
+    final room = VideoCallService.roomNotifier.value;
+    if (identical(room, _huidigeRoom)) return;
+    _huidigeRoom?.removeListener(_opRoomVerandert);
+    _huidigeRoom = room;
+    room?.addListener(_opRoomVerandert);
+    if (room != null) _opRoomVerandert();
+  }
+
+  /// Reageert op elke room-notify (participant-join, participant-leave,
+  /// track-updates). Bewaakt de "ooit remote gehad → nu weg → wacht kort
+  /// dan pop"-heuristiek als vangnet naast BEL-D FIX4 / BEL-S2 in
+  /// VideoCallService.
+  void _opRoomVerandert() {
+    final room = _huidigeRoom;
+    if (room == null) return;
+    final hebRemote = room.remoteParticipants.isNotEmpty;
+    if (hebRemote) {
+      if (!_kregOoitRemote) _kregOoitRemote = true;
+      _remoteWegTimer?.cancel();
+      _remoteWegTimer = null;
+      return;
+    }
+    // Remote is 0. Alleen actie als we ooit een remote hadden EN in
+    // actief-fase EN geen timer al draait.
+    if (!_kregOoitRemote) return;
+    if (_fase != _Fase.actief) return;
+    if (_remoteWegTimer != null) return;
+    _remoteWegTimer = Timer(const Duration(seconds: 5), () {
+      final rNu = _huidigeRoom;
+      if (rNu == null || rNu.remoteParticipants.isNotEmpty) return;
+      // Nog steeds leeg na 5s — behandel als "andere kant is weg" en
+      // sluit netjes. Hangup zet roomNotifier=null, _opRoomChange pop't.
+      unawaited(VideoCallService.hangup());
+      _popEenmaal();
+    });
   }
 
   Future<void> _startJoin() async {
@@ -75,6 +130,11 @@ class _GesprekSchermState extends State<GesprekScherm> {
   }
 
   void _opRoomChange() {
+    // BEL-S2: re-bind de room-listener zodra roomNotifier een nieuw
+    // Room-instance krijgt. Nu de room wisselt (bijv. na een cold-start
+    // of hangup + nieuwe join) blijft _opRoomVerandert aan de juiste
+    // room hangen.
+    _volgHuidigeRoom();
     if (VideoCallService.roomNotifier.value != null) return;
     // Room is null — verbroken door remote of eigen hangup. Alleen
     // pop als we in actief-fase zijn: tijdens verbinden kan een race
@@ -100,6 +160,11 @@ class _GesprekSchermState extends State<GesprekScherm> {
   @override
   void dispose() {
     VideoCallService.roomNotifier.removeListener(_opRoomChange);
+    // BEL-S2 opruimen: cancel timer + detach van room-notifier.
+    _remoteWegTimer?.cancel();
+    _remoteWegTimer = null;
+    _huidigeRoom?.removeListener(_opRoomVerandert);
+    _huidigeRoom = null;
     // Onvoorwaardelijke hangup: dekt back-swipe (mag niet, maar
     // defense-in-depth), force-navigate en proces-kill. Idempotent.
     unawaited(VideoCallService.hangup());

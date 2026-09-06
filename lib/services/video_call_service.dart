@@ -230,27 +230,34 @@ class VideoCallService {
       _room = null;
       roomNotifier.value = null;
     });
-    // BEL-D FIX4: als de tegenpartij ophangt, disconnect de LOKALE room
-    // ook zodat GesprekScherm bij BEIDE kanten sluit. Zonder deze listener
-    // bleef de andere kant in GesprekScherm hangen met een "Wachten tot
-    // X verschijnt…"-overlay tot de gebruiker zelf ophing.
+    // BEL-D FIX4 + BEL-S2: als de tegenpartij ophangt, disconnect de LOKALE
+    // room ook zodat GesprekScherm bij BEIDE kanten sluit. Zonder deze
+    // listener bleef de andere kant in GesprekScherm hangen met een
+    // "Wachten tot X verschijnt…"-overlay tot de gebruiker zelf ophing.
     //
-    // Waarom veilig bij netwerk-haperingen: LiveKit's client houdt eerst
-    // een re-connect-window aan (10-15s standaard) voordat een participant
-    // als 'disconnected' wordt gemarkeerd. Korte glitches vuren dit event
-    // NIET; alleen echt weggevallen deelnemers. Daarnaast controleren we
-    // remoteParticipants.isEmpty vóór we hangen — als er nog anderen in
-    // de room zitten (multi-party in latere fase) blijven we hangen.
+    // BEL-S2: de `remoteParticipants.isEmpty`-check verwijderd. In ons
+    // 1-op-1 model is elk ParticipantDisconnectedEvent per definitie "de
+    // andere kant is weg" — er is geen tweede remote-participant om op te
+    // wachten. Bovendien werd de check onbetrouwbaar: LiveKit-client kan
+    // het event fireren VÓÓRDAT de map is opgeruimd, waardoor `isEmpty`
+    // false gaf en hangup gemist werd. Symptoom bij de tester:
+    // "wachten tot verschijnt..." bleef staan tot handmatig ophangen.
+    //
+    // Netwerk-hiccups blijven veilig: LiveKit's client houdt een 10-15s
+    // reconnect-venster aan vóór hij een participant als disconnected
+    // markeert; korte glitches vuren dit event dus NIET. Multi-party
+    // (V-later) vraagt sowieso een andere strategie (min-participants,
+    // self-participant tracking) — dat pakken we aan zodra 1-op-1
+    // rotsvast is.
     listener.on<ParticipantDisconnectedEvent>((event) {
       final actieveRoom = _room;
       if (actieveRoom == null) return;
-      if (actieveRoom.remoteParticipants.isEmpty) {
-        debugPrint('📞 VideoCallService: laatste remote-participant weg — '
-            'sluit lokale room (identity=${event.participant.identity})');
-        // Fire-and-forget hangup: idempotent en synchroon-resettend, dus
-        // een tweede tap of dispose kan hier bovenop zonder schade.
-        unawaited(hangup());
-      }
+      debugPrint('📞 VideoCallService: remote-participant weg — '
+          'sluit lokale room (identity=${event.participant.identity}, '
+          'nog aanwezig=${actieveRoom.remoteParticipants.length})');
+      // Fire-and-forget hangup: idempotent en synchroon-resettend, dus
+      // een tweede tap of dispose kan hier bovenop zonder schade.
+      unawaited(hangup());
     });
     try {
       await room.connect(livekitUrl, token);
