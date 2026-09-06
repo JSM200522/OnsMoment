@@ -352,34 +352,6 @@ class BelCallkitService {
     }
   }
 
-  /// BEL-R2: publiek toegangspunt voor de MainActivity.kt launch-intent-
-  /// route. [CallkitLaunchService] roept dit aan met de rauwe fcmDataJson
-  /// die uit het accept-intent is gelezen. We decoderen hier en delegeren
-  /// naar dezelfde [_publiceerAccept]-flow die ook door de callkit-onEvent
-  /// en de activeCalls()-replay wordt gebruikt — één definitieve route
-  /// naar [PushService.incomingCallNotifier] met handmatigGeaccepteerd.
-  ///
-  /// Fail-soft: ongeldige JSON of missing keys → log + skip, geen crash.
-  /// Idempotent per callId dankzij de bestaande de-dup in
-  /// [_publiceerAccept].
-  static void publiceerAcceptVanFcmDataJson(String fcmDataJson) {
-    if (fcmDataJson.isEmpty) {
-      debugPrint('☎️ BEL-R2: publiceerAcceptVanFcmDataJson: lege string');
-      return;
-    }
-    Map<String, dynamic> fcmData;
-    try {
-      fcmData = jsonDecode(fcmDataJson) as Map<String, dynamic>;
-    } catch (e) {
-      debugPrint('⚠️ BEL-R2: fcmDataJson decode faalde: $e');
-      return;
-    }
-    final callId = fcmData['callId'];
-    debugPrint('☎️ BEL-R2: publiceer accept vanuit intent '
-        '(callId=$callId, keys=${fcmData.keys.join(",")})');
-    _publiceerAccept(fcmData);
-  }
-
   static void _publiceerAccept(Map<String, dynamic> fcmData) {
     // BEL-P2: zet handmatigGeaccepteerd i.p.v. autoAnswer. Callkit-accept
     // is een bewuste tik door de callee — het waarschuwingsscherm ("we
