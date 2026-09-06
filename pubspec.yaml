@@ -1,7 +1,7 @@
 name: ons_moment
 description: Ons Moment - Verbinding voor mensen met dementie
 publish_to: 'none'
-version: 1.0.24+28
+version: 1.0.25+29
 
 environment:
   sdk: '>=3.3.0 <4.0.0'

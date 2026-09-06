@@ -31,6 +31,7 @@ import 'kringleden_scherm.dart';
 import 'kring_aanmaken_scherm.dart';
 import 'pakket_keuze_scherm.dart';
 import 'bel_apparaat_kies_scherm.dart';
+import '../videobellen/bel_diagnose_scherm.dart';
 import '../../data/kring.dart';
 import '../../data/kring_membership.dart';
 import '../../services/kring_service.dart';
@@ -3893,6 +3894,16 @@ class _InstellingenTabState extends State<InstellingenTab> {
               backgroundColor: Colors.transparent, isScrollControlled: true,
               builder: (ctx) => const _HulpDialog());
         }),
+        // BEL-S3: diagnose-scherm voor de bel-melding. Achter
+        // DEBUG_VIDEOBELLEN zichtbaar voor alle testers zolang we de
+        // belfunctie stabiliseren. Toont Android-versie, FSI-toestemming
+        // en notification-channel-status; met "Prompt forceren"-knop.
+        if (DEBUG_VIDEOBELLEN)
+          _item('🩺', 'Bel-melding diagnose',
+              'Android-versie, toestemming, kanaal-status', () {
+            Navigator.push(context, MaterialPageRoute(
+                builder: (c) => const BelDiagnoseScherm()));
+          }),
         _item('🚪', 'Uitloggen', 'Logt uit en wist apparaat-instellingen', () async {
           await DeviceModusService.wis();
           await FirebaseAuth.instance.signOut();
