@@ -3,7 +3,9 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_callkit_incoming/flutter_callkit_incoming.dart';
 import '../theme/kleuren.dart';
-import 'callkit_flag_service.dart';
+// BEL-S1: CallkitFlagService niet meer nodig — de USE_FULL_SCREEN_INTENT-
+// check moet ongeacht Optie A/B draaien omdat Optie A's lokale-notificatie
+// óók fullScreenIntent gebruikt.
 
 /// BEL-Q2: check + warme prompt voor de Android 14+ USE_FULL_SCREEN_INTENT
 /// special-permission. Zonder deze toestemming toont het OS de callkit-
@@ -38,8 +40,13 @@ class FullScreenIntentService {
     if (kIsWeb) return;
     if (_promptGetoondDezeSessie) return;
     try {
-      final flagAan = await CallkitFlagService.isEnabled();
-      if (!flagAan) return;
+      // BEL-S1: callkit-flag-gate WEG. USE_FULL_SCREEN_INTENT (Android 14+)
+      // is óók vereist voor Optie A: de lokale-notificatie-flow zet
+      // `fullScreenIntent: true` op de heads-up-melding bij dichte app
+      // (push_service.dart:915). Zonder de special-permission degradeert
+      // Android die notificatie naar een gewone melding tussen de andere
+      // meldingen — geen belgeluid, niet prominent. De prompt moet dus
+      // triggeren ongeacht Optie A/B.
       final resultaat = await FlutterCallkitIncoming.canUseFullScreenIntent();
       // Plugin geeft dynamic terug — behandel alles behalve expliciet
       // false als "wel toegestaan" (defensief: fout in plugin-response
