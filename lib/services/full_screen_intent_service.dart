@@ -100,7 +100,6 @@ class FullScreenIntentService {
       return null;
     }
   }
-}
 
   /// Toont de dementie-vriendelijke uitleg-dialog. Twee knoppen:
   ///   - 'Toestemming geven'  → opent Android-instellingenpagina
