@@ -26,6 +26,16 @@ class FullScreenIntentService {
 
   static bool _promptGetoondDezeSessie = false;
 
+  /// BEL-S3: publieke wrapper zodat een dev-diagnose-scherm een prompt
+  /// kan forceren zonder de "1× per sessie"-guard te respecteren.
+  /// Reset de flag én roept de standaard-check aan; als toestemming
+  /// AL is gegeven toont hij (correct) niks — vandaar dat het
+  /// diagnose-scherm ook `leesHuidigeStatus` aparte weergeeft.
+  static Future<void> forceerPromptVoorTest(BuildContext context) async {
+    _promptGetoondDezeSessie = false;
+    await controleerEnPromptAlsNodig(context);
+  }
+
   /// Check of de app de FULL_SCREEN_INTENT-special-permission heeft; als
   /// niet, toon een vriendelijke uitleg-dialog met knop om Android's
   /// instellingenpagina te openen.
@@ -48,20 +58,49 @@ class FullScreenIntentService {
       // meldingen — geen belgeluid, niet prominent. De prompt moet dus
       // triggeren ongeacht Optie A/B.
       final resultaat = await FlutterCallkitIncoming.canUseFullScreenIntent();
-      // Plugin geeft dynamic terug — behandel alles behalve expliciet
-      // false als "wel toegestaan" (defensief: fout in plugin-response
-      // mag geen valse prompt geven).
-      final magGebruiken = resultaat != false;
+      // BEL-S3: fail-CLOSED. Voorheen behandelden we "alles behalve
+      // expliciet false" als toegestaan — dat verborg problemen waarbij
+      // de plugin een niet-bool teruggaf (null, exception via return) en
+      // de prompt stil oversloeg. Nu tellen we alleen `resultaat == true`
+      // (letterlijk true) als "toestemming aanwezig". Alles anders (null,
+      // false, string, error) → toon de prompt zodat de gebruiker of
+      // toestemming kan geven, of via de dev-diagnose kan zien dat er
+      // iets misgaat.
+      final magGebruiken = resultaat == true;
       debugPrint('☎️ BEL-Q2: canUseFullScreenIntent=$resultaat '
-          '(magGebruiken=$magGebruiken)');
+          '(type=${resultaat.runtimeType} → magGebruiken=$magGebruiken)');
       if (magGebruiken) return;
       if (!context.mounted) return;
       _promptGetoondDezeSessie = true;
       await _toonPrompt(context);
-    } catch (e) {
-      debugPrint('⚠️ BEL-Q2: check faalde (skip prompt): $e');
+    } catch (e, st) {
+      debugPrint('⚠️ BEL-Q2: check faalde (skip prompt): $e\n$st');
     }
   }
+
+  /// BEL-S3: reset de "1× per sessie"-guard zodat de dev-diagnose-knop
+  /// ("Prompt forceren") de prompt opnieuw kan tonen zonder app-restart.
+  /// Bewust NIET automatisch aangeroepen — het is puur een dev-utility.
+  static void resetGuardVoorTest() {
+    _promptGetoondDezeSessie = false;
+  }
+
+  /// BEL-S3: leest de huidige FSI-status van de plugin zodat het
+  /// diagnose-scherm ("AAN/UIT") kan tonen zonder de prompt te triggeren.
+  /// Wraps de raw plugin-call zodat callers een schone `bool?` krijgen
+  /// (null = kon niet bepalen; true/false = actuele status).
+  static Future<bool?> leesHuidigeStatus() async {
+    if (kIsWeb) return null;
+    try {
+      final r = await FlutterCallkitIncoming.canUseFullScreenIntent();
+      if (r is bool) return r;
+      return null;
+    } catch (e) {
+      debugPrint('⚠️ BEL-S3: leesHuidigeStatus faalde: $e');
+      return null;
+    }
+  }
+}
 
   /// Toont de dementie-vriendelijke uitleg-dialog. Twee knoppen:
   ///   - 'Toestemming geven'  → opent Android-instellingenpagina
