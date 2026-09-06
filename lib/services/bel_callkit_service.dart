@@ -5,7 +5,6 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_callkit_incoming/entities/entities.dart';
 import 'package:flutter_callkit_incoming/flutter_callkit_incoming.dart';
-import 'device_modus_service.dart';
 import 'push_service.dart';
 
 /// Wrapper rond flutter_callkit_incoming voor de Optie B ConnectionService-
@@ -406,29 +405,14 @@ class BelCallkitService {
     if (bellerApparaatId is! String || bellerApparaatId.isEmpty) return;
     try {
       await Firebase.initializeApp();
-      // BEL-R3: eigen apparaatId is de ontvanger die weigert; meesturen
-      // zodat server het bezet-slot opruimt en een volgende beller niet
-      // 5 min hoeft te wachten op TTL. Fail-soft: als apparaatId
-      // opvragen faalt sturen we alleen de bestaande payload — cancel
-      // werkt dan nog steeds, alleen valt slot-cleanup terug op TTL.
-      String? eigenApparaatId;
-      try {
-        eigenApparaatId = await DeviceModusService.krijgApparaatId();
-      } catch (e) {
-        debugPrint('⚠️ BEL-R3: eigen apparaatId ophalen faalde: $e');
-      }
-      final payload = <String, dynamic>{
-        'kringId': kringId,
-        'callId': callId,
-        'doelApparaatId': bellerApparaatId,
-      };
-      if (eigenApparaatId != null && eigenApparaatId.isNotEmpty) {
-        payload['ontvangerApparaatId'] = eigenApparaatId;
-      }
       final callable = FirebaseFunctions
           .instanceFor(region: 'europe-west1')
           .httpsCallable('cancelVideoCall');
-      await callable.call<dynamic>(payload);
+      await callable.call<dynamic>(<String, dynamic>{
+        'kringId': kringId,
+        'callId': callId,
+        'doelApparaatId': bellerApparaatId,
+      });
     } catch (e) {
       debugPrint('⚠️ callkit decline cancelCall faalde: $e');
     }

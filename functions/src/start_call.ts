@@ -50,8 +50,6 @@ import {
   verwerkRateLimit,
   verifyApparaatOnderUid,
   verifyKringMembership,
-  reserveerBezetSlot,
-  verwijderBezetSlotAls,
 } from './call_helpers';
 
 const LIVEKIT_API_KEY = defineSecret('LIVEKIT_API_KEY');
@@ -242,20 +240,6 @@ export const startVideoCall = onCall(
     //    vertrouwt deze server-waarde — de beller kan hem niet manipuleren.
     const callerName = callerNaamUit(bellerSnap);
     const autoAnswer: boolean = kringSnap.data()?.autoAnswer === true;
-
-    // BEL-R3: reserveer bezet-slot vóór de FCM zodat een 2e beller
-    // meteen 'ontvanger_in_gesprek' krijgt. Bij een reeds-actieve call
-    // gooit reserveerBezetSlot HttpsError('failed-precondition', ...)
-    // met details.code='ontvanger_in_gesprek' en details.bellerNaam;
-    // die propageert direct naar de client zonder verdere afhandeling
-    // hier. Bij een verlopen slot wordt het overschreven — TTL vangnet.
-    await reserveerBezetSlot(db, doelApparaatId, {
-      callId,
-      bellerNaam: callerName,
-      bellerApparaatId,
-      kringId,
-    });
-
     const message: admin.messaging.Message = {
       token: doelFcmToken,
       data: {
@@ -294,10 +278,6 @@ export const startVideoCall = onCall(
         roomName, fcmId,
       });
     } catch (e) {
-      // BEL-R3: rollback het bezet-slot zodat de beller na een falende
-      // FCM niet vastzit op z'n eigen reservering. Fail-soft — als
-      // deze rollback zelf faalt, ruimt de TTL het uiteindelijk op.
-      await verwijderBezetSlotAls(db, doelApparaatId, callId);
       // Dead-token cleanup laten we in deze fase over aan onNieuwMoment
       // (die doet het bij push-meldingen). Voor de belflow is een falende
       // FCM een harde fout — de callee gaat het scherm niet zien.

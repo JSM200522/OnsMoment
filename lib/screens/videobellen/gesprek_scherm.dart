@@ -32,19 +32,11 @@ import '../../theme/kleuren.dart';
 class GesprekScherm extends StatefulWidget {
   final String remoteNaam;
   final String? tokenToJoin;
-  /// BEL-R3: opgegeven door de aanroeper zodat we bij afsluiten het
-  /// server-side bezet-slot netjes kunnen opruimen (i.p.v. te wachten
-  /// op de 5-min TTL). Beide velden verplicht om cleanup te doen —
-  /// als één van beide null is, valt de cleanup terug op de TTL.
-  final String? ontvangerApparaatId;
-  final String? callId;
 
   const GesprekScherm({
     super.key,
     required this.remoteNaam,
     this.tokenToJoin,
-    this.ontvangerApparaatId,
-    this.callId,
   });
 
   @override
@@ -111,19 +103,6 @@ class _GesprekSchermState extends State<GesprekScherm> {
     // Onvoorwaardelijke hangup: dekt back-swipe (mag niet, maar
     // defense-in-depth), force-navigate en proces-kill. Idempotent.
     unawaited(VideoCallService.hangup());
-    // BEL-R3: server-side bezet-slot opruimen zodat een volgende beller
-    // meteen door kan i.p.v. tot de 5-min TTL te wachten. Beide identifiers
-    // zijn optioneel — als de aanroeper ze niet meegeeft (edge case /
-    // legacy call-pad) valt cleanup terug op TTL. callId-match binnen de
-    // helper voorkomt dat een late cleanup een verse reservering wegvaagt.
-    final ontv = widget.ontvangerApparaatId;
-    final cid = widget.callId;
-    if (ontv != null && cid != null) {
-      unawaited(VideoCallService.beeindigActiefGesprek(
-        ontvangerApparaatId: ontv,
-        callId: cid,
-      ));
-    }
     super.dispose();
   }
 

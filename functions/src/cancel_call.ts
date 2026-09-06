@@ -40,8 +40,6 @@ import {
   eisIdString,
   verwerkRateLimit,
   verifyKringMembership,
-  verwijderBezetSlotAls,
-  MAX_ID_LEN,
 } from './call_helpers';
 
 export const cancelVideoCall = onCall(
@@ -61,19 +59,6 @@ export const cancelVideoCall = onCall(
     const kringId = eisIdString(data.kringId, 'kringId');
     const callId = eisIdString(data.callId, 'callId');
     const doelApparaatId = eisIdString(data.doelApparaatId, 'doelApparaatId');
-    // BEL-R3: optioneel. Client kent altijd wie de ontvanger is (bij
-    // beller-cancel = doelApparaatId zelf; bij callee-decline = eigen
-    // apparaatId). Als aanwezig ruimen we het bezet-slot direct op zodat
-    // een 2e beller niet hoeft te wachten op de 5-min TTL. Optioneel
-    // gemaakt zodat oudere client-builds (die dit veld nog niet meesturen)
-    // niet breken op invalid-argument.
-    const ontvangerApparaatIdRaw = data.ontvangerApparaatId;
-    const ontvangerApparaatId =
-      typeof ontvangerApparaatIdRaw === 'string'
-      && ontvangerApparaatIdRaw.length > 0
-      && ontvangerApparaatIdRaw.length <= MAX_ID_LEN
-        ? ontvangerApparaatIdRaw
-        : null;
 
     // Membership-check: beller moet lid zijn van de kring waar de
     // cancel bijhoort. Voorkomt dat iemand een cancel voor een ander
@@ -124,43 +109,21 @@ export const cancelVideoCall = onCall(
         kringId,
       },
       android: { priority: 'high' },
-      // iOS: zie onNieuwMoment — background + priority 5 is het maximale
-      // voor data-only FCM op iOS zonder PushKit/CallKit (Fase F).
-      apns: {
-        headers: {
-          'apns-push-type': 'background',
-          'apns-priority': '5',
-        },
-        payload: {
-          aps: { contentAvailable: true },
-        },
-      },
     };
-    let verzonden = false;
     try {
       const fcmId = await admin.messaging().send(message);
       logger.info('cancel FCM verstuurd', {
         uid, kringId, doelApparaatId, callId, fcmId,
       });
-      verzonden = true;
+      return { verzonden: true };
     } catch (e) {
-      // Delivery-fout: log en verder — tablet valt terug op de 45s
-      // timeout, en de bezet-slot-cleanup mag hier NIET afhangen van
-      // FCM-success (anders blijft het slot hangen tot TTL bij delivery-
-      // problemen die zich uitzonderlijk voordoen).
+      // Delivery-fout: log en return false. Tablet valt terug op de
+      // 45s timeout — betere UX dan een fout tonen aan de beller die
+      // al heeft opgehangen.
       logger.warn('cancel FCM faalde (geen fout naar client)', {
         uid, kringId, doelApparaatId, callId, error: String(e),
       });
+      return { verzonden: false };
     }
-
-    // BEL-R3: ruim bezet-slot op als de client de ontvanger meestuurt.
-    // Fail-soft binnen de helper zelf — nooit blocking voor de client-
-    // return. Zonder ontvangerApparaatId (oude client-builds): TTL doet
-    // het werk over max 5 min.
-    if (ontvangerApparaatId !== null) {
-      await verwijderBezetSlotAls(db, ontvangerApparaatId, callId);
-    }
-
-    return { verzonden };
   },
 );
