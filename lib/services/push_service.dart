@@ -1,11 +1,16 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:ui' show Color;
-import 'package:cloud_functions/cloud_functions.dart';
+// BEL-S6: cloud_functions is niet meer nodig in dit bestand — het
+// background-cancel-pad doet nu een directe HTTPS-POST via het http-
+// package (Firebase Auth-context leeft niet cross-isolate, dus de
+// callable-Dart-plugin faalt daar met unauthenticated).
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'apparaat_service.dart';
 import 'bel_callkit_service.dart';
@@ -13,6 +18,20 @@ import 'bel_log_service.dart';
 import 'callkit_flag_service.dart';
 import 'device_modus_service.dart';
 import 'kring_service.dart';
+
+// BEL-S6: SharedPreferences-sleutels voor het idToken-persist-pad zodat
+// het achtergrond-isolate (dat GEEN eigen Firebase Auth-context krijgt)
+// alsnog authenticated HTTPS-calls kan doen naar cancelVideoCall.
+const String _kBelIdTokenKey = 'bel_id_token_v1';
+const String _kBelIdTokenTsKey = 'bel_id_token_ts_ms_v1';
+// Token uit Firebase Auth is 1u geldig; we gebruiken 55min zodat we
+// nooit een net-verlopen token als "vers" behandelen.
+const int _kBelIdTokenMaxAgeMs = 55 * 60 * 1000;
+// Cloud Functions-callable-URL. Callables zijn onder de motorkap gewoon
+// HTTPS-endpoints; we spreken hetzelfde `{data: ...}` / `{result: ...}`
+// contract zoals de cloud_functions Dart-plugin dat ook doet.
+const String _kCancelVideoCallUrl =
+    'https://europe-west1-onsmonent.cloudfunctions.net/cancelVideoCall';
 
 /// Immutable payload voor een inkomend videogesprek. Wordt gepubliceerd
 /// op [PushService.incomingCallNotifier] zodra een high-priority data-
@@ -365,10 +384,54 @@ class PushService {
             'cold-start-tap actionId=${resp?.actionId ?? "tap"} '
             'payloadLen=${payload.length}'));
         if (payload.isNotEmpty) {
+          // BEL-S6: bij cold-start met een inkomend_gesprek-payload
+          // forceer actionId='accept'. User heeft bij dichte app op de
+          // bel-melding getikt = wilde opnemen. Zonder deze forcering zou
+          // main.dart:373 het InkomendGesprekScherm openen (bevestig-scherm
+          // met 'Beantwoorden'-knop) en zou de user een tweede tik nodig
+          // hebben. Bij OPEN app blijft actionId=null via het separate
+          // pad `onDidReceiveNotificationResponse` (regel 249) — die
+          // toont wél InkomendGesprekScherm, wat daar gewenst is.
+          String? effectiefActionId = resp?.actionId;
+          try {
+            final decoded = jsonDecode(payload);
+            if (decoded is Map && decoded['type'] == 'inkomend_gesprek') {
+              effectiefActionId = 'accept';
+              unawaited(BelLogService.log(
+                  'cold-start body-tap op belletje → forceer accept'));
+            }
+          } catch (_) {}
           debugPrint('🔔 Lokale notificatie launch: payload=$payload '
-              'actionId=${resp?.actionId}');
-          _verwerkLokaalNotificatieTik(payload, actionId: resp?.actionId);
+              'actionId=$effectiefActionId');
+          _verwerkLokaalNotificatieTik(payload, actionId: effectiefActionId);
         }
+      }
+
+      // BEL-S6: persist idToken zodat het achtergrond-isolate authenticated
+      // HTTPS-calls naar cancelVideoCall kan doen bij weigeren-vanuit-dichte-
+      // app. Dit isolate heeft anders geen Firebase Auth-context, waardoor
+      // FirebaseFunctions.instance.httpsCallable(...) throws unauthenticated.
+      // De token is ~1u geldig; we refreshen bij elke app-open (initApp).
+      // Fail-soft: als er geen user is (uitgelogd) of getIdToken faalt,
+      // slaan we niets op — het achtergrond-pad valt dan terug op de
+      // bestaande 45s-timeout aan de beller-kant.
+      try {
+        final user = FirebaseAuth.instance.currentUser;
+        if (user != null) {
+          final token = await user.getIdToken();
+          if (token != null && token.isNotEmpty) {
+            final prefs = await SharedPreferences.getInstance();
+            await prefs.setString(_kBelIdTokenKey, token);
+            await prefs.setInt(_kBelIdTokenTsKey,
+                DateTime.now().millisecondsSinceEpoch);
+            unawaited(BelLogService.log(
+                'idToken opgeslagen voor achtergrond-cancel '
+                '(len=${token.length})'));
+          }
+        }
+      } catch (e) {
+        unawaited(BelLogService.log(
+            'idToken persist faalde (niet blocking): $e'));
       }
     } catch (e, st) {
       debugPrint('⚠️ PushService.initApp faalde: $e\n$st');
@@ -940,29 +1003,36 @@ Future<void> _toonGesprekNotificatie(
     await plugin.show(
     notificationId,
     'Inkomend videogesprek',
-    '$callerName wil videobellen',
-    const NotificationDetails(
+    // BEL-S6: duidelijkere body die de user vertelt WAT te doen.
+    // Vroeger stond hier "$callerName wil videobellen"; de tester wist
+    // niet dat je op de melding-body moest tikken om op te nemen.
+    '$callerName belt — tik hier om op te nemen',
+    NotificationDetails(
       android: AndroidNotificationDetails(
         PushService.gesprekChannelId,
         'Ons Moment – Inkomend gesprek',
         importance: Importance.max,
         priority: Priority.high,
         icon: 'ic_stat_ons_moment',
-        color: Color(0xFFFF9B71),
-        largeIcon: DrawableResourceAndroidBitmap('ons_moment_logo'),
+        color: const Color(0xFFFF9B71),
+        largeIcon: const DrawableResourceAndroidBitmap('ons_moment_logo'),
         ticker: 'Inkomend videogesprek',
         showWhen: false,
         autoCancel: false,
         fullScreenIntent: true,
         category: AndroidNotificationCategory.call,
         visibility: NotificationVisibility.public,
-        actions: [
-          AndroidNotificationAction(
-            'accept',
-            'Opnemen',
-            showsUserInterface: true,
-            cancelNotification: true,
-          ),
+        // BEL-S6: 'Opnemen'-actionButton VERWIJDERD. Op Android 12+ opent
+        // die niet betrouwbaar de app door notification-trampoline
+        // restrictions — bevestigd door de tester's log
+        // "getNotificationAppLaunchDetails.didLaunch=false" bij tik op
+        // Opnemen. Body-tap fires deze API wel betrouwbaar (community-
+        // bewezen patroon, changelog 8.1.1+1). De cold-start-pad in
+        // initApp forceert dan actionId='accept' → direct GesprekScherm.
+        // Weiger-button blijft: showsUserInterface:false gebruikt het
+        // background-isolate-pad (_achtergrondNotificatieActie) dat
+        // niet op de trampoline-restrictie loopt.
+        actions: <AndroidNotificationAction>[
           AndroidNotificationAction(
             'decline',
             'Weigeren',
@@ -1041,22 +1111,60 @@ Future<void> _stuurAchtergrondCancel(String payload) async {
       await BelLogService.log('cancel: bellerApparaatId ontbreekt (skip)');
       return;
     }
-    await BelLogService.log('cancel params OK, Firebase init…');
-    // Firebase kan door OS zijn afgesloten sinds het _backgroundHandler-
-    // pad; idempotente init is veilig.
-    await Firebase.initializeApp();
-    await BelLogService.log('cancel Firebase init OK, callable aanroepen');
 
-    final callable = FirebaseFunctions
-        .instanceFor(region: 'europe-west1')
-        .httpsCallable('cancelVideoCall');
-    await callable.call<dynamic>(<String, dynamic>{
-      'kringId': kringId,
-      'callId': callId,
-      'doelApparaatId': bellerApparaatId,
-    });
+    // BEL-S6: haal idToken uit SharedPreferences (bewaard door initApp in
+    // het main-isolate). Firebase Auth-context leeft NIET cross-isolate,
+    // dus FirebaseFunctions.instance.httpsCallable(...) faalt met
+    // unauthenticated in dit achtergrond-isolate. In plaats daarvan doen
+    // we een directe HTTPS-POST naar de callable-URL — die accepteert
+    // exact hetzelfde `{data: ...}` / `{result: ...}` contract als de
+    // Dart plugin.
+    final prefs = await SharedPreferences.getInstance();
+    final token = prefs.getString(_kBelIdTokenKey);
+    final tokenTsMs = prefs.getInt(_kBelIdTokenTsKey) ?? 0;
+    final tokenLeeftijdMs =
+        DateTime.now().millisecondsSinceEpoch - tokenTsMs;
+    if (token == null || token.isEmpty) {
+      await BelLogService.log(
+          'cancel: geen opgeslagen idToken — skip (val op 45s timeout)');
+      return;
+    }
+    if (tokenLeeftijdMs > _kBelIdTokenMaxAgeMs) {
+      await BelLogService.log(
+          'cancel: idToken verlopen (age=${tokenLeeftijdMs}ms) — '
+          'skip (val op 45s timeout)');
+      return;
+    }
     await BelLogService.log(
-        'cancelVideoCall verstuurd (weiger vanaf achtergrond) ✓');
+        'cancel: idToken vers (age=${tokenLeeftijdMs}ms), HTTP-POST start');
+
+    final response = await http.post(
+      Uri.parse(_kCancelVideoCallUrl),
+      headers: <String, String>{
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $token',
+      },
+      body: jsonEncode(<String, dynamic>{
+        'data': <String, dynamic>{
+          'kringId': kringId,
+          'callId': callId,
+          'doelApparaatId': bellerApparaatId,
+        },
+      }),
+    ).timeout(const Duration(seconds: 10));
+
+    if (response.statusCode == 200) {
+      await BelLogService.log(
+          'cancelVideoCall HTTP ✓ (status=200, weiger vanaf achtergrond)');
+    } else {
+      // Compact body-preview zodat de log leesbaar blijft.
+      final preview = response.body.length > 120
+          ? '${response.body.substring(0, 120)}…'
+          : response.body;
+      await BelLogService.log(
+          'cancelVideoCall HTTP faalde: status=${response.statusCode} '
+          'body=$preview');
+    }
   } catch (e) {
     await BelLogService.log(
         'cancelVideoCall FAALDE (weiger vanaf achtergrond): $e');
