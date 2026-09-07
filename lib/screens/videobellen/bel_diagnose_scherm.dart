@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import '../../services/bel_log_service.dart';
 import '../../services/full_screen_intent_service.dart';
+import '../../services/kiosk_service.dart';
 import '../../services/push_service.dart';
 import '../../theme/kleuren.dart';
 import '../../widgets/normaal_scaffold.dart';
@@ -34,6 +35,9 @@ class _BelDiagnoseSchermState extends State<BelDiagnoseScherm> {
   String? _model;
   // FSI
   bool? _fsiStatus; // null = onbekend
+  // BEL-S8: battery-optimalisatie-uitzondering (cruciaal voor scherm-uit-
+  // wake bij inkomend gesprek)
+  bool? _batteryOptUit;
   // Channel
   bool _channelBestaat = false;
   String? _channelImportance;
@@ -63,6 +67,12 @@ class _BelDiagnoseSchermState extends State<BelDiagnoseScherm> {
     }
     // FSI
     _fsiStatus = await FullScreenIntentService.leesHuidigeStatus();
+    // BEL-S8: battery-optimalisatie-uitzondering
+    try {
+      _batteryOptUit = await KioskService.isBatteryOptimizationUit();
+    } catch (_) {
+      _batteryOptUit = null;
+    }
     // Channel
     await _leesChannel();
     // Events
@@ -192,6 +202,38 @@ class _BelDiagnoseSchermState extends State<BelDiagnoseScherm> {
                   label: 'Prompt forceren',
                   icon: Icons.notification_important_rounded,
                   onTap: _promptForceren,
+                ),
+                const SizedBox(height: 20),
+                _sectie('Battery-optimalisatie (scherm-uit wake)'),
+                _regel(
+                  'Uitgezonderd',
+                  _batteryOptUit == null
+                      ? 'onbekend'
+                      : (_batteryOptUit! ? 'JA' : 'NEE'),
+                  waarde: _batteryOptUit == null
+                      ? kBrownLight
+                      : (_batteryOptUit! ? kGreen : kRood),
+                ),
+                _uitleg(_batteryOptUit == false
+                    ? 'Battery-optimalisatie staat AAN → Android/Samsung mag '
+                        'de app in slaap zetten bij scherm-uit; FCM-bel-'
+                        'meldingen komen dan vertraagd of niet. Tik hieronder '
+                        'op "Uitzondering vragen".'
+                    : _batteryOptUit == true
+                        ? 'App is uitgezonderd — FCM komt door bij scherm-uit '
+                            '(mits niet in Samsung "Sleeping apps"-lijst).'
+                        : 'Kon status niet lezen (Android < 6 of plugin-fout).'),
+                const SizedBox(height: 8),
+                _knop(
+                  label: 'Uitzondering vragen',
+                  icon: Icons.battery_charging_full_rounded,
+                  onTap: () async {
+                    await KioskService.vraagBatteryOptimizationUit();
+                    if (!mounted) return;
+                    await Future<void>.delayed(const Duration(seconds: 1));
+                    if (!mounted) return;
+                    _laad();
+                  },
                 ),
                 const SizedBox(height: 20),
                 _sectie('Bel-melding kanaal (${PushService.gesprekChannelId})'),

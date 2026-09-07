@@ -273,6 +273,11 @@ class PushService {
     if (kIsWeb) return;
     if (_initGedaan) return;
     _initGedaan = true;
+    // BEL-S8: log app-open zodat je in de bel-log chronologisch kunt
+    // zien wanneer de app opnieuw is opgestart. Combineer met de
+    // "FCM background ENTRY"-logs om te bepalen of een test-belletje
+    // (bij scherm-uit) de app wél/niet uit slaap wist te wekken.
+    unawaited(BelLogService.log('PushService.initApp start (cold-start of resume)'));
     try {
       // Background/terminated-handler moet vóór de eerste message worden
       // geregistreerd. De handler zelf is een top-level functie (FCM-eis)
@@ -833,6 +838,15 @@ Future<void> _backgroundHandler(RemoteMessage message) async {
     await Firebase.initializeApp();
     final type = message.data['type'];
     debugPrint('🔔 FCM background: ${message.messageId} type=$type');
+    // BEL-S8: log ELKE FCM-binnenkomst (niet alleen inkomend_gesprek)
+    // zodat we bij stand-by/scherm-uit-tests kunnen aflezen of FCM
+    // überhaupt de achtergrond-isolate bereikt. Als tijdens een test
+    // GEEN entry verschijnt in de log: OS blokkeerde achtergrond-wake
+    // (Doze/App Standby/Samsung Sleeping Apps) — dan geen
+    // presentatie-probleem maar OS-restrictie, oplosbaar via battery-
+    // optimization-uitzondering + vergrendelde/kiosk-modus.
+    await BelLogService.log(
+        'FCM background ENTRY (type=$type, msgId=${message.messageId})');
     if (type == 'inkomend_gesprek') {
       await BelLogService.log('FCM inkomend_gesprek binnen '
           '(callId=${message.data["callId"] ?? "?"})');
