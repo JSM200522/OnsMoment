@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:livekit_client/livekit_client.dart';
 import 'package:permission_handler/permission_handler.dart';
+import '../../services/bel_log_service.dart';
+import '../../services/push_service.dart';
 import '../../services/video_call_service.dart';
 import '../../theme/kleuren.dart';
 import '../videobellen/gesprek_scherm.dart';
@@ -57,10 +59,37 @@ class _BelSchermState extends State<BelScherm> {
   /// sturen. Null vóór startCall en na doorstroom of hangup.
   String? _callId;
 
+  // BEL-S10: cancel-listener zodat de beller stopt als de callee
+  // 'Weigeren' tikt (main.dart onAfgewezen roept cancelVideoCall aan
+  // → beller-app ontvangt gesprek_geannuleerd-FCM →
+  // PushService.cancelledCallIdNotifier fires).
+  VoidCallback? _cancelListener;
+
   @override
   void initState() {
     super.initState();
     _start();
+    _startCancelListener();
+  }
+
+  void _startCancelListener() {
+    void cb() {
+      final geannuleerdId = PushService.cancelledCallIdNotifier.value;
+      if (geannuleerdId == null) return;
+      final myId = _callId;
+      if (myId == null || myId != geannuleerdId) return;
+      // Alleen consumeren als het onze callId is; anders laat een andere
+      // luisteraar (bijv. het inkomend-scherm) hem afhandelen.
+      PushService.cancelledCallIdNotifier.value = null;
+      unawaited(BelLogService.log(
+          'BelScherm: callee weigerde (callId=$myId) → sluit + hangup'));
+      unawaited(_ophangen());
+    }
+    PushService.cancelledCallIdNotifier.addListener(cb);
+    _cancelListener = cb;
+    // Als de notifier al gezet was vóór de listener attach'te, direct
+    // afhandelen (edge-case bij snel weiger).
+    if (PushService.cancelledCallIdNotifier.value != null) cb();
   }
 
   Future<void> _start() async {
@@ -108,6 +137,7 @@ class _BelSchermState extends State<BelScherm> {
   }
 
   Future<void> _startRingback() async {
+    unawaited(BelLogService.log('BelScherm ringback START (setAsset+play)'));
     try {
       // BEL-E5: LiveKit.setMicrophoneEnabled(true) zet AudioManager op
       // MODE_IN_COMMUNICATION. Media-stream playback (just_audio default)
@@ -126,10 +156,14 @@ class _BelSchermState extends State<BelScherm> {
       await _ringbackPlayer.setAsset('assets/sounds/marimba.wav');
       await _ringbackPlayer.setLoopMode(LoopMode.one);
       await _ringbackPlayer.play();
-    } catch (_) {}
+      unawaited(BelLogService.log('BelScherm ringback PLAY OK'));
+    } catch (e) {
+      unawaited(BelLogService.log('BelScherm ringback FAALDE: $e'));
+    }
   }
 
   Future<void> _stopRingback() async {
+    unawaited(BelLogService.log('BelScherm ringback STOP'));
     try {
       await _ringbackPlayer.stop();
     } catch (_) {}
@@ -180,6 +214,11 @@ class _BelSchermState extends State<BelScherm> {
   void dispose() {
     unawaited(_roomListener?.dispose());
     unawaited(_ringbackPlayer.dispose());
+    // BEL-S10: cancel-listener netjes losmaken.
+    if (_cancelListener != null) {
+      PushService.cancelledCallIdNotifier.removeListener(_cancelListener!);
+      _cancelListener = null;
+    }
     // Alleen hangen als we NIET doorstromen naar GesprekScherm.
     // Bij doorstroom heeft dat scherm de room overgenomen en handelt
     // hij zelf de hangup af (in zijn eigen dispose). Doe je hier toch

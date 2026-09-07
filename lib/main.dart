@@ -13,6 +13,7 @@ import 'screens/videobellen/auto_opnemen_waarschuwing_scherm.dart';
 import 'screens/videobellen/gesprek_scherm.dart';
 import 'services/apparaat_service.dart';
 import 'services/bel_callkit_service.dart';
+import 'services/bel_log_service.dart';
 import 'services/callkit_flag_service.dart';
 import 'services/device_modus_service.dart';
 import 'services/crash_service.dart';
@@ -389,13 +390,26 @@ class _OntvangerRouterState extends State<_OntvangerRouter> {
             // "melding-body-tap → dit scherm → Niet nu".
             final bellerId = call.bellerApparaatId;
             if (bellerId != null && bellerId.isNotEmpty) {
+              unawaited(BelLogService.log(
+                  'onAfgewezen: cancelCall naar beller '
+                  '(callId=${call.callId})'));
               unawaited(
                 VideoCallService.cancelCall(
                   kringId: call.kringId,
                   callId: call.callId,
                   doelApparaatId: bellerId,
-                ).catchError((_) => false),
+                ).then((ok) {
+                  unawaited(BelLogService.log(
+                      'onAfgewezen cancelCall result=$ok'));
+                }).catchError((Object e) {
+                  unawaited(BelLogService.log(
+                      'onAfgewezen cancelCall FAALDE: $e'));
+                }),
               );
+            } else {
+              unawaited(BelLogService.log(
+                  'onAfgewezen: geen bellerApparaatId in call — '
+                  'skip cancel (beller valt op 45s-timeout)'));
             }
             Navigator.of(navigator.context).pop();
           },

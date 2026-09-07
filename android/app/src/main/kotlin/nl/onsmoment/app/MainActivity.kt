@@ -1,13 +1,16 @@
 package nl.onsmoment.app
 
 import android.app.ActivityManager
+import android.app.KeyguardManager
 import android.app.NotificationManager
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
+import android.os.Bundle
 import android.os.PowerManager
 import android.provider.Settings
+import android.util.Log
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
@@ -16,6 +19,76 @@ class MainActivity : FlutterActivity() {
 
     private var kioskChannel: MethodChannel? = null
     private var kioskActief = false
+
+    // BEL-S10: als de app door een inkomend_gesprek-melding wordt
+    // gelaunched (body-tap OF fullScreenIntent-auto-launch bij scherm-
+    // UIT), zet dan CONDITIONEEL de show-when-locked + turn-screen-on
+    // flags zodat InkomendGesprekScherm zichtbaar rinkelend BOVEN het
+    // keyguard verschijnt en het scherm wordt gewekt. Zonder deze
+    // flags start Android de Activity wél maar blijft ze achter het
+    // slot; scherm blijft uit — de tester zag daardoor "niets", en
+    // pas bij handmatig ontgrendelen zat hij ineens in de app.
+    // Detectie via het "payload"-intent-extra dat flutter_local_
+    // notifications meestuurt bij tap/launch.
+    private val plugintagBelLaunch = "OMBelS10"
+
+    // BEL-S10: cold-start pad — flag zetten vóór de Activity zichtbaar
+    // wordt. onCreate wordt door FlutterActivity aangeroepen; wij hooken
+    // hier meteen op zodat setShowWhenLocked/setTurnScreenOn effect
+    // hebben bij de eerste render.
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        handleInkomendGesprekLaunch(intent, bron = "onCreate")
+    }
+
+    // BEL-S10: warm-start pad — app draaide al en krijgt een nieuw
+    // launch-intent (bijv. body-tap terwijl app op achtergrond staat).
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleInkomendGesprekLaunch(intent, bron = "onNewIntent")
+    }
+
+    private fun handleInkomendGesprekLaunch(intent: Intent?, bron: String) {
+        if (intent == null) {
+            Log.d(plugintagBelLaunch, "handle($bron): intent=null, skip")
+            return
+        }
+        val payload = intent.getStringExtra("payload")
+        if (payload.isNullOrEmpty()) {
+            Log.d(plugintagBelLaunch, "handle($bron): geen payload, skip")
+            return
+        }
+        // Payload is JSON-string van _toonGesprekNotificatie. Kijken naar
+        // de type-string zonder volledig te parsen (zou een JSON-lib nodig
+        // hebben; naive contains volstaat en is snel).
+        if (!payload.contains("\"type\":\"inkomend_gesprek\"")) {
+            Log.d(plugintagBelLaunch, "handle($bron): payload geen bel, skip")
+            return
+        }
+        Log.i(plugintagBelLaunch,
+            "handle($bron): inkomend_gesprek launch → showWhenLocked + " +
+                "turnScreenOn + requestDismissKeyguard")
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
+            try {
+                setShowWhenLocked(true)
+                setTurnScreenOn(true)
+            } catch (e: Exception) {
+                Log.w(plugintagBelLaunch,
+                    "setShowWhenLocked/turnScreenOn faalde: ${e.message}")
+            }
+        }
+        try {
+            val km = getSystemService(Context.KEYGUARD_SERVICE) as KeyguardManager
+            if (km.isKeyguardLocked) {
+                km.requestDismissKeyguard(this, null)
+                Log.i(plugintagBelLaunch, "requestDismissKeyguard verzonden")
+            }
+        } catch (e: Exception) {
+            Log.w(plugintagBelLaunch,
+                "requestDismissKeyguard faalde: ${e.message}")
+        }
+    }
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)

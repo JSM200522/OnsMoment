@@ -821,6 +821,8 @@ class PushService {
       debugPrint('⚠️ gesprek_geannuleerd FCM zonder callId: ${msg.data}');
       return;
     }
+    unawaited(BelLogService.log(
+        'FCM foreground: gesprek_geannuleerd ontvangen (callId=$callId)'));
     cancelledCallIdNotifier.value = callId;
   }
 }
