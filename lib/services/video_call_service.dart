@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:livekit_client/livekit_client.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'bel_callkit_service.dart';
+import 'bel_log_service.dart';
 
 /// VideoCallService — LiveKit-integratie voor de videobel-functie.
 ///
@@ -216,6 +217,7 @@ class VideoCallService {
   ///   zodat het aanroepend scherm foutmelding kan tonen.
   static Future<void> join(String token) async {
     if (kIsWeb) return;
+    unawaited(BelLogService.log('LiveKit-join start'));
     await hangup();
     // RoomOptions horen sinds livekit_client 2.x in de constructor, niet
     // in connect() (die parameter is daar deprecated).

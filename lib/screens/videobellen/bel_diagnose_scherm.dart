@@ -1,9 +1,8 @@
 import 'dart:async';
 import 'package:device_info_plus/device_info_plus.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import '../../services/bel_log_service.dart';
 import '../../services/full_screen_intent_service.dart';
 import '../../services/push_service.dart';
 import '../../theme/kleuren.dart';
@@ -41,6 +40,8 @@ class _BelDiagnoseSchermState extends State<BelDiagnoseScherm> {
   String? _channelSoundUri;
   bool? _channelVibratie;
   int? _channelBadgeAan;
+  // BEL-S4: bel-events log
+  List<String> _events = const <String>[];
 
   @override
   void initState() {
@@ -64,6 +65,8 @@ class _BelDiagnoseSchermState extends State<BelDiagnoseScherm> {
     _fsiStatus = await FullScreenIntentService.leesHuidigeStatus();
     // Channel
     await _leesChannel();
+    // Events
+    _events = await BelLogService.leesAlles();
     if (!mounted) return;
     setState(() => _bezig = false);
   }
@@ -92,19 +95,34 @@ class _BelDiagnoseSchermState extends State<BelDiagnoseScherm> {
     }
   }
 
-  Future<void> _openAndroidChannelInstellingen() async {
-    // Opent Instellingen → App → Meldingen → dit kanaal, zodat gebruiker
-    // kan zien en herstellen of Importance/Sound door hem is aangepast.
-    // Werkt via de app-notification-settings intent; het kanaal-specifieke
-    // scherm bereikt de user met één tik daarna.
-    try {
-      const channel = MethodChannel('nl.onsmoment.kiosk');
-      // Er is nog geen dedicated intent-method in MainActivity voor "open
-      // app notification settings"; toon voor nu een tekst-instructie.
-      // (Toevoeging: een `openAppNotificationSettings` handler kan later
-      // via dezelfde channel als de kiosk-methods.)
-      await channel.invokeMethod<void>('noop');
-    } catch (_) {}
+  /// BEL-S4: knop-feedback voor "Prompt forceren". Als FSI al AAN staat,
+  /// toon SnackBar in plaats van stil terug te keren (dat gaf de tester
+  /// het idee dat de knop stuk was). Anders trigger forceerPromptVoorTest.
+  Future<void> _promptForceren() async {
+    final huidig = await FullScreenIntentService.leesHuidigeStatus();
+    if (!mounted) return;
+    if (huidig == true) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('Toestemming staat al AAN — geen prompt nodig'),
+        duration: Duration(seconds: 3),
+      ));
+      return;
+    }
+    await FullScreenIntentService.forceerPromptVoorTest(context);
+    if (!mounted) return;
+    await Future<void>.delayed(const Duration(seconds: 1));
+    if (!mounted) return;
+    _laad();
+  }
+
+  Future<void> _wisEvents() async {
+    await BelLogService.wisAlles();
+    if (!mounted) return;
+    setState(() => _events = const <String>[]);
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+      content: Text('Log gewist'),
+      duration: Duration(seconds: 2),
+    ));
   }
 
   @override
@@ -173,17 +191,7 @@ class _BelDiagnoseSchermState extends State<BelDiagnoseScherm> {
                 _knop(
                   label: 'Prompt forceren',
                   icon: Icons.notification_important_rounded,
-                  onTap: () async {
-                    await FullScreenIntentService
-                        .forceerPromptVoorTest(context);
-                    if (!mounted) return;
-                    // Kort daarna opnieuw status ophalen zodat gebruiker
-                    // ziet of Android z'n instellingen inmiddels heeft
-                    // bijgewerkt (kan tot enkele seconden duren).
-                    await Future<void>.delayed(const Duration(seconds: 1));
-                    if (!mounted) return;
-                    _laad();
-                  },
+                  onTap: _promptForceren,
                 ),
                 const SizedBox(height: 20),
                 _sectie('Bel-melding kanaal (${PushService.gesprekChannelId})'),
@@ -224,7 +232,65 @@ class _BelDiagnoseSchermState extends State<BelDiagnoseScherm> {
                               'binnenkomen. Als dat niet gebeurt: check DND, '
                               'geluidsprofiel, Doze/battery-optimalisatie.',
                 ),
-                const SizedBox(height: 24),
+                const SizedBox(height: 20),
+                _sectie('Laatste bel-events (nieuwste onderaan)'),
+                _uitleg(
+                  'Doe één test-belletje bij dichte app en tik dan de '
+                  'refresh-knop rechtsboven. Als hier "FCM inkomend_gesprek '
+                  'binnen" én "_toonGesprekNotificatie" verschijnen: de '
+                  'code draaide — dan is de melding een presentatie-probleem. '
+                  'Als er NIETS staat na een test-belletje: Android/OEM '
+                  'blokkeert de achtergrond-code (Doze / Slapende apps).',
+                ),
+                const SizedBox(height: 8),
+                if (_events.isEmpty)
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: kWhite,
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: kBrownLight.withOpacity(0.3)),
+                    ),
+                    child: const Text(
+                      '— leeg — nog geen events opgeslagen',
+                      style: TextStyle(color: kTextMuted, fontSize: 12),
+                    ),
+                  )
+                else
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: kWhite,
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: kBrownLight.withOpacity(0.3)),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        for (final e in _events)
+                          Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 2),
+                            child: SelectableText(
+                              e,
+                              style: const TextStyle(
+                                  color: kBrown,
+                                  fontSize: 11.5,
+                                  fontFamily: 'monospace'),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                const SizedBox(height: 8),
+                Center(
+                  child: TextButton.icon(
+                    onPressed: _wisEvents,
+                    icon: const Icon(Icons.delete_outline_rounded, size: 18),
+                    label: const Text('Wis log'),
+                    style: TextButton.styleFrom(foregroundColor: kBrownLight),
+                  ),
+                ),
+                const SizedBox(height: 20),
                 Center(
                   child: Text(
                     'Diagnose ${DateTime.now().toIso8601String().substring(11, 19)}',

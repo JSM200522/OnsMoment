@@ -9,6 +9,7 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'apparaat_service.dart';
 import 'bel_callkit_service.dart';
+import 'bel_log_service.dart';
 import 'callkit_flag_service.dart';
 import 'device_modus_service.dart';
 import 'kring_service.dart';
@@ -354,9 +355,15 @@ class PushService {
       // direct naar GesprekScherm zonder InkomendGesprekScherm.
       final launchDetails =
           await _localNotifications.getNotificationAppLaunchDetails();
-      if (launchDetails?.didNotificationLaunchApp == true) {
+      final didLaunch = launchDetails?.didNotificationLaunchApp == true;
+      unawaited(BelLogService.log(
+          'getNotificationAppLaunchDetails.didLaunch=$didLaunch'));
+      if (didLaunch) {
         final resp = launchDetails!.notificationResponse;
         final payload = resp?.payload?.trim() ?? '';
+        unawaited(BelLogService.log(
+            'cold-start-tap actionId=${resp?.actionId ?? "tap"} '
+            'payloadLen=${payload.length}'));
         if (payload.isNotEmpty) {
           debugPrint('🔔 Lokale notificatie launch: payload=$payload '
               'actionId=${resp?.actionId}');
@@ -399,6 +406,8 @@ class PushService {
   static void _verwerkLokaalNotificatieTik(String payload,
       {String? actionId}) {
     if (payload.isEmpty) return;
+    unawaited(BelLogService.log(
+        '_verwerkLokaalNotificatieTik (actionId=${actionId ?? "tap"})'));
     try {
       final data = jsonDecode(payload) as Map<String, dynamic>;
       if (data['type'] == 'inkomend_gesprek') {
@@ -426,6 +435,9 @@ class PushService {
           // _inkomendGesprekOpen-vlag in _OntvangerRouterState.
           if (incomingCallNotifier.value?.callId != call.callId) {
             incomingCallNotifier.value = call;
+            unawaited(BelLogService.log(
+                'navigatie naar gesprek (callId=${call.callId}, '
+                'handmatig=${call.handmatigGeaccepteerd})'));
           }
         }
         return;
@@ -638,11 +650,15 @@ class PushService {
 Future<void> _backgroundHandler(RemoteMessage message) async {
   try {
     await Firebase.initializeApp();
-    debugPrint('🔔 FCM background: ${message.messageId} '
-        'type=${message.data["type"]}');
-    if (message.data['type'] == 'nieuw_moment') {
+    final type = message.data['type'];
+    debugPrint('🔔 FCM background: ${message.messageId} type=$type');
+    if (type == 'inkomend_gesprek') {
+      await BelLogService.log('FCM inkomend_gesprek binnen '
+          '(callId=${message.data["callId"] ?? "?"})');
+    }
+    if (type == 'nieuw_moment') {
       await _achtergrondMomentNotificatie(message.data);
-    } else if (message.data['type'] == 'inkomend_gesprek') {
+    } else if (type == 'inkomend_gesprek') {
       await _achtergrondGesprekNotificatie(message.data);
     } else if (message.data['type'] == 'gesprek_geannuleerd') {
       // BEL-A2: beller heeft opgehangen — stop de herhaal-loop en veeg
@@ -786,6 +802,8 @@ Future<void> _achtergrondGesprekNotificatie(
   // BEL-E2: server-side autoAnswer-vlag ook in achtergrond-isolate uitlezen.
   // FCM-waarden zijn altijd strings; 'true' is de enige truthy waarde.
   final autoAnswer = data['autoAnswer'] == 'true';
+  await BelLogService.log('_achtergrondGesprekNotificatie start '
+      '(caller=$callerName, autoAnswer=$autoAnswer)');
 
   // BEL-B7: vergrendelde-modus guard — die modus draait de app altijd
   // voorgrond en gebruikt het foreground-pad; achtergrond-notificatie
@@ -856,6 +874,8 @@ Future<void> _achtergrondGesprekNotificatie(
   // Samsungs; dan stopt de loop na de eerste show. Volledige rotsvaste
   // fix = native foreground service (post-launch upgrade).
   _actieveGesprekId = callId;
+  await BelLogService.log(
+      'Optie A pad — _toonGesprekNotificatie aanroepen (fullScreenIntent)');
   await _toonGesprekNotificatie(plugin, callerName, data, notificationId: 1001);
   unawaited(_herhaalGesprekMelding(plugin, callerName, data, callId));
 }
@@ -896,7 +916,8 @@ Future<void> _toonGesprekNotificatie(
     String callerName,
     Map<String, dynamic> data,
     {required int notificationId}) async {
-  await plugin.show(
+  try {
+    await plugin.show(
     notificationId,
     'Inkomend videogesprek',
     '$callerName wil videobellen',
@@ -933,6 +954,11 @@ Future<void> _toonGesprekNotificatie(
     ),
     payload: jsonEncode(data),
   );
+    await BelLogService.log('melding getoond OK (id=$notificationId)');
+  } catch (e, st) {
+    await BelLogService.log('melding tonen FAALDE: $e');
+    debugPrint('⚠️ _toonGesprekNotificatie faalde: $e\n$st');
+  }
 }
 
 /// Top-level handler voor notificatie-acties die worden getikt terwijl de
@@ -955,6 +981,8 @@ void _achtergrondNotificatieActie(NotificationResponse response) {
   // marimba niet meer opnieuw afgaat na een user-actie.
   _actieveGesprekId = null;
 
+  unawaited(BelLogService.log(
+      '_achtergrondNotificatieActie (actionId=${response.actionId ?? "?"})'));
   if (response.actionId != 'decline') return;
   final payload = response.payload;
   if (payload == null || payload.isEmpty) return;
@@ -993,7 +1021,11 @@ Future<void> _stuurAchtergrondCancel(String payload) async {
       'callId': callId,
       'doelApparaatId': bellerApparaatId,
     });
+    await BelLogService.log(
+        'cancelVideoCall verstuurd (weiger vanaf achtergrond)');
   } catch (e) {
+    await BelLogService.log(
+        'cancelVideoCall FAALDE (weiger vanaf achtergrond): $e');
     debugPrint('⚠️ achtergrond-weiger cancelCall faalde: $e');
   }
 }
