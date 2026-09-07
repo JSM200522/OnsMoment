@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:livekit_client/livekit_client.dart';
+import '../../services/bel_log_service.dart';
 import '../../services/video_call_service.dart';
 import '../../theme/kleuren.dart';
 
@@ -105,9 +106,13 @@ class _GesprekSchermState extends State<GesprekScherm> {
     if (!_kregOoitRemote) return;
     if (_fase != _Fase.actief) return;
     if (_remoteWegTimer != null) return;
+    unawaited(BelLogService.log(
+        'GesprekScherm _opRoomVerandert: remote=0 na eerder=1+ → 5s-timer'));
     _remoteWegTimer = Timer(const Duration(seconds: 5), () {
       final rNu = _huidigeRoom;
       if (rNu == null || rNu.remoteParticipants.isNotEmpty) return;
+      unawaited(BelLogService.log(
+          'GesprekScherm defensieve timer: 5s stil → hangup + pop'));
       // Nog steeds leeg na 5s — behandel als "andere kant is weg" en
       // sluit netjes. Hangup zet roomNotifier=null, _opRoomChange pop't.
       unawaited(VideoCallService.hangup());
@@ -135,12 +140,16 @@ class _GesprekSchermState extends State<GesprekScherm> {
     // of hangup + nieuwe join) blijft _opRoomVerandert aan de juiste
     // room hangen.
     _volgHuidigeRoom();
-    if (VideoCallService.roomNotifier.value != null) return;
+    final nogRoom = VideoCallService.roomNotifier.value != null;
+    unawaited(BelLogService.log(
+        'GesprekScherm _opRoomChange (fase=$_fase, roomNotNull=$nogRoom)'));
+    if (nogRoom) return;
     // Room is null — verbroken door remote of eigen hangup. Alleen
     // pop als we in actief-fase zijn: tijdens verbinden kan een race
     // met join() een korte null-flikker geven die we niet als
     // "verbroken" willen tellen.
     if (_fase != _Fase.actief) return;
+    unawaited(BelLogService.log('GesprekScherm pop (room=null, fase=actief)'));
     _popEenmaal();
   }
 

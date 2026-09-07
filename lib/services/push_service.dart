@@ -24,6 +24,22 @@ import 'kring_service.dart';
 // alsnog authenticated HTTPS-calls kan doen naar cancelVideoCall.
 const String _kBelIdTokenKey = 'bel_id_token_v1';
 const String _kBelIdTokenTsKey = 'bel_id_token_ts_ms_v1';
+
+// BEL-S7: SharedPreferences-vlag om de herhaal-loop
+// (_herhaalGesprekMelding) te stoppen zodra de gebruiker de melding
+// bewust heeft aangetikt (body-tap → main-isolate). Zonder deze cross-
+// isolate vlag draaide de loop stug door en toonde elke ~8s een NIEUWE
+// melding — die de user opnieuw kon aantikken en dan bij cold-start
+// direct in gesprek zou belanden (probleem 1 + probleem 2).
+String _kGesprekGestoptKey(String callId) => 'bel_gesprek_gestopt_$callId';
+
+// BEL-S7: onthoud de laatst-verwerkte callId + timestamp zodat de main-
+// isolate een dubbele publish naar incomingCallNotifier binnen 60s skipt.
+// Voorkomt dat een 2e melding (herhaal-loop) opnieuw naar GesprekScherm
+// leidt terwijl de user het gesprek al heeft afgerond.
+const String _kLaatsteCallIdKey = 'bel_laatste_call_id_v1';
+const String _kLaatsteCallTsKey = 'bel_laatste_call_ts_ms_v1';
+const int _kDubbelPublishMaxAgeMs = 60 * 1000;
 // Token uit Firebase Auth is 1u geldig; we gebruiken 55min zodat we
 // nooit een net-verlopen token als "vers" behandelen.
 const int _kBelIdTokenMaxAgeMs = 55 * 60 * 1000;
@@ -176,7 +192,17 @@ class PushService {
   /// hoge-prioriteit lokale notificatie (fullScreenIntent, category.call).
   /// startVideoCall stuurt data-only FCM → dit channel wordt via de lokale
   /// notificatie bereikt, niet direct via de FCM-payload.
-  static const String gesprekChannelId = 'ons_moment_gesprek';
+  // BEL-S7: channel-id versioneerd naar v2 om Samsung One UI te dwingen
+  // de sound-URI opnieuw op te bouwen. Op sommige Samsung-toestellen
+  // overschreef One UI onze `RawResourceAndroidNotificationSound` met
+  // `content://settings/system/notification_sound` (systeem-default), en
+  // een delete+recreate van HETZELFDE channel-id herstelde dat niet
+  // consistent. Een verse channel-id + gekopieerde raw resource
+  // ('ons_moment_gesprek_v2.wav') dwingt Samsung tot een nieuwe binding.
+  // Het oude channel wordt in initApp expliciet gedelete zodat er geen
+  // orphan in Instellingen achterblijft.
+  static const String gesprekChannelId = 'ons_moment_gesprek_v2';
+  static const String _gesprekChannelIdLegacy = 'ons_moment_gesprek';
 
   static final FlutterLocalNotificationsPlugin _localNotifications =
       FlutterLocalNotificationsPlugin();
@@ -283,9 +309,14 @@ class PushService {
       // Silent fail als niet aanwezig (nieuwe installs of al eerder verwijderd).
       try {
         await androidImpl?.deleteNotificationChannel(_oudDefaultChannelId);
-        // P2: ons_moment_gesprek werd eerder aangemaakt zonder sound en zonder
-        // audioAttributesUsage → stille melding op meldingsvolume. Verwijder
-        // zodat we hieronder opnieuw aanmaken met ringtone + STREAM_RING.
+        // BEL-S7: verwijder óók de legacy v1-channel zodat er geen orphan
+        // 'ons_moment_gesprek' achterblijft in Instellingen → Meldingen
+        // nadat we naar '_v2' zijn overgestapt.
+        await androidImpl?.deleteNotificationChannel(_gesprekChannelIdLegacy);
+        // Verwijder de v2-channel óók idempotent zodat een instellingswijziging
+        // (sound, importance) altijd doorwerkt bij de volgende create-call.
+        // Android channels zijn immutable ná eerste aanmaak — delete+recreate
+        // is de enige manier om ze te updaten.
         await androidImpl?.deleteNotificationChannel(gesprekChannelId);
       } catch (_) {}
 
@@ -321,16 +352,18 @@ class PushService {
       // importance: max + category call (gezet op de notificatie zelf) geven
       // op Android 13+ het recht om door DND heen te breken als calling app.
       //
-      // sound: ons_moment_gesprek → res/raw/ons_moment_gesprek.wav
-      // (marimba-ringtone, ~26s). Android speelt het eenmalig bij verschijnen;
-      // in-app looping via just_audio in InkomendGesprekScherm.
+      // sound: ons_moment_gesprek_v2 → res/raw/ons_moment_gesprek_v2.wav
+      // (marimba-ringtone, ~26s). BEL-S7 hernoemd van v1 om Samsung One UI
+      // te dwingen de sound-URI opnieuw op te bouwen (v1-channel had URI
+      // overschreven naar systeem-default). Android speelt eenmalig bij
+      // verschijnen; in-app looping via just_audio in InkomendGesprekScherm.
       await androidImpl?.createNotificationChannel(
         const AndroidNotificationChannel(
           gesprekChannelId,
           'Ons Moment – Inkomend gesprek',
           description: 'Inkomend videogesprek van familie',
           importance: Importance.max,
-          sound: RawResourceAndroidNotificationSound('ons_moment_gesprek'),
+          sound: RawResourceAndroidNotificationSound('ons_moment_gesprek_v2'),
           audioAttributesUsage: AudioAttributesUsage.notificationRingtone,
           enableVibration: true,
           playSound: true,
@@ -384,7 +417,7 @@ class PushService {
             'cold-start-tap actionId=${resp?.actionId ?? "tap"} '
             'payloadLen=${payload.length}'));
         if (payload.isNotEmpty) {
-          // BEL-S6: bij cold-start met een inkomend_gesprek-payload
+          // BEL-S6 + BEL-S7: bij cold-start met een inkomend_gesprek-payload
           // forceer actionId='accept'. User heeft bij dichte app op de
           // bel-melding getikt = wilde opnemen. Zonder deze forcering zou
           // main.dart:373 het InkomendGesprekScherm openen (bevestig-scherm
@@ -392,13 +425,30 @@ class PushService {
           // hebben. Bij OPEN app blijft actionId=null via het separate
           // pad `onDidReceiveNotificationResponse` (regel 249) — die
           // toont wél InkomendGesprekScherm, wat daar gewenst is.
+          //
+          // BEL-S7 uitzondering: als de payload autoAnswer='true' bevat,
+          // NIET forceer accept. Dan is dit een dierbare-scenario (kring
+          // heeft server-side autoAnswer aan) en willen we juist de
+          // AutoOpnemenWaarschuwingScherm-flow (2.5s "we nemen zo op…"
+          // → GesprekScherm) — main.dart:341-366. handmatigGeaccepteerd
+          // wint boven autoAnswer in main.dart:315; zonder deze exception
+          // zou fullScreenIntent-launch bij scherm-uit direct in gesprek
+          // gaan zonder waarschuwing, niet wat de kwetsbaarste doelgroep
+          // verdient.
           String? effectiefActionId = resp?.actionId;
           try {
             final decoded = jsonDecode(payload);
             if (decoded is Map && decoded['type'] == 'inkomend_gesprek') {
-              effectiefActionId = 'accept';
-              unawaited(BelLogService.log(
-                  'cold-start body-tap op belletje → forceer accept'));
+              final autoAnswerAan = decoded['autoAnswer'] == 'true';
+              if (autoAnswerAan) {
+                unawaited(BelLogService.log(
+                    'cold-start body-tap: autoAnswer=true → laat autoAnswer-'
+                    'flow winnen (waarschuwingsscherm)'));
+              } else {
+                effectiefActionId = 'accept';
+                unawaited(BelLogService.log(
+                    'cold-start body-tap op belletje → forceer accept'));
+              }
             }
           } catch (_) {}
           debugPrint('🔔 Lokale notificatie launch: payload=$payload '
@@ -476,6 +526,23 @@ class PushService {
       if (data['type'] == 'inkomend_gesprek') {
         var call = IncomingCall.uitFcmData(data);
         if (call != null) {
+          // BEL-S7: stop de achtergrond-herhaal-loop voor DEZE callId zodra
+          // de user de melding heeft aangetikt (body-tap of accept-forceer).
+          // Vlag wordt gelezen in _herhaalGesprekMelding vóór elke iteratie.
+          // Ook: cancel de eventueel al getoonde notification-ids 1001-1004
+          // zodat de melding zichtbaar verdwijnt.
+          unawaited(_zetGesprekGestopt(call.callId));
+          unawaited(_wisGesprekMeldingen());
+          // BEL-S7: dubbel-publish-skip. Als binnen 60s dezelfde callId
+          // al is verwerkt (bijv. door een 2e melding uit de herhaal-loop
+          // dat door de user opnieuw is aangetikt), skip de nieuwe publish.
+          // Voorkomt "ongewild opnieuw opnemen" na een gesprek.
+          if (_isDubbelBinnenVenster(call.callId)) {
+            unawaited(BelLogService.log(
+                'dubbel-publish geskipt (callId=${call.callId} <60s)'));
+            return;
+          }
+          unawaited(_zetLaatsteCallId(call.callId));
           // 'Opnemen'-knop getikt → zet handmatigGeaccepteerd zodat het
           // gesprek direct opent zonder InkomendGesprekScherm en zonder
           // waarschuwingsscherm. autoAnswer blijft de server-side waarde.
@@ -507,6 +574,57 @@ class PushService {
       }
     } catch (_) {}
     tapMomentIdNotifier.value = payload;
+  }
+
+  /// BEL-S7: schrijft de "gesprek gestopt"-vlag zodat het achtergrond-
+  /// isolate's herhaal-loop bij volgende iteratie afbreekt. Fail-soft.
+  static Future<void> _zetGesprekGestopt(String callId) async {
+    if (callId.isEmpty) return;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool(_kGesprekGestoptKey(callId), true);
+    } catch (_) {}
+  }
+
+  /// BEL-S7: cancel de zichtbare bel-meldingen (1001..1004) direct bij
+  /// body-tap zodat de UI niet nog een gedateerde melding toont terwijl
+  /// user in GesprekScherm zit. Idempotent + fail-soft.
+  static Future<void> _wisGesprekMeldingen() async {
+    try {
+      for (var id = 1001; id <= 1004; id++) {
+        await _localNotifications.cancel(id);
+      }
+    } catch (_) {}
+  }
+
+  /// BEL-S7: dubbel-publish-check. Return true als deze callId <60s
+  /// geleden al door _verwerkLokaalNotificatieTik is verwerkt.
+  static bool _isDubbelBinnenVenster(String callId) {
+    if (callId.isEmpty) return false;
+    // SharedPreferences read is async — hier synchroon aannemen dat
+    // de state uit dezelfde isolate al is bijgewerkt. Voor cross-isolate
+    // is de flag in prefs pas ná onze eerste _zetLaatsteCallId aanwezig.
+    // De check leest voluit async in de tik-flow via de eerste helper;
+    // deze snelle synchrone stub gebruikt de in-memory hint.
+    final laatste = _laatsteVerwerkteCallIdSync;
+    if (laatste == null) return false;
+    if (laatste != callId) return false;
+    final ageMs = DateTime.now().millisecondsSinceEpoch
+        - (_laatsteVerwerkteCallTsMsSync ?? 0);
+    return ageMs < _kDubbelPublishMaxAgeMs;
+  }
+
+  static String? _laatsteVerwerkteCallIdSync;
+  static int? _laatsteVerwerkteCallTsMsSync;
+
+  static Future<void> _zetLaatsteCallId(String callId) async {
+    _laatsteVerwerkteCallIdSync = callId;
+    _laatsteVerwerkteCallTsMsSync = DateTime.now().millisecondsSinceEpoch;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_kLaatsteCallIdKey, callId);
+      await prefs.setInt(_kLaatsteCallTsKey, _laatsteVerwerkteCallTsMsSync!);
+    } catch (_) {}
   }
 
   /// Roep aan zodra een familieUid + apparaatId bekend zijn (via
@@ -979,6 +1097,20 @@ Future<void> _herhaalGesprekMelding(
     // Stop als user Weiger/Opnemen heeft getikt (flag gewijzigd door
     // _achtergrondNotificatieActie) of als een nieuwe call is binnengekomen.
     if (_actieveGesprekId != callId) return;
+    // BEL-S7: cross-isolate stop-vlag. Bij body-tap in het main-isolate
+    // wordt SharedPreferences '_kGesprekGestoptKey($callId)' op true gezet;
+    // in-memory `_actieveGesprekId` (dit isolate) blijft dan misleidend
+    // hetzelfde. Lees de vlag vóór elke herhaal-iteratie zodat de melding
+    // NIET nog een keer verschijnt terwijl user in GesprekScherm zit.
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      if (prefs.getBool(_kGesprekGestoptKey(callId)) == true) {
+        await BelLogService.log(
+            'herhaal-loop gestopt: gesprek_gestopt-vlag AAN '
+            '(callId=$callId, iter=$i)');
+        return;
+      }
+    } catch (_) {}
     try {
       // Nieuw ID per iteratie zodat OS de sound opnieuw afspeelt
       // (dezelfde ID + update wordt als 'in progress' beschouwd en

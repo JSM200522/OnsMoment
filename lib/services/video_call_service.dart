@@ -257,6 +257,10 @@ class VideoCallService {
       debugPrint('📞 VideoCallService: remote-participant weg — '
           'sluit lokale room (identity=${event.participant.identity}, '
           'nog aanwezig=${actieveRoom.remoteParticipants.length})');
+      unawaited(BelLogService.log(
+          'ParticipantDisconnected fires (identity='
+          '${event.participant.identity}, remote-nog='
+          '${actieveRoom.remoteParticipants.length}) → hangup'));
       // Fire-and-forget hangup: idempotent en synchroon-resettend, dus
       // een tweede tap of dispose kan hier bovenop zonder schade.
       unawaited(hangup());
@@ -299,6 +303,8 @@ class VideoCallService {
     if (kIsWeb) return;
     final room = _room;
     final listener = _listener;
+    unawaited(BelLogService.log(
+        'hangup start (hadRoom=${room != null}, hadListener=${listener != null})'));
     _room = null;
     _listener = null;
     roomNotifier.value = null;
@@ -307,11 +313,16 @@ class VideoCallService {
     // LiveKit-disconnect niet vertragen. beeindigAlles is idempotent
     // en veilig als er geen actieve callkit-UI is.
     unawaited(BelCallkitService.beeindigAlles());
-    if (room == null) return;
+    if (room == null) {
+      unawaited(BelLogService.log('hangup einde (geen actieve room)'));
+      return;
+    }
     try {
       await room.disconnect();
-    } catch (_) {
+      unawaited(BelLogService.log('hangup einde (room.disconnect OK)'));
+    } catch (e) {
       // Al disconnected of netwerk-uit — negeer.
+      unawaited(BelLogService.log('hangup einde (disconnect fout: $e)'));
     }
   }
 }
