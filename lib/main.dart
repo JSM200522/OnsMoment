@@ -379,6 +379,23 @@ class _OntvangerRouterState extends State<_OntvangerRouter> {
             Navigator.of(navigator.context).pop();
           },
           onAfgewezen: () {
+            // BEL-S9: cancelVideoCall vanuit main-isolate (echte auth
+            // aanwezig) zodat de beller-app een gesprek_geannuleerd-FCM
+            // krijgt en direct stopt met rinkelen — anders wachtte hij
+            // op zijn 45s-timeout. Fire-and-forget: fout mag de sluit-
+            // UX niet blokkeren. Bewust hier i.p.v. in InkomendGesprek-
+            // Scherm zodat de weiger-flow ook geldt voor het pad
+            // "melding-body-tap → dit scherm → Niet nu".
+            final bellerId = call.bellerApparaatId;
+            if (bellerId != null && bellerId.isNotEmpty) {
+              unawaited(
+                VideoCallService.cancelCall(
+                  kringId: call.kringId,
+                  callId: call.callId,
+                  doelApparaatId: bellerId,
+                ).catchError((_) => false),
+              );
+            }
             Navigator.of(navigator.context).pop();
           },
         ),

@@ -82,6 +82,11 @@ class IncomingCall {
   /// server-side kring-instelling blijft leidend voor onverwachte auto-
   /// opnemen; deze vlag zegt "gebruiker heeft de intentie bewezen".
   final bool handmatigGeaccepteerd;
+  /// BEL-S9: nodig voor in-app "Weigeren" in InkomendGesprekScherm zodat
+  /// we cancelVideoCall kunnen richten op het beller-apparaat. FCM levert
+  /// dit veld al aan (start_call.ts:257); we bewaren het optioneel zodat
+  /// oudere FCM-payloads (zonder veld) geen crash geven.
+  final String? bellerApparaatId;
 
   const IncomingCall({
     required this.roomName,
@@ -92,6 +97,7 @@ class IncomingCall {
     required this.ontvangenOp,
     this.autoAnswer = false,
     this.handmatigGeaccepteerd = false,
+    this.bellerApparaatId,
   });
 
   /// Bouwt uit een FCM-data-map. Returnt null als één van de vereiste
@@ -110,6 +116,15 @@ class IncomingCall {
         || kringId is! String || kringId.isEmpty) {
       return null;
     }
+    // BEL-S9: bellerApparaatId is optioneel. FCM-payload uit start_call.ts
+    // heeft het altijd; ontbreken duidt op oude client-server-mix — dan
+    // valt weiger-via-InkomendGesprekScherm terug op de 45s-timeout aan
+    // beller-kant (geen crash).
+    final bellerApparaatIdRaw = data['bellerApparaatId'];
+    final bellerApparaatId =
+        (bellerApparaatIdRaw is String && bellerApparaatIdRaw.isNotEmpty)
+            ? bellerApparaatIdRaw
+            : null;
     return IncomingCall(
       roomName: roomName,
       callId: callId,
@@ -124,6 +139,7 @@ class IncomingCall {
       // callkit-accept-event, notif-actionId=='accept' en cold-start
       // replay via een aangepaste kopie van de fcm-data-map.
       handmatigGeaccepteerd: data['handmatigGeaccepteerd'] == 'true',
+      bellerApparaatId: bellerApparaatId,
     );
   }
 }
@@ -422,43 +438,24 @@ class PushService {
             'cold-start-tap actionId=${resp?.actionId ?? "tap"} '
             'payloadLen=${payload.length}'));
         if (payload.isNotEmpty) {
-          // BEL-S6 + BEL-S7: bij cold-start met een inkomend_gesprek-payload
-          // forceer actionId='accept'. User heeft bij dichte app op de
-          // bel-melding getikt = wilde opnemen. Zonder deze forcering zou
-          // main.dart:373 het InkomendGesprekScherm openen (bevestig-scherm
-          // met 'Beantwoorden'-knop) en zou de user een tweede tik nodig
-          // hebben. Bij OPEN app blijft actionId=null via het separate
-          // pad `onDidReceiveNotificationResponse` (regel 249) — die
-          // toont wél InkomendGesprekScherm, wat daar gewenst is.
-          //
-          // BEL-S7 uitzondering: als de payload autoAnswer='true' bevat,
-          // NIET forceer accept. Dan is dit een dierbare-scenario (kring
-          // heeft server-side autoAnswer aan) en willen we juist de
-          // AutoOpnemenWaarschuwingScherm-flow (2.5s "we nemen zo op…"
-          // → GesprekScherm) — main.dart:341-366. handmatigGeaccepteerd
-          // wint boven autoAnswer in main.dart:315; zonder deze exception
-          // zou fullScreenIntent-launch bij scherm-uit direct in gesprek
-          // gaan zonder waarschuwing, niet wat de kwetsbaarste doelgroep
-          // verdient.
-          String? effectiefActionId = resp?.actionId;
-          try {
-            final decoded = jsonDecode(payload);
-            if (decoded is Map && decoded['type'] == 'inkomend_gesprek') {
-              final autoAnswerAan = decoded['autoAnswer'] == 'true';
-              if (autoAnswerAan) {
-                unawaited(BelLogService.log(
-                    'cold-start body-tap: autoAnswer=true → laat autoAnswer-'
-                    'flow winnen (waarschuwingsscherm)'));
-              } else {
-                effectiefActionId = 'accept';
-                unawaited(BelLogService.log(
-                    'cold-start body-tap op belletje → forceer accept'));
-              }
-            }
-          } catch (_) {}
+          // BEL-S9: GEEN forceer-accept meer. Bij cold-start kan een
+          // body-tap ONVERSCHIL­BAAR zijn van een fullScreenIntent-auto-
+          // launch bij scherm-UIT (in beide gevallen didLaunch=true +
+          // actionId=null). Voorheen (BEL-S6/S7) forceerden we accept →
+          // gesprek werd zonder toestemming aangenomen bij stand-by
+          // scherm-uit (kritieke bug — tester rapporteerde ineens
+          // gespreksgeluid). Nu: laat actionId ongewijzigd (=null) →
+          // _verwerkLokaalNotificatieTik → main.dart pusht bij
+          // autoAnswer=false het InkomendGesprekScherm (rinkelend, met
+          // grote Opnemen/Weigeren-knoppen) en bij autoAnswer=true de
+          // 2.5s-waarschuwing → GesprekScherm. User beslist altijd,
+          // behalve bij server-side auto-answer voor kwetsbaarste
+          // dierbaren.
+          unawaited(BelLogService.log(
+              'cold-start-tap → InkomendGesprekScherm (geen forceer accept)'));
           debugPrint('🔔 Lokale notificatie launch: payload=$payload '
-              'actionId=$effectiefActionId');
-          _verwerkLokaalNotificatieTik(payload, actionId: effectiefActionId);
+              'actionId=${resp?.actionId}');
+          _verwerkLokaalNotificatieTik(payload, actionId: resp?.actionId);
         }
       }
 
@@ -561,6 +558,7 @@ class PushService {
               ontvangenOp: call.ontvangenOp,
               autoAnswer: call.autoAnswer,
               handmatigGeaccepteerd: true,
+              bellerApparaatId: call.bellerApparaatId,
             );
           }
           // De-dup laag 1: sla over als dit gesprek al in de notifier staat.
@@ -862,6 +860,16 @@ Future<void> _backgroundHandler(RemoteMessage message) async {
       if (callId is String && _actieveGesprekId == callId) {
         _actieveGesprekId = null;
       }
+      // BEL-S9: zet OOK de cross-isolate stopvlag zodat een parallel-
+      // draaiende _herhaalGesprekMelding-iteratie (die dit isolate niet
+      // meteen ziet via in-memory _actieveGesprekId) bij z'n volgende
+      // prefs.reload() detecteert dat het gesprek voorbij is.
+      if (callId is String && callId.isNotEmpty) {
+        try {
+          final prefs = await SharedPreferences.getInstance();
+          await prefs.setBool(_kGesprekGestoptKey(callId), true);
+        } catch (_) {}
+      }
       try {
         final plugin = FlutterLocalNotificationsPlugin();
         for (var i = 0; i < 5; i++) {
@@ -1111,17 +1119,26 @@ Future<void> _herhaalGesprekMelding(
     // Stop als user Weiger/Opnemen heeft getikt (flag gewijzigd door
     // _achtergrondNotificatieActie) of als een nieuwe call is binnengekomen.
     if (_actieveGesprekId != callId) return;
-    // BEL-S7: cross-isolate stop-vlag. Bij body-tap in het main-isolate
-    // wordt SharedPreferences '_kGesprekGestoptKey($callId)' op true gezet;
-    // in-memory `_actieveGesprekId` (dit isolate) blijft dan misleidend
-    // hetzelfde. Lees de vlag vóór elke herhaal-iteratie zodat de melding
-    // NIET nog een keer verschijnt terwijl user in GesprekScherm zit.
+    // BEL-S7 + BEL-S9: cross-isolate stop-vlag. Bij body-tap in het
+    // main-isolate wordt SharedPreferences '_kGesprekGestoptKey($callId)'
+    // op true gezet; in-memory `_actieveGesprekId` (dit isolate) blijft
+    // dan misleidend hetzelfde. Lees de vlag vóór elke herhaal-iteratie
+    // — MET prefs.reload() zodat we niet de cache van dit isolate
+    // (die van vóór de main-isolate-write kan zijn) lezen maar de
+    // actuele disk-waarde. Zonder reload bleef de loop doorlopen ook
+    // nadat main de vlag had gezet (bevestigd door tester: 10× melding).
     try {
       final prefs = await SharedPreferences.getInstance();
+      await prefs.reload();
       if (prefs.getBool(_kGesprekGestoptKey(callId)) == true) {
         await BelLogService.log(
             'herhaal-loop gestopt: gesprek_gestopt-vlag AAN '
             '(callId=$callId, iter=$i)');
+        // BEL-S9: ruim ook alle zichtbare bel-melding-IDs op zodat er
+        // niks meer in de meldingenbalk staat.
+        for (var id = 1001; id <= 1004; id++) {
+          try { await plugin.cancel(id); } catch (_) {}
+        }
         return;
       }
     } catch (_) {}
@@ -1138,6 +1155,17 @@ Future<void> _herhaalGesprekMelding(
       return;
     }
   }
+  // BEL-S9: na de laatste iteratie (loop-timeout) OOK alle
+  // notification-IDs opruimen zodat er geen stale bel-melding blijft
+  // hangen. Zonder deze cleanup zag de tester een melding die na 32s
+  // "gemiste oproep" bleef staan zonder actief gesprek.
+  try {
+    for (var id = 1001; id <= 1004; id++) {
+      await plugin.cancel(id);
+    }
+    await BelLogService.log(
+        'herhaal-loop klaar (3× herhalingen) — alle IDs opgeruimd');
+  } catch (_) {}
 }
 
 Future<void> _toonGesprekNotificatie(
@@ -1168,24 +1196,18 @@ Future<void> _toonGesprekNotificatie(
         fullScreenIntent: true,
         category: AndroidNotificationCategory.call,
         visibility: NotificationVisibility.public,
-        // BEL-S6: 'Opnemen'-actionButton VERWIJDERD. Op Android 12+ opent
-        // die niet betrouwbaar de app door notification-trampoline
-        // restrictions — bevestigd door de tester's log
-        // "getNotificationAppLaunchDetails.didLaunch=false" bij tik op
-        // Opnemen. Body-tap fires deze API wel betrouwbaar (community-
-        // bewezen patroon, changelog 8.1.1+1). De cold-start-pad in
-        // initApp forceert dan actionId='accept' → direct GesprekScherm.
-        // Weiger-button blijft: showsUserInterface:false gebruikt het
-        // background-isolate-pad (_achtergrondNotificatieActie) dat
-        // niet op de trampoline-restrictie loopt.
-        actions: <AndroidNotificationAction>[
-          AndroidNotificationAction(
-            'decline',
-            'Weigeren',
-            showsUserInterface: false,
-            cancelNotification: true,
-          ),
-        ],
+        // BEL-S6 + BEL-S9: alle actionButtons zijn verwijderd. Zowel
+        // 'Opnemen' (showsUserInterface:true) als 'Weigeren'
+        // (showsUserInterface:false) lopen op Android 12+ tegen
+        // notification-trampoline-restrictions op. Bevestigd door
+        // tester dat óók de Weiger-knop niet betrouwbaar de
+        // background-handler triggerde. Nu doen we alles via de
+        // melding-body-tap: die opent de app → InkomendGesprekScherm
+        // (rinkelend, met grote in-app Opnemen/Weigeren-knoppen die
+        // wél 100% betrouwbaar zijn — hetzelfde scherm dat de
+        // vergrendelde modus al gebruikt). Weiger-tik daar roept
+        // cancelVideoCall vanuit main-isolate (echte auth).
+        actions: const <AndroidNotificationAction>[],
       ),
     ),
     payload: jsonEncode(data),
