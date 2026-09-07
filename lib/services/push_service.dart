@@ -809,8 +809,21 @@ Future<void> _achtergrondGesprekNotificatie(
   // voorgrond en gebruikt het foreground-pad; achtergrond-notificatie
   // is daar hooguit een fallback. Native call-UI (B) zou daar dubbel
   // triggeren of het kiosk-scherm verstoren. Skip B in vergrendeld.
-  final modus = await DeviceModusService.krijgWeergaveModus();
+  //
+  // BEL-S5: 3s-timeout op SharedPreferences-lookup zodat een hangende
+  // read (uiterst zeldzaam maar mogelijk in fresh background isolate)
+  // de bel-flow niet oneindig blokkeert. Fallback: MELDINGEN-modus is
+  // het pad dat we hier sowieso volgen.
+  String? modus;
+  try {
+    modus = await DeviceModusService.krijgWeergaveModus()
+        .timeout(const Duration(seconds: 3));
+  } catch (e) {
+    await BelLogService.log('modus-lookup timeout/fout: $e (val op MELDINGEN)');
+    modus = DeviceModusService.MELDINGEN;
+  }
   final vergrendeld = modus == DeviceModusService.VERGRENDELD;
+  await BelLogService.log('modus=$modus vergrendeld=$vergrendeld');
 
   // BEL-B4 + BEL-E2: probeer native call-UI (ConnectionService) alleen als
   // flag aan én niet vergrendeld ÉN autoAnswer NIET aan staat. Auto-answer
@@ -821,27 +834,32 @@ Future<void> _achtergrondGesprekNotificatie(
   var bViaCallkit = false;
   if (!vergrendeld && !autoAnswer && callId.isNotEmpty) {
     try {
-      final flagAan = await CallkitFlagService.isEnabled();
-      debugPrint('☎️ BEL-B4 bg-check: callId=$callId '
-          'vergrendeld=$vergrendeld flag=$flagAan → '
-          '${flagAan ? "PROBEER OPTIE B" : "OPTIE A"}');
+      // BEL-S5: 3s-timeout op Firestore-flag-read. Fresh background-
+      // isolate zonder connectiviteit zou hier oneindig kunnen blijven
+      // hangen — dan bleef de melding onvertoond ("start" maar geen
+      // "plugin.initialize"). Bij timeout: fallback naar false = Optie A,
+      // exact het gedrag dat de tester nu ook nodig heeft.
+      final flagAan = await CallkitFlagService.isEnabled()
+          .timeout(const Duration(seconds: 3), onTimeout: () => false);
+      await BelLogService.log('callkit-flag=$flagAan '
+          '${flagAan ? "→ probeer optie B" : "→ optie A"}');
       if (flagAan) {
         bViaCallkit = await BelCallkitService.showCallkit(
           callId: callId,
           callerName: callerName,
           fcmData: data,
         );
-        debugPrint('☎️ BEL-B4 bg-result: callId=$callId '
-            'showCallkit=${bViaCallkit ? "GELUKT (B actief, A2-loop overslaan)" : "GEFAALD (val terug op A + herhaal-loop)"}');
+        await BelLogService.log(
+            'showCallkit=${bViaCallkit ? "OK (B actief)" : "FAALDE (val op A)"}');
       }
     } catch (e) {
-      debugPrint('⚠️ B4 flag-check/show faalde (val terug op A): $e');
+      await BelLogService.log('B-check/show faalde: $e (val op A)');
       bViaCallkit = false;
     }
   } else {
-    debugPrint('☎️ BEL-B4 bg-check: SKIP — '
-        'vergrendeld=$vergrendeld autoAnswer=$autoAnswer '
-        'callId=${callId.isEmpty ? "leeg" : callId}');
+    await BelLogService.log('B skip '
+        '(vergrendeld=$vergrendeld autoAnswer=$autoAnswer '
+        'callIdLeeg=${callId.isEmpty})');
   }
 
   if (bViaCallkit) {
@@ -851,10 +869,11 @@ Future<void> _achtergrondGesprekNotificatie(
     // _actieveGesprekId is de enige state die A vasthoudt — nodig voor
     // de cancel-cleanup-hook (gesprek_geannuleerd FCM sluit óók callkit).
     _actieveGesprekId = callId;
-    debugPrint('☎️ BEL-E1 bg: B actief — A2-loop + lokale notif overgeslagen');
+    await BelLogService.log('B actief — A-pad skip');
     return;
   }
 
+  await BelLogService.log('plugin.initialize start');
   final plugin = FlutterLocalNotificationsPlugin();
   await plugin.initialize(
     const InitializationSettings(
@@ -862,6 +881,7 @@ Future<void> _achtergrondGesprekNotificatie(
     ),
     onDidReceiveBackgroundNotificationResponse: _achtergrondNotificatieActie,
   );
+  await BelLogService.log('plugin.initialize klaar');
 
   // BEL-A2 (Samsung-cutoff-omzeiling): Samsung One UI kapt notification-
   // sounds af op ~15s. In plaats van één show() met stille rest, tonen
@@ -999,19 +1019,33 @@ void _achtergrondNotificatieActie(NotificationResponse response) {
 /// call-cancel achterwege. De beller valt terug op zijn eigen 45s-timeout.
 /// Nooit throwen — dit isolate heeft geen UI om een fout aan te tonen.
 Future<void> _stuurAchtergrondCancel(String payload) async {
+  await BelLogService.log('_stuurAchtergrondCancel start');
   try {
     final data = jsonDecode(payload);
-    if (data is! Map) return;
+    if (data is! Map) {
+      await BelLogService.log('cancel: payload is geen Map (skip)');
+      return;
+    }
     final kringId = data['kringId'];
     final callId = data['callId'];
     final bellerApparaatId = data['bellerApparaatId'];
-    if (kringId is! String || kringId.isEmpty) return;
-    if (callId is! String || callId.isEmpty) return;
-    if (bellerApparaatId is! String || bellerApparaatId.isEmpty) return;
-
+    if (kringId is! String || kringId.isEmpty) {
+      await BelLogService.log('cancel: kringId ontbreekt (skip)');
+      return;
+    }
+    if (callId is! String || callId.isEmpty) {
+      await BelLogService.log('cancel: callId ontbreekt (skip)');
+      return;
+    }
+    if (bellerApparaatId is! String || bellerApparaatId.isEmpty) {
+      await BelLogService.log('cancel: bellerApparaatId ontbreekt (skip)');
+      return;
+    }
+    await BelLogService.log('cancel params OK, Firebase init…');
     // Firebase kan door OS zijn afgesloten sinds het _backgroundHandler-
     // pad; idempotente init is veilig.
     await Firebase.initializeApp();
+    await BelLogService.log('cancel Firebase init OK, callable aanroepen');
 
     final callable = FirebaseFunctions
         .instanceFor(region: 'europe-west1')
@@ -1022,7 +1056,7 @@ Future<void> _stuurAchtergrondCancel(String payload) async {
       'doelApparaatId': bellerApparaatId,
     });
     await BelLogService.log(
-        'cancelVideoCall verstuurd (weiger vanaf achtergrond)');
+        'cancelVideoCall verstuurd (weiger vanaf achtergrond) ✓');
   } catch (e) {
     await BelLogService.log(
         'cancelVideoCall FAALDE (weiger vanaf achtergrond): $e');
