@@ -18,6 +18,7 @@ import 'services/device_modus_service.dart';
 import 'services/crash_service.dart';
 import 'services/full_screen_intent_service.dart';
 import 'services/push_service.dart';
+import 'services/video_call_service.dart';
 import 'data/debug_flags.dart';
 import 'theme/kleuren.dart';
 
