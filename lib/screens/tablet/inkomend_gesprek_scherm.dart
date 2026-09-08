@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:audio_session/audio_session.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:just_audio/just_audio.dart';
 import '../../services/push_service.dart';
@@ -45,17 +46,19 @@ class InkomendGesprekScherm extends StatefulWidget {
 class _InkomendGesprekSchermState extends State<InkomendGesprekScherm> {
   final AudioPlayer _ringtone = AudioPlayer();
   bool _gehandeld = false;
-  /// V3-4: auto-afwijzen als niemand binnen 45 seconden opneemt. Zelfde
-  /// effect als de 'Niet nu'-knop indrukken — scherm sluit, ringtone
-  /// stopt. Cancel in dispose en bij handmatig beantwoord/afwijs zodat
-  /// hij niet nog een keer vuurt na sluiting.
+  /// BEL-C3: auto-afwijzen als niemand binnen 35 seconden opneemt. Was 45s
+  /// — dat voelde onnodig lang voor de doelgroep en gaf onduidelijkheid
+  /// over "gemist of nog aan het bellen". 35s dekt drie hele marimba-
+  /// cycli van de achtergrond-loop en past bij WhatsApp/FaceTime-timing.
+  /// Cancel in dispose en bij handmatig beantwoord/afwijs zodat hij niet
+  /// nog een keer vuurt na sluiting.
   Timer? _timeout;
 
   @override
   void initState() {
     super.initState();
     unawaited(_startRingtone());
-    _timeout = Timer(const Duration(seconds: 45), _afwijzen);
+    _timeout = Timer(const Duration(seconds: 35), _timeoutAfgelopen);
   }
 
   Future<void> _startRingtone() async {
@@ -110,6 +113,23 @@ class _InkomendGesprekSchermState extends State<InkomendGesprekScherm> {
     _timeout?.cancel();
     unawaited(_stopRingtone());
     widget.onAfgewezen();
+  }
+
+  /// BEL-C3: timeout-pad (35s zonder actie) — voert dezelfde sluitroute
+  /// als handmatig afwijzen maar merkt eerst dat het een gemist gesprek
+  /// was, zodat de ontvanger-router een rustige "Gemist gesprek van
+  /// [naam]"-melding kan tonen. Zonder deze markering zou een gemist
+  /// gesprek stil verdwijnen — dat voelt voor de dierbare alsof er niks
+  /// gebeurd is, terwijl familie zich zorgen kan hebben gemaakt.
+  void _timeoutAfgelopen() {
+    if (_gehandeld) return;
+    // Eerst gemiste-oproep-melding tonen — daarna pas afwijzen. Bij
+    // omgekeerde volgorde zou _afwijzen() de widget disposen en callerName
+    // via widget.call niet meer beschikbaar zijn voor de melding.
+    if (!kIsWeb) {
+      unawaited(PushService.toonGemisteOproep(widget.call.callerName));
+    }
+    _afwijzen();
   }
 
   String get _initiaal {

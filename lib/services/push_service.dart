@@ -220,6 +220,13 @@ class PushService {
   static const String gesprekChannelId = 'ons_moment_gesprek_v2';
   static const String _gesprekChannelIdLegacy = 'ons_moment_gesprek';
 
+  /// BEL-C3: apart channel voor "Gemist gesprek van [naam]"-meldingen.
+  /// Bewust importance.default (geen ringtone, geen fullScreenIntent) —
+  /// dit is een rustige achteraf-notificatie, niet een oproep.
+  /// Uit een aparte channel zodat de gebruiker deze los kan uit-/aanzetten
+  /// zonder de belnotificaties zelf te dempen.
+  static const String gemisteOproepChannelId = 'ons_moment_gemist_v1';
+
   static final FlutterLocalNotificationsPlugin _localNotifications =
       FlutterLocalNotificationsPlugin();
 
@@ -391,6 +398,21 @@ class PushService {
         ),
       );
 
+      // BEL-C3: gemiste-oproep-channel. Bewust importance.default (geen
+      // ringtone, geen fullScreenIntent) — dit is een rustige achteraf-
+      // notificatie zodat familie/ontvanger achteraf weet dat er iemand
+      // heeft gebeld. Geen belgeluid — verwarrend als de melding lang
+      // na het gesprek nog rondslingert.
+      await androidImpl?.createNotificationChannel(
+        const AndroidNotificationChannel(
+          gemisteOproepChannelId,
+          'Ons Moment – Gemist gesprek',
+          description: 'Iemand heeft gebeld, je hebt niet opgenomen',
+          importance: Importance.defaultImportance,
+          showBadge: true,
+        ),
+      );
+
       // Foreground-handler: alleen loggen voor de moment-flow (de
       // Firestore-listener in familie_scherm.dart toont daar de popup —
       // een lokale notification hier zou een dubbel-tik geven). Voor
@@ -487,6 +509,47 @@ class PushService {
       }
     } catch (e, st) {
       debugPrint('⚠️ PushService.initApp faalde: $e\n$st');
+    }
+  }
+
+  /// BEL-C3: rustige "Gemist gesprek van [naam]"-melding. Aangeroepen
+  /// door InkomendGesprekScherm zodra de 35s-timeout afloopt zonder dat
+  /// er is opgenomen. Bewust géén ringtone/fullScreenIntent — dit is
+  /// een achteraf-notificatie, geen tweede oproep.
+  ///
+  /// Notification-ID = vaste `1010` zodat een tweede gemist gesprek de
+  /// eerste vervangt in plaats van te stapelen (dementievriendelijk:
+  /// één "iemand belde je" is duidelijker dan een lijst met tijdstempels).
+  ///
+  /// No-op op web (kIsWeb-guard). Fail-soft — een fout hier is niet
+  /// blokkerend voor het sluiten van InkomendGesprekScherm.
+  static Future<void> toonGemisteOproep(String bellerNaam) async {
+    if (kIsWeb) return;
+    try {
+      final naam = bellerNaam.trim().isEmpty ? 'Familie' : bellerNaam.trim();
+      await _localNotifications.show(
+        1010,
+        'Gemist gesprek',
+        '$naam heeft je zojuist gebeld',
+        const NotificationDetails(
+          android: AndroidNotificationDetails(
+            gemisteOproepChannelId,
+            'Ons Moment – Gemist gesprek',
+            channelDescription:
+                'Iemand heeft gebeld, je hebt niet opgenomen',
+            importance: Importance.defaultImportance,
+            priority: Priority.defaultPriority,
+            icon: 'ic_stat_ons_moment',
+            color: Color(0xFFFF9B71),
+            largeIcon: DrawableResourceAndroidBitmap('ons_moment_logo'),
+            category: AndroidNotificationCategory.missedCall,
+            autoCancel: true,
+            showWhen: true,
+          ),
+        ),
+      );
+    } catch (e) {
+      debugPrint('⚠️ toonGemisteOproep faalde: $e');
     }
   }
 
