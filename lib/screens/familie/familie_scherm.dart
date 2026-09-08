@@ -3894,11 +3894,12 @@ class _InstellingenTabState extends State<InstellingenTab> {
               backgroundColor: Colors.transparent, isScrollControlled: true,
               builder: (ctx) => const _HulpDialog());
         }),
-        // BEL-S3: diagnose-scherm voor de bel-melding. Achter
-        // DEBUG_VIDEOBELLEN zichtbaar voor alle testers zolang we de
-        // belfunctie stabiliseren. Toont Android-versie, FSI-toestemming
-        // en notification-channel-status; met "Prompt forceren"-knop.
-        if (DEBUG_VIDEOBELLEN)
+        // BEL-DEV: diagnose-scherm alleen zichtbaar in dev-builds. Niet
+        // langer op elke tester-build — gewone gebruikers hoeven nooit
+        // aan Android-versie, FSI-toestemming of kanaal-status te
+        // sleutelen. Toestemmingen worden warm gevraagd tijdens de
+        // eerste bel-flow (zie _checkBelPromptsMeldingenModus).
+        if (DEBUG_VIDEOBELLEN && DEBUG_BEL_DEV)
           _item('🩺', 'Bel-melding diagnose',
               'Android-versie, toestemming, kanaal-status', () {
             Navigator.push(context, MaterialPageRoute(
@@ -3911,10 +3912,14 @@ class _InstellingenTabState extends State<InstellingenTab> {
         const SizedBox(height: 30),
         Center(child: GestureDetector(
           // BEL-B verborgen dev-toggle: long-press op logo opent de
-          // callkit-flag-override-dialog. Voor testers zonder Firebase
-          // Console-toegang. Niet zichtbaar aangekondigd — bewust
-          // 'verborgen' zodat het geen productie-UI is.
-          onLongPress: () => _toonCallkitDevToggle(context),
+          // callkit-flag-override-dialog. Alleen actief in dev-builds
+          // (DEBUG_BEL_DEV=true) — in productie is er geen long-press
+          // gedrag, het logo is een simpel plaatje. Callkit is hoe dan
+          // ook hard uit (CALLKIT_HARD_UIT=true) dus de dialog is puur
+          // een dev-hulpstuk gebleven.
+          onLongPress: DEBUG_BEL_DEV
+              ? () => _toonCallkitDevToggle(context)
+              : null,
           child: Opacity(opacity: 0.85,
               child: Image.asset('assets/images/logo.png', height: 48)),
         )),

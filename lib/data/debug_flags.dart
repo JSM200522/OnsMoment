@@ -29,10 +29,26 @@ const bool DEBUG_VIDEOBELLEN = true;
 const bool DEBUG_KIOSK = true;
 
 /// BEL-B: harde compile-time kill-switch voor Optie B (ConnectionService/
-/// TelecomManager via flutter_callkit_incoming). Zet op TRUE als de
-/// callkit-code op een toestel catastrofaal faalt en de remote flag +
-/// dev-override niet snel genoeg bereikbaar zijn. Bij TRUE draait de
-/// app 100% op Optie A (BEL-A1..A4), ongeacht Firestore/SharedPreferences.
-/// Standaard FALSE — remote/lokale flag bepaalt dan of B daadwerkelijk
-/// aan gaat. Zie CallkitFlagService voor de 3-laags beslislogica.
-const bool CALLKIT_HARD_UIT = false;
+/// TelecomManager via flutter_callkit_incoming). Bij TRUE draait de app
+/// 100% op Optie A (BEL-A1..A4), ongeacht Firestore/SharedPreferences.
+///
+/// STAAT NU HARD OP TRUE. De belfunctie draait volledig op Optie A: heads-
+/// up-notif bij scherm-uit/lock, InkomendGesprekScherm bij app-open,
+/// AutoOpnemenWaarschuwingScherm → GesprekScherm bij autoAnswer. Callkit
+/// (Optie B) heeft in testen op Samsung + Pixel nooit een merkbaar voor-
+/// deel gegeven en veroorzaakte extra failure modes (dubbele ringtone,
+/// PhoneAccount-registratie-issues, action-button-onbetrouwbaarheid).
+/// De code blijft in de repo om V6+-onderzoek te bewaren, maar wordt in
+/// productie NOOIT aangeraakt.
+const bool CALLKIT_HARD_UIT = true;
+
+/// BEL-DEV: dev-only bel-UI verbergen in productie-builds. Zet op TRUE
+/// om diagnose-scherm, callkit-toggle, "prompt forceren", persistente
+/// bel-log en test-modus te tonen. Standaard FALSE zodat een release
+/// build de gebruiker nooit met deze knoppen belast.
+///
+/// Onafhankelijk van [DEBUG_VIDEOBELLEN] — die master-flag ontgrendelt
+/// de belfunctie zelf (voor gesloten testtoestellen). DEBUG_BEL_DEV
+/// ontgrendelt daarbovenop het testrommel-oppervlak. Beide moeten uit
+/// vóór publieke release.
+const bool DEBUG_BEL_DEV = false;
