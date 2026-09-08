@@ -403,7 +403,107 @@ NOOIT blind pushen — vandaag (15 mei 2026) heeft dat 10 rode builds opgeleverd
   Security FASE 1: firestore-tests/ met 29 legitieme + 29 aanvals-testgevallen.
   Java 21 (OpenJDK) geïnstalleerd op Joshua's machine. Rules NIET geactiveerd
   op live DB — wacht op toesteltest FASE A + bevestiging van eigen toegang.
-  Zie "TERUG VAN VAKANTIE — WEG NAAR LIVE" checklist voor het volledige pad.
+  Zie "ALS IK THUIS BEN — WEG NAAR LAUNCH" checklist voor het volledige pad.
+- 27 augustus 2026: Grote toesteltest (FASE A) deels uitgevoerd. Kernflow
+  (momenten sturen/ontvangen, meldingen, bellen bij app open) werkt. Vier
+  bevindingen onderzocht; beslissingen:
+  - PUNT 2 OPGELOST — meldingsgeluid bij gesloten app (Pixel): bleek
+    telefooninstelling (meldingsvolume/geluidsprofiel op de Pixel stond laag).
+    Geen app-bug. FIX A (kanaal delete+recreate voor moment-kanalen) NIET gebouwd
+    — niet nodig. ✓
+  - PUNT 1 OPEN — videobel-knop ontbreekt op homescherm kleine telefoon:
+    diagnose = lay-outprobleem. Knop staat in StuurTab (familie_scherm.dart:1395)
+    achter `if (DEBUG_VIDEOBELLEN && !widget.alsOntvanger)` — logica klopt.
+    Content vóór de knop is ~540dp (titel + 3 rijen tegels + spacers + padding);
+    op kleine telefoons waar de body-hoogte < ~540dp valt de knop net onder de
+    vouw. SingleChildScrollView maakt scrollen mogelijk maar toont geen indicator.
+    Apparaat was in familie-modus (bevestigd: InstellingenTab toonde eigenaar-items).
+    De "bel-optie in Instellingen" was de auto-answer-toggle in BelApparaatKies-
+    Scherm (app-titel "Videobellen"), bereikbaar via de knop die via scrollen
+    gevonden was. Fix-richting: knop omhoog plaatsen of scroll-indicator toevoegen
+    — beslissing en uitvoering nog open.
+  - PUNT 3+4 OPEN — Samsung bel bij gesloten app (geen ringtone + Weiger-knop
+    doet niks): advies gegeven (zie Openstaande punten — Videobellen). Beslissing
+    over aanpak nog open. Nog niet bouwen.
+
+## Bel-architectuur (definitief, sept 2026)
+
+Na het BEL-A t/m BEL-S traject en de C1..C6-consolidatie is dit de
+DEFINITIEVE opzet. Wat hier staat werkt op alle geteste toestellen; wat
+in de "NIET meer proberen"-lijst staat is bewezen niet-productie-waardig.
+
+**Twee schermen, één architectuur:**
+1. **Vergrendelde modus (rustig)** — Ons Moment staat 100% voorgrond via
+   Screen Pinning (K-1..K-3). FCM foreground-pad → `incomingCallNotifier` →
+   `_OntvangerRouterState._verwerkInkomendGesprek` →
+     - `autoAnswer=true` → `AutoOpnemenWaarschuwingScherm` (2.5s) →
+       `GesprekScherm`. Geen tik nodig.
+     - `autoAnswer=false` → `InkomendGesprekScherm` (rinkelend, 35s
+       timeout, twee grote knoppen). Handmatig opnemen → `GesprekScherm`.
+   Deze modus is 100% betrouwbaar — geen Android-restricties in de weg.
+2. **Meldingen-modus (normaal)** — het toestel werkt als gewone tablet.
+   `_backgroundHandler` → `_achtergrondGesprekNotificatie` toont
+   heads-up-notif via channel `ons_moment_gesprek_v2` (max importance,
+   category.call, fullScreenIntent, marimba-ringtone via STREAM_RING).
+     - Scherm UIT / lockscreen: fullScreenIntent auto-launcht MainActivity
+       → InkomendGesprekScherm. Werkt op Pixel + Samsung.
+     - Scherm AAN, app gesloten: heads-up-notif verschijnt. Body-tap →
+       InkomendGesprekScherm. `handmatigGeaccepteerd=true` slaat de
+       tussenschermen over en gaat direct naar `GesprekScherm`.
+     - Auto-answer bij scherm AAN + app gesloten: door Android BAL-
+       restrictie werkt fullScreenIntent-auto-launch dan niet. **Zonder
+       SYSTEM_ALERT_WINDOW-toestemming** valt hij terug op de heads-up-
+       notif; gebruiker moet dan alsnog tikken. Zie DEEL A voor de
+       overlay-oplossing.
+
+**Ringtone-timing:**
+- InkomendGesprekScherm rinkelt via `just_audio` (marimba.wav in-app,
+  looped, STREAM_RING) tot 35s → auto-afwijzen + gemist-melding.
+- Achtergrond-notif speelt marimba éénmalig (~15s Samsung-limiet);
+  `_herhaalGesprekMelding` toont ~3× dezelfde melding met nieuwe ID
+  zodat OS opnieuw play triggert. Cross-isolate stop-vlag in
+  SharedPreferences per callId zodra user tikt.
+
+**Gemist gesprek (BEL-C3):**
+- 35s zonder actie → `PushService.toonGemisteOproep(bellerNaam)` toont
+  rustige melding via channel `ons_moment_gemist_v1` (importance.default,
+  category.missedCall, geen ringtone). Vaste notification-ID 1010 zodat
+  een tweede gemist gesprek de eerste vervangt.
+
+**Weiger vanuit dichte app:**
+- InkomendGesprekScherm's `Niet nu` roept `VideoCallService.cancelCall`
+  vanuit main-isolate — daar leeft echte Firebase Auth. Beller-app
+  ontvangt `gesprek_geannuleerd`-FCM en stopt met rinkelen.
+- Achtergrond-isolate weiger-pad gebruikt gepersisteerd idToken
+  (`_kBelIdTokenKey`) + directe HTTPS-POST naar cancelVideoCall-callable.
+
+**Optie B (callkit) is dood.** `CALLKIT_HARD_UIT=true` sinds C1. Code
+blijft in de repo voor archief-doeleinden maar wordt NOOIT geraakt in
+productie.
+
+## NIET meer proberen (bewezen niet-oplossingen)
+
+- **Forceer-accept bij cold-start launch**: BEL-S6/S7 zetten bij
+  `getNotificationAppLaunchDetails().didLaunch=true` `handmatigGeaccepteerd=true`.
+  Bij scherm-UIT stand-by kon het BE gewoon een fullScreenIntent-auto-
+  launch zijn (geen tik). Gevolg: dierbare kreeg ineens gespreksgeluid
+  zonder toestemming. Fix in S9: nooit forceren, laat autoAnswer/tik
+  het scherm bepalen.
+- **Action buttons (`Opnemen`/`Weigeren`) op de heads-up-notif**:
+  Android 12+ notification-trampoline-restricties + Samsung battery-opt
+  maken `showsUserInterface:false` onbetrouwbaar. Bevestigd door
+  meerdere testrondes: `cancelNotification` werkt half, action-handler
+  wordt niet altijd getriggerd. Nu doen we alles via body-tap +
+  InkomendGesprekScherm (waar knoppen 100% betrouwbaar zijn).
+- **Callkit / ConnectionService / TelecomManager** (Optie B): PhoneAccount-
+  registratie flakey op Samsung, dubbele ringtone met just_audio, en
+  auto-answer botst met de vereiste "tap om op te nemen". Weken werk
+  voor onduidelijk voordeel. `CALLKIT_HARD_UIT=true`.
+- **Meer dan één FSI-prompt-plek**: eerder stond de prompt zowel in
+  `FullScreenIntentService.controleerEnPromptAlsNodig` (aangeroepen
+  vanuit main.dart) én in `FamilieScherm._checkBelPromptsMeldingenModus`.
+  Dubbele dialogs bij modus-switch. Nu één plek (FamilieScherm), met
+  7-dagen dismiss-cache.
 
 ## Bekende grenzen push-meldingen (eerlijk vastgelegd)
 
@@ -434,6 +534,20 @@ NOOIT blind pushen — vandaag (15 mei 2026) heeft dat 10 rode builds opgeleverd
 
 Losse eindjes die bewust zijn uitgesteld en niet mogen wegzakken.
 Update deze lijst zodra een item is opgepakt of afgerond.
+
+Onboarding herinrichting (OB-traject):
+- **OB-3 keuze-scherm testen met eerste testfamilies** (commit 7cc2b14): het
+  nieuwe 3-kaart keuze-scherm (Familielid / Ontvanger / Uitnodigingscode) is
+  een bewuste UX-keuze. Checken bij de eerste echte gebruikers: begrijpen ze
+  onmiddellijk welke kaart voor hen bedoeld is? Struikelen ze over 'Ontvanger'
+  als term, of is dat duidelijk? Feedback kan leiden tot aanpassing van
+  kaart-tekst of volgorde.
+- **OB-4**: compacte profielstap (alleen naam + foto + geluid; dagelijkse
+  momenten eruit naar InstellingenTab) — nog te bouwen.
+- **OB-5**: lievelingsdingen, woonplaats, noodcontact, dagelijkse momenten
+  verplaatsen naar InstellingenTab — nog te bouwen.
+- **OB-6**: gast-route stylen (accept_uitnodig_scherm + gast_signup_scherm)
+  — nog te bouwen.
 
 Geplande momenten (grote UX-verbetering, apart traject — NIET nu bouwen):
 - **GEPLANDE MOMENTEN VERBETEREN**: Nu kan 'momenten beheren' alleen titel +
@@ -483,6 +597,23 @@ Videobellen (Fase VB):
   getVideoCallToken heeft geraakt en de collectie in Firestore verschijnt.
   Zonder policy blijft elke uid ~50 bytes rate-limit-doc houden — geen
   crisis, wél cleanup-schuld.
+- **TTL-policy actieveGesprekken/expireAt** (BEL-R3, build 1.0.23+26):
+  vangnet voor de bezet-slot-cleanup. Client + server ruimen bij normaal
+  eind (hangup, cancel, decline) het slot expliciet op, maar bij een
+  app-crash of netwerkverlies moet de TTL het overnemen (max 5 min). De
+  collectie bestaat pas ná het eerste OPGENOMEN gesprek met de nieuwe
+  build — daarvoor is er geen doc en biedt Console geen keuzelijst.
+  Volgorde:
+  1. Toestel-test met build 1.0.23+26 → bel opnemen → collectie
+     `actieveGesprekken` verschijnt in Firestore Console.
+  2. Google Cloud Console → Firestore → TTL → collection group
+     `actieveGesprekken`, timestamp field `expireAt`, offset `0 seconds`.
+  3. Vóór publieke launch (FASE D) afronden.
+  Zonder policy blijven verweesde slots ~5 min bestaan (door de
+  expireAt-datum die de reserveerBezetSlot-helper zet) — de check zelf
+  respecteert die expireAt en behandelt verlopen slots al als "vrij",
+  dus geen bel-blokkade. De TTL-policy zorgt alleen dat Firestore de
+  verlopen docs OOK fysiek opruimt (bespaart storage-kosten).
 - **LiveKit secret-rotatie**: procedure vastleggen (regenerate in LiveKit
   Cloud → `firebase functions:secrets:set` → redeploy). Documenteer.
 - **Play Store camera-verklaring (V9)**: bij store-release verklaren dat
@@ -495,6 +626,32 @@ Videobellen (Fase VB):
   vóór elke bredere release. Zonder deze terugzet zou elke installer
   onmiddellijk de videobel-UI zien terwijl backend en UX nog niet
   productie-klaar zijn.
+- **PUNT 1 — Videobel-knop onder de vouw op kleine telefoon**: knop staat
+  in StuurTab onderaan, 4e rij na foto/video/stem/lied/tekst/hartje. Content
+  vóór de knop = ~540dp; op kleine telefoons (kleine body-hoogte of grote
+  lettergrootte/weergavegrootte in Toegankelijkheid) valt de knop net buiten
+  beeld. Scrollen onthult hem, maar SingleChildScrollView toont geen indicator.
+  Twee fix-richtingen: (A) knop omhoog in de StuurTab-volgorde (boven de
+  type-selectie), of (B) eigen "Bellen"-knop in de bottom navigation bar.
+  Beslissing + uitvoering: gepland, datum open.
+- **PUNT 3 — Samsung: geen beltoon bij gesloten app (meldingen-modus)**:
+  Oorzaak: bij gesloten app speelt het ons_moment_gesprek-kanaal de marimba
+  eenmalig (~15s, Samsung-limiet). De loopende just_audio-ringtone (in
+  InkomendGesprekScherm) start pas als de notificatie wordt aangetikt en de
+  app opent. Bij vergrendeld/kiosk-modus werkt bellen 100% betrouwbaar
+  (app altijd voorgrond, FCM-foreground pad). Aanpak-advies:
+  Optie A (nu): accepteer beperking voor meldingen-modus; vergrendeld=primary.
+  Optie B (later): ConnectionService / CallKit voor echte telecom-integratie
+  (WhatsApp-niveau, weken werk, pas bij iOS-traject). Beslissing open.
+- **PUNT 4 — Weiger-knop op notificatie doet niks bij gesloten app**:
+  Oorzaak: `cancelNotification: true` werkt niet betrouwbaar bij terminated
+  app + Samsung battery optimization. De background isolate's `initialize()`
+  registreert `onDidReceiveBackgroundNotificationResponse` NIET (zie
+  push_service.dart:636-640), waardoor de handler bij gesloten app mogelijk
+  niet actief is. Gerichte fix: voeg `onDidReceiveBackgroundNotificationResponse:
+  _achtergrondNotificatieActie` toe aan de `initialize()` call in
+  `_achtergrondGesprekNotificatie()`. Minimalistische code-aanpassing (1 veld).
+  Beslissing + uitvoering: gepland, datum open.
 - **V4 auto-answer Firestore-rule** (enige openstaande stap): handmatig
   toevoegen in Firebase Console → Firestore → Rules. Regel: alleen
   eigenaarUid mag autoAnswer schrijven op kring-doc. Zolang deze regel
@@ -552,10 +709,13 @@ Security hardening (geprioriteerd traject — start NA belfunctie-test 1.0.15+17
   5. Rules activeren in Console (na toesteltest FASE A)
   6. 30 min monitor Cloud Function logs na activatie
   7. Rollback indien nodig (< 1 min via Console History)
-- **BELANGRIJK — E-mailverificatie server-side** (vóór launch):
-  request.auth.token.email_verified == true toevoegen aan Firestore rules.
-  Eerst bestaande accounts verifiëren; dan rule activeren. Voorkomt
-  subscription-bypass via nep-accounts bij betaallancering.
+- **BELANGRIJK — E-mailverificatie server-side** (vóór launch, NIET nu):
+  ZeptoMail-koppeling is klaar (15 aug 2026) — mails komen van eigen domein.
+  Afdwingen van verificatie (request.auth.token.email_verified == true in
+  Firestore rules) is een aparte stap die pas mag na: (1) betaalsysteem, (2)
+  trial-lock. Reden: nep-accounts zoals oma@test.nl worden anders buitengesloten
+  en testers lopen vast. Aanpak: bestaande accounts eerst verifiëren, dan rule
+  activeren. Voorkomt subscription-bypass bij betaallancering.
 - **BELANGRIJK — AVG/Privacy** (vóór launch):
   Privacy Policy schrijven + in-app tonen (AVG art. 13, wettelijk verplicht).
   Right to erasure implementeren (AVG art. 17, verwijderAccount()-flow).
@@ -569,9 +729,9 @@ Security hardening (geprioriteerd traject — start NA belfunctie-test 1.0.15+17
 - **Cloud Functions**: groen bevonden in audit (auth ✓, membership ✓,
   rate-limiting ✓, apparaat-verify ✓, secrets in Secret Manager ✓). Geen actie.
 
-## TERUG VAN VAKANTIE — WEG NAAR LIVE (Google Play)
+## ALS IK THUIS BEN — WEG NAAR LAUNCH
 
-Dit is de geordende checklist van grote toesteltest tot store-launch.
+Geordende checklist van eerste toesteltest tot store-launch.
 Doorloop de fasen op volgorde. Niets overslaan.
 
 ### FASE A — Grote toesteltest (eerste actie thuis, build 1.0.18+20)
@@ -585,7 +745,7 @@ beide modi (rustig + normaal). Noteer per punt OK / FOUT / NVTB.
 - [ ] Tekst: leesbaar, juiste lettergrootte voor doelgroep?
 - [ ] Stem: hoorbaar zonder extra tap? (kon niet op web testen)
 - [ ] Liedje: speelt volledig af?
-- [ ] Dagelijks herhalend foto-moment: komt de volgende dag opnieuw?
+- [ ] Dagelijks herhalend moment: komt het de volgende dag opnieuw?
 
 **Aankomstgeluid:**
 - [ ] Standaard herkenningsgeluid hoorbaar bij binnenkomen moment?
@@ -606,13 +766,19 @@ beide modi (rustig + normaal). Noteer per punt OK / FOUT / NVTB.
 **Weekstrip + eerste bericht + normale meldingen:**
 - [ ] Weekstrip correct weergegeven?
 - [ ] Eerste bericht na inloggen direct zichtbaar?
-- [ ] Push-melding met largeIcon + badge bij nieuw moment?
+- [x] Push-melding met largeIcon + badge bij nieuw moment?
+      Pixel: OK na aanpassen meldingsvolume (telefooninstelling, geen app-bug). ✓
 
 **Randgevallen:**
 - [ ] Tablet-scherm uit → komt gepland moment alsnog aan als scherm aan gaat?
 - [ ] Tablet herstart → verschijnen geplande momenten weer? (BOOT_COMPLETED)
 - [ ] Home+recents-ontsnapping → failsafe-herpin binnen ~1s?
 - [ ] Kiosk eigenaar-uitgang: modus wisselen → lock opheft, geen herpin?
+
+**Cross-Android:**
+- [ ] Alles werkt op Pixel (schoon Android) én Samsung (One UI)?
+      Let op: Samsung knipt notificatiegeluiden af na ~15s (OS-grens, acceptabel).
+      One UI badge toont getal; Pixel toont stip — beide correct.
 
 Fix wat nodig is vóór verder gaan naar Fase B.
 
@@ -621,49 +787,61 @@ Fix wat nodig is vóór verder gaan naar Fase B.
 - [ ] Open live app → bevestig: eigen kring zichtbaar, momenten werken, bellen OK
 - [ ] Controleer Storage rules in Firebase Console → Storage → Rules
       (staat onbekend; aanscherpen als permissief)
-- [ ] Plak `firestore-tests/firestore.rules` in Console → Firestore → Rules → Publiceren
+- [ ] Plak `firestore-tests/firestore.rules` in Console → Firestore →
+      Rules → Publiceren (tests zijn 62/62 groen incl. kring-limiet)
 - [ ] 30 min monitoren: Cloud Function logs (`firebase functions:log`)
 - [ ] Bij problemen: Console → Rules → History → Revert (< 1 min)
 
-Tests zijn al 58/58 groen — alleen nog activeren.
+### FASE C — Van test naar echt
 
-### FASE C — Mails + domein (deels op vakantie al mogelijk)
-
-- [ ] Eigen domein regelen (voor privacy-pagina + account-verwijderpagina,
-      nu nog Netlify)
-- [ ] Transactionele mailservice opzetten: SendGrid / Resend / Postmark
-      (NIET Mailchimp) voor Firebase Auth-mails (anti-spam, eigen domein)
+- [ ] E-mailverificatie AFDWINGEN (ZeptoMail werkt al sinds 15 aug 2026):
+      Nu staat "e-mailadres nog niet bevestigd" in de UI maar het blokkeert
+      niet. Vóór publieke launch: bepaal wat een niet-geverifieerde gebruiker
+      wel/niet mag + voeg request.auth.token.email_verified == true toe aan
+      Firestore rules. PAS doen als nep-adressen (oma@test.nl) zijn opgeruimd
+      — anders sluit je eigen testers buiten. Volgorde dwingend: betaalsysteem
+      werkt → trial-lock werkt → dan pas verificatie afdwingen.
+- [ ] Trial-expiry-lock (NIET bouwen vóór betaalsysteem werkt):
+      Na 14 gratis dagen zonder actief abonnement de eigenaar mild locken —
+      toegang beperkt tot PakketKeuzeScherm, maar dierbare blijft ontvangen
+      wat er al staat. Volgorde dwingend: (1) betaalsysteem werkend + getest,
+      (2) lock inbouwen, (3) betaling heft lock op. Lock vóór betalen =
+      testers buitengesloten zonder uitweg. PakketKeuzeScherm (disabled
+      betaalknop) en proefStart-veld liggen al klaar in de code.
 - [ ] Firebase Auth mail-templates: NL + "Ons Moment" branding controleren
-- [ ] E-mailverificatie afdwingen in Firestore rules:
-      request.auth.token.email_verified == true toevoegen
-      (eerst bestaande accounts verifiëren; dan rule activeren)
 
-### FASE D — Flags + finale checks vóór live
+### FASE D — Betaalsysteem + finale flags
 
+- [ ] Google Play Billing inbouwen + testen (vereist toestel + Play Store):
+      14 dagen proef, pakketten Klein/Groot, jaar 40% korting.
+      Kring-aantal-limiet (1 vs 3) server-side afdwingen in Firestore rules.
+      Daarna PakketKeuzeScherm-betaalknop activeren.
+- [ ] Privacy Policy schrijven + in-app tonen (AVG art. 13, wettelijk verplicht)
+- [ ] Right to erasure implementeren (AVG art. 17, verwijderAccount()-flow)
+- [ ] In-app teksten/FAQ controleren: staat overal "per kring", nergens "totaal"?
 - [ ] DEBUG_VIDEOBELLEN → false in lib/data/debug_flags.dart
 - [ ] DEBUG_KIOSK → false in lib/data/debug_flags.dart
 - [ ] V4 autoAnswer Firestore-rule handmatig toevoegen in Console:
       alleen eigenaarUid mag autoAnswer schrijven op kring-doc
-- [ ] Storage rules controleren + aanscherpen (zie Fase B)
-- [ ] Firebase Blaze-upgrade (van Spark) — vereist voor publieke launch
-      (Cloud Functions draaien al op Blaze; controleer of account actief is)
-- [ ] Betaalsysteem keuze: Google Play Billing (in-app purchase) of Stripe?
-      Proefperiode 14 dagen, pakket Klein/Groot, jaarabonnement pushen.
-      Kring-aantal-limiet (1 vs 3) server-side afdwingen in Firestore rules.
-- [ ] Trial-expiry-lock (NIET bouwen vóór betaalsysteem werkt):
-      Na 14 gratis dagen zonder actief abonnement moet de eigenaar 'gelockt'
-      worden — toegang beperkt tot PakketKeuzeScherm totdat er betaald is.
-      Volgorde dwingend: (1) betaalsysteem werkend + getest, (2) lock
-      inbouwen, (3) betaling heft lock op. Lock vóór betalen = testers en
-      eigenaar buitengesloten zonder uitweg. PakketKeuzeScherm (disabled
-      betaalknop) en proefStart-veld liggen al klaar in de code.
-- [ ] Privacy Policy schrijven + in-app tonen (AVG art. 13, wettelijk verplicht)
-- [ ] Right to erasure implementeren (AVG art. 17, verwijderAccount()-flow)
-- [ ] In-app teksten/FAQ controleren: staat overal "per kring", nergens "totaal"?
+- [ ] Web API-key beperken tot jsm200522.github.io (Google Cloud Console →
+      API & Services → Credentials → HTTP-referer). Na rules-activatie doen.
+- [ ] TTL-policy aanmaken op rate_limits-collectie zodra de eerste echte
+      videobel in productie is geweest (collectie verschijnt dan in Console).
+- [ ] Budget-alert verhogen van €5 naar €20–50 bij eerste echte gebruikers.
 
-### FASE E — Google Play live
+### FASE E — Website publiceren (Lovable-tokens terug ~8 sept)
 
-- [ ] Versie bumpen (nieuwe release-build, flags op false)
+- [ ] Publiceren naar Netlify: verbeterde mobiele weergave, prijs-presentatie,
+      schema-markup (Organization + SoftwareApplication), llms.txt,
+      URL-correctie (alles naar onsmoment.app, geen subpaden).
+- [ ] Na publiceren checken: sitemap.xml, robots.txt, llms.txt correct op
+      onsmoment.app; Rich Results Test groen voor schema-data.
+- [ ] NOOIT DNS naar Lovable wijzen (185.158.133.1 / _lovable CNAME) —
+      domein blijft bij Netlify. Lovable alleen als editor gebruiken.
+
+### FASE F — Google Play live
+
+- [ ] Versie bumpen (nieuwe release-build, DEBUG-flags op false)
 - [ ] Codemagic release-build (.aab) maken + ondertekenen
 - [ ] Play Console listing afmaken:
       - Screenshots: telefoon min. 2 + 7-inch + 10-inch tablet
@@ -675,11 +853,14 @@ Tests zijn al 58/58 groen — alleen nog activeren.
 - [ ] .aab uploaden als closed test (vereist: min. 12 testers, 14 dagen)
 - [ ] Na 14 dagen closed test zonder blockers: productie aanvragen
 
-### FASE F — iOS (apart traject, ná Android live)
+### FASE G — iOS (apart traject, ná Android live)
 
-Groot apart traject — niet nu plannen. Wat er straks bij komt kijken:
-- Apple Developer-account (99 EUR/jaar)
-- Mac of cloud build service (bijv. Codemagic heeft macOS runners)
+Groot apart traject — niet nu plannen. Fundering staat al klaar
+(data-model platform-neutraal, apns-blok priority 5 al aanwezig in FCM).
+Wat er straks specifiek bij komt kijken voor iOS:
+- Apple Developer-account (99 EUR/jaar) + Mac of Codemagic macOS runner
+- PushKit + CallKit voor betrouwbaar bellen op iOS (apns-prioriteit 10 +
+  VoIP-push), flutter_local_notifications iOS-pad
 - iOS Safari audio-checklist (autoplay-restricties anders dan Android)
-- App Store Connect listing + review (1-2 weken)
-- TestFlight closed beta verplicht vóór productie
+- App Store Connect listing + TestFlight closed beta (verplicht vóór productie)
+- App Store review 1-2 weken
