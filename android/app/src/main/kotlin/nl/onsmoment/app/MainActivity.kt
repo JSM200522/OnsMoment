@@ -161,6 +161,37 @@ class MainActivity : FlutterActivity() {
                         }
                         result.success(null)
                     }
+                    // BEL-C6 (DEEL A): SYSTEM_ALERT_WINDOW-check zodat de
+                    // Dart-kant weet of we auto-answer bij scherm-aan + app
+                    // dicht kunnen forceren (background-activity-start via
+                    // BAL-exemption). Pre-Marshmallow bestaat de check niet
+                    // — dan altijd true (de permission is er 'gratis').
+                    "canDrawOverlays" -> {
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                            result.success(Settings.canDrawOverlays(this))
+                        } else {
+                            result.success(true)
+                        }
+                    }
+                    // Opent de special-access-settings-pagina voor
+                    // "Weergeven over andere apps". Geen directe prompt-
+                    // dialog beschikbaar (Android-limitatie) — de gebruiker
+                    // ziet Ons Moment in de lijst en tikt de toggle.
+                    "vraagOverlayToestemming" -> {
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                            try {
+                                val intent = Intent(
+                                    Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                                    Uri.parse("package:$packageName")
+                                ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                startActivity(intent)
+                            } catch (_: Exception) {
+                                // Op enkele OEMs is de intent afgeschermd —
+                                // val stil terug, de Dart-kant toont zelf UI.
+                            }
+                        }
+                        result.success(null)
+                    }
                     else -> result.notImplemented()
                 }
             }

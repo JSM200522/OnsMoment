@@ -28,6 +28,17 @@
          Prompt wordt in de meldingen-modus getoond na eerste opstart.
          Play Store-review vereist rechtvaardiging (calling app). -->
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS"/>
+    <!-- BEL-C6 (DEEL A): overlay-toestemming voor "auto-answer bij scherm
+         aan + app dicht". Android 10+ verbiedt background-activity-start
+         zonder een BAL-exemption; SYSTEM_ALERT_WINDOW is een van de weinige
+         geldige exempties (zie developer.android.com/guide/components/
+         activities/background-starts). We gebruiken de permission alleen
+         om vanuit de FCM background isolate MainActivity te starten wanneer
+         een auto-answer-gesprek binnenkomt en het scherm actief is —
+         niet om ooit daadwerkelijk een overlay-view te tekenen.
+         Play Store-review: rechtvaardiging = "video calling app;
+         auto-answer for accessibility-configured devices". -->
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW"/>
 
     <application
         android:label="Ons Moment"

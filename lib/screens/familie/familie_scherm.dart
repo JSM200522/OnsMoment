@@ -16,6 +16,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:device_info_plus/device_info_plus.dart';
 import '../../services/apparaat_service.dart';
+import '../../services/overlay_permission_service.dart';
 import '../../services/callkit_flag_service.dart';
 import '../../services/device_modus_service.dart';
 import '../../services/dagelijks_audio_service.dart';
@@ -1222,6 +1223,10 @@ class _StuurTabState extends State<StuurTab> {
 
   static const String _kFsiDismissTs = 'bel_fsi_dismiss_ts';
   static const String _kBattOptDismissTs = 'bel_battopt_dismiss_ts';
+  /// BEL-C6 (DEEL A): dismiss-timestamp voor de overlay-toestemming-prompt.
+  /// Aparte key zodat "Later" op deze dialog niet meteen ook de FSI- en
+  /// batterij-prompts uitschakelt.
+  static const String _kOverlayDismissTs = 'bel_overlay_dismiss_ts';
   static const int _promptDismissDagen = 7;
   bool? _isSamsungCache;
 
@@ -1246,7 +1251,9 @@ class _StuurTabState extends State<StuurTab> {
 
   Future<void> _checkBelPromptsMeldingenModus() async {
     if (!mounted) return;
-    // Sequentieel: eerst FSI (kritiek voor lock-screen), dan battery-opt.
+    // Sequentieel: eerst FSI (kritiek voor lock-screen), dan battery-opt,
+    // daarna (voorwaardelijk) overlay-toestemming voor auto-answer bij
+    // scherm-aan + app dicht.
     final fsiOk = await KioskService.kanFullScreenIntent();
     if (!mounted) return;
     if (!fsiOk && await _promptNietUitgesteld(_kFsiDismissTs)) {
@@ -1262,8 +1269,44 @@ class _StuurTabState extends State<StuurTab> {
       if (!mounted) return;
       final samsungTip = await _isSamsung();
       if (!mounted) return;
-      _toonBatteryOptDialogMeldingen(samsungTip: samsungTip);
+      final klaar = Completer<void>();
+      _toonBatteryOptDialogMeldingen(
+          samsungTip: samsungTip, onDone: klaar.complete);
+      await klaar.future;
+      if (!mounted) return;
     }
+    // BEL-C6 (DEEL A): overlay-prompt alleen als auto-answer voor de
+    // actieve kring AAN staat. Zonder auto-answer heeft SYSTEM_ALERT_WINDOW
+    // geen praktisch nut (gebruiker moet toch tikken) en zou het puur
+    // een extra vraag zijn die friction geeft.
+    await _checkOverlayVoorAutoAnswer();
+  }
+
+  Future<void> _checkOverlayVoorAutoAnswer() async {
+    if (!mounted) return;
+    // Kring-instelling ophalen — als er geen actieve kring is of de
+    // read faalt, skip stil. Auto-answer is opt-in per kring (V4).
+    final kringId = DeviceModusService.actieveKringNotifier.value;
+    if (kringId == null || kringId.isEmpty) return;
+    Kring? kring;
+    try {
+      final snap = await FirebaseFirestore.instance
+          .collection('kringen')
+          .doc(kringId)
+          .get()
+          .timeout(const Duration(seconds: 5));
+      if (snap.exists) kring = Kring.fromFirestore(snap);
+    } catch (_) {
+      return;
+    }
+    if (kring == null || !kring.autoAnswer) return;
+    if (!mounted) return;
+    final overlayOk = await OverlayPermissionService.heeftToestemming();
+    if (!mounted) return;
+    if (overlayOk) return;
+    if (!await _promptNietUitgesteld(_kOverlayDismissTs)) return;
+    if (!mounted) return;
+    _toonOverlayDialog();
   }
 
   Future<bool> _promptNietUitgesteld(String key) async {
@@ -1329,7 +1372,10 @@ class _StuurTabState extends State<StuurTab> {
     );
   }
 
-  void _toonBatteryOptDialogMeldingen({required bool samsungTip}) {
+  void _toonBatteryOptDialogMeldingen({
+    required bool samsungTip,
+    VoidCallback? onDone,
+  }) {
     final tekst = StringBuffer(
         'Android kan Ons Moment stiller zetten als hij denkt dat de '
         'app "in slaap" is — dan mist je dierbare berichten en '
@@ -1358,6 +1404,7 @@ class _StuurTabState extends State<StuurTab> {
             onPressed: () async {
               await _noteerDismiss(_kBattOptDismissTs);
               if (mounted) Navigator.of(ctx).pop();
+              onDone?.call();
             },
             child: const Text('Later',
                 style: TextStyle(color: kTextMuted)),
@@ -1370,8 +1417,65 @@ class _StuurTabState extends State<StuurTab> {
             onPressed: () {
               Navigator.of(ctx).pop();
               KioskService.vraagBatteryOptimizationUit();
+              onDone?.call();
             },
             child: const Text('Zet uit',
+                style: TextStyle(fontWeight: FontWeight.w800)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// BEL-C6 (DEEL A): warme dialog voor de overlay-toestemming
+  /// (SYSTEM_ALERT_WINDOW). Alleen zichtbaar op een apparaat waar
+  /// autoAnswer voor de kring AAN staat — dat is per definitie het
+  /// toestel van iemand die zelf niet meer kan opnemen. Mantelzorger
+  /// is degene die dit instelt en typisch óók bij het toestel staat om
+  /// deze prompt te beantwoorden.
+  ///
+  /// De tekst noemt géén Android-jargon ("BAL-exemption", "overlay").
+  /// Voor de gebruiker heet het simpelweg: "zodat een gesprek automatisch
+  /// kan openen, ook als de tablet net iets anders op het scherm heeft".
+  void _toonOverlayDialog() {
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20)),
+        title: const Text('Automatisch opnemen instellen',
+            style: TextStyle(fontWeight: FontWeight.w900,
+                color: kBrown, fontSize: 17)),
+        content: const Text(
+            'Je hebt "automatisch opnemen" aangezet zodat een videogesprek '
+            'vanzelf opent bij je dierbare.\n\n'
+            'Geef Ons Moment nog één toestemming — "Weergeven over andere '
+            'apps" — zodat het gesprek ook automatisch kan openen als het '
+            'apparaat net iets anders op het scherm heeft (bijvoorbeeld '
+            'een foto of het beginscherm).\n\n'
+            'Zonder deze instelling moet je dierbare zelf op de melding '
+            'tikken.',
+            style: TextStyle(fontSize: 13, color: kBrown, height: 1.4)),
+        actions: [
+          TextButton(
+            onPressed: () async {
+              await _noteerDismiss(_kOverlayDismissTs);
+              if (mounted) Navigator.of(ctx).pop();
+            },
+            child: const Text('Later',
+                style: TextStyle(color: kTextMuted)),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+                backgroundColor: kPeach, foregroundColor: kWhite,
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12))),
+            onPressed: () {
+              Navigator.of(ctx).pop();
+              OverlayPermissionService.vraagToestemming();
+            },
+            child: const Text('Instelling openen',
                 style: TextStyle(fontWeight: FontWeight.w800)),
           ),
         ],
