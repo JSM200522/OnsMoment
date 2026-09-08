@@ -6388,6 +6388,46 @@ class _HulpDialog extends StatelessWidget {
         "Ga naar Instellingen, kies Kringleden beheren en kies bij jezelf "
         "'Uit kring gaan'. Je hebt daarna geen toegang meer tot die kring. "
         "De eigenaar en de andere kringleden blijven gewoon doorgaan."),
+    // ── Videobellen ──
+    _FAQ('Videobellen', "Hoe start ik een videogesprek?",
+        "Open het tabblad 'Sturen' en tik onderaan op 'Videobellen'. Kies "
+        "wie je wilt bellen (het apparaat van je dierbare, of een "
+        "familielid). Op dat apparaat verschijnt de oproep binnen enkele "
+        "seconden. Zodra er is opgenomen, zien jullie elkaar. Ophangen doe "
+        "je met de rode knop in beeld."),
+    _FAQ('Videobellen', "Wat is automatisch opnemen en voor wie is dat?",
+        "Voor mensen die zelf geen knop meer kunnen bedienen — omdat "
+        "dementie of een lichamelijke beperking dat in de weg zit. Met "
+        "automatisch opnemen aan verschijnt jouw gezicht vanzelf in beeld "
+        "bij je dierbare. Het apparaat toont eerst twee seconden 'X belt "
+        "jou — we nemen zo op…' met een zachte marimba, zodat het niet "
+        "als een schrik komt. Zet je het uit, dan moet je dierbare zelf "
+        "op 'Beantwoorden' tikken. Alleen de eigenaar van de kring kan "
+        "deze instelling wijzigen (Instellingen → Videobellen)."),
+    _FAQ('Videobellen',
+        "Wat is het verschil tussen vergrendelde en meldingen-modus bij bellen?",
+        "In de vergrendelde modus staat Ons Moment altijd open op het "
+        "apparaat van je dierbare — een inkomend gesprek verschijnt "
+        "direct groot in beeld met de naam van de beller. Deze modus is "
+        "het meest betrouwbaar en past bij iemand die zelf geen apparaat "
+        "meer bedient. In de meldingen-modus werkt de tablet als een "
+        "gewone tablet: een oproep komt als volledig-scherm-melding "
+        "binnen met 'Opnemen' en 'Weigeren'. Deze modus vraagt eenmalig "
+        "een paar toestemmingen (volledig-scherm en batterij-uitzondering) "
+        "zodat oproepen ook doorkomen als de app dicht is."),
+    _FAQ('Videobellen', "Wat gebeurt er als niemand opneemt?",
+        "Na ongeveer 35 seconden stopt het rinkelen automatisch en "
+        "verschijnt een rustige melding 'Gemist gesprek van [naam]' op het "
+        "apparaat van je dierbare. Aan jouw kant zie je dat de verbinding "
+        "niet is opgezet — je kunt op elk moment opnieuw proberen te bellen."),
+    _FAQ('Videobellen',
+        "Waarom vraagt de app om 'volledig scherm' en 'batterij-uitzondering'?",
+        "Zodat een inkomend gesprek altijd doorkomt — ook als de tablet "
+        "in slaap staat of het scherm uit is. Zonder deze twee "
+        "instellingen kan Android de oproep vertragen of als kleine "
+        "melding in het meldingenscherm zetten, waar je dierbare hem "
+        "gemakkelijk over het hoofd ziet. Beide zijn eenmalige "
+        "toestemmingen; je hoeft ze nooit opnieuw te geven."),
     // ── Abonnement ──
     _FAQ('Abonnement', "Wat kost Ons Moment?",
         "Je start altijd met 14 dagen gratis — geen betaalgegevens nodig.\n\n"
