@@ -17,7 +17,6 @@ import 'services/bel_log_service.dart';
 import 'services/callkit_flag_service.dart';
 import 'services/device_modus_service.dart';
 import 'services/crash_service.dart';
-import 'services/full_screen_intent_service.dart';
 import 'services/push_service.dart';
 import 'services/video_call_service.dart';
 import 'data/debug_flags.dart';
@@ -452,16 +451,11 @@ class _OntvangerRouterState extends State<_OntvangerRouter> {
       valueListenable: DeviceModusService.weergaveModusNotifier,
       builder: (context, weergave, _) {
         if (weergave == DeviceModusService.MELDINGEN) {
-          // BEL-Q2: check FULL_SCREEN_INTENT special-permission zodra de
-          // ontvanger in meldingen-modus staat. Fire-and-forget na de
-          // eerste frame zodat de dialog niet in build() zelf spawnt.
-          // De service is idempotent (1× per app-start) en fail-soft.
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            if (!context.mounted) return;
-            unawaited(
-              FullScreenIntentService.controleerEnPromptAlsNodig(context),
-            );
-          });
+          // BEL-C2: FSI-prompt liep vroeger óók vanaf deze router; dat
+          // verdubbelde met _checkBelPromptsMeldingenModus in
+          // FamilieScherm (dat de warme dialog + 7-dagen-dismiss al doet).
+          // Eén plek is genoeg — familie_scherm is de plek waar de
+          // ontvanger-modus zichtbaar is, dus daar horen de toestemmingen.
           return const FamilieScherm(alsOntvanger: true);
         }
         // 'vergrendeld' of null (backwards compat) → kiosk

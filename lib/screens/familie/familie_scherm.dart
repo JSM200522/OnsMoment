@@ -14,6 +14,7 @@ import 'package:http/http.dart' as http;
 import 'package:url_launcher/url_launcher.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:device_info_plus/device_info_plus.dart';
 import '../../services/apparaat_service.dart';
 import '../../services/callkit_flag_service.dart';
 import '../../services/device_modus_service.dart';
@@ -1222,6 +1223,26 @@ class _StuurTabState extends State<StuurTab> {
   static const String _kFsiDismissTs = 'bel_fsi_dismiss_ts';
   static const String _kBattOptDismissTs = 'bel_battopt_dismiss_ts';
   static const int _promptDismissDagen = 7;
+  bool? _isSamsungCache;
+
+  /// BEL-C2: fabrikant-detectie voor de Samsung-specifieke "Slapende apps"-
+  /// tip in de battery-opt-dialog. Gecached zodat we niet elke dialog
+  /// een androidInfo-lookup doen. Fail-soft (false) — dan tonen we de
+  /// tip niet, wat op niet-Samsung altijd correct is.
+  Future<bool> _isSamsung() async {
+    if (_isSamsungCache != null) return _isSamsungCache!;
+    if (kIsWeb) {
+      _isSamsungCache = false;
+      return false;
+    }
+    try {
+      final info = await DeviceInfoPlugin().androidInfo;
+      _isSamsungCache = info.manufacturer.toLowerCase() == 'samsung';
+    } catch (_) {
+      _isSamsungCache = false;
+    }
+    return _isSamsungCache!;
+  }
 
   Future<void> _checkBelPromptsMeldingenModus() async {
     if (!mounted) return;
@@ -1239,7 +1260,9 @@ class _StuurTabState extends State<StuurTab> {
     if (!mounted) return;
     if (!battOk && await _promptNietUitgesteld(_kBattOptDismissTs)) {
       if (!mounted) return;
-      _toonBatteryOptDialogMeldingen();
+      final samsungTip = await _isSamsung();
+      if (!mounted) return;
+      _toonBatteryOptDialogMeldingen(samsungTip: samsungTip);
     }
   }
 
@@ -1306,7 +1329,19 @@ class _StuurTabState extends State<StuurTab> {
     );
   }
 
-  void _toonBatteryOptDialogMeldingen() {
+  void _toonBatteryOptDialogMeldingen({required bool samsungTip}) {
+    final tekst = StringBuffer(
+        'Android kan Ons Moment stiller zetten als hij denkt dat de '
+        'app "in slaap" is — dan mist je dierbare berichten en '
+        'inkomende gesprekken.\n\n'
+        'Zet dit uit zodat berichten en oproepen altijd aankomen, '
+        'ook als de app dicht is.');
+    if (samsungTip) {
+      tekst.write(
+          '\n\nExtra bij Samsung: kijk ook bij Instellingen → Apparaat- '
+          'onderhoud → Batterij → Achtergrondgebruikslimieten en '
+          'haal Ons Moment uit "Slapende apps" / "Diep slapende apps".');
+    }
     showDialog<void>(
       context: context,
       barrierDismissible: false,
@@ -1316,16 +1351,8 @@ class _StuurTabState extends State<StuurTab> {
         title: const Text('Zet batterij-optimalisatie uit',
             style: TextStyle(fontWeight: FontWeight.w900,
                 color: kBrown, fontSize: 17)),
-        content: const Text(
-            'Android kan Ons Moment stiller zetten als hij denkt dat de '
-            'app "in slaap" is — dan mist je dierbare berichten en '
-            'inkomende gesprekken.\n\n'
-            'Zet dit uit zodat berichten en oproepen altijd aankomen, '
-            'ook als de app dicht is.\n\n'
-            'Extra bij Samsung: kijk ook bij Instellingen → Apparaat- '
-            'onderhoud → Batterij → Achtergrondgebruikslimieten en '
-            'haal Ons Moment uit "Slapende apps" / "Diep slapende apps".',
-            style: TextStyle(fontSize: 13, color: kBrown, height: 1.4)),
+        content: Text(tekst.toString(),
+            style: const TextStyle(fontSize: 13, color: kBrown, height: 1.4)),
         actions: [
           TextButton(
             onPressed: () async {
