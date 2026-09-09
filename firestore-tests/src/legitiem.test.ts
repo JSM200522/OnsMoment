@@ -317,6 +317,48 @@ describe('gebruikers', () => {
     );
   });
 
+  // D-1: create-rule tolereert de default 'tier: klein' die setup_wizard
+  // en gast_signup_scherm bij nieuwe accounts schrijven. Abonnement mag
+  // bij create niet aanwezig zijn.
+  test('L27b: nieuwe gebruiker create met default tier=klein', async () => {
+    const db = alsNieuweGast(env).firestore();
+    await env.clearFirestore();
+    await assertSucceeds(
+      setDoc(doc(db, 'gebruikers', NIEUWE_GAST_UID), {
+        email: 'nieuw@test.nl',
+        familieNaam: 'Nieuw',
+        gebruikersNaam: 'Nieuw',
+        accountType: 'familie',
+        tier: 'klein',
+        aangemaaktOp: new Date(),
+      }),
+    );
+  });
+
+  // D-1: legitieme updates die tier/abonnement NIET raken blijven werken.
+  test('L27c: eigenaarA update meerdere velden (naam+foto) zonder tier', async () => {
+    const db = alsEigenaarA(env).firestore();
+    await assertSucceeds(
+      updateDoc(doc(db, 'gebruikers', EIGENAAR_A_UID), {
+        naam: 'Andere Naam',
+        ontvangerFoto: 'https://example.com/nieuw.jpg',
+      }),
+    );
+  });
+
+  // D-1: kringAantal verhogen (kring aanmaken) blijft toegestaan.
+  test('L27d: eigenaarA verhoogt kringAantal (kring-aanmaak-scenario)', async () => {
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      await updateDoc(doc(ctx.firestore(), 'gebruikers', EIGENAAR_A_UID), {
+        kringAantal: 1,
+      });
+    });
+    const db = alsEigenaarA(env).firestore();
+    await assertSucceeds(
+      updateDoc(doc(db, 'gebruikers', EIGENAAR_A_UID), { kringAantal: 2 }),
+    );
+  });
+
   test('L28: eigenaarA leest eigen apparaat', async () => {
     const db = alsEigenaarA(env).firestore();
     await assertSucceeds(

@@ -33,13 +33,24 @@ service cloud.firestore {
     }
 
     // Eigen gebruikers-doc + apparaten-subcollectie.
-    // kringAantal-veld mag alleen toenemen (niet verlagen) om tel-manipulatie
-    // via de REST API te blokkeren.
+    //
+    // Client-writes:
+    //  - kringAantal mag alleen toenemen (niet verlagen).
+    //  - `tier` en `abonnement` (incl. subvelden) mogen NIET door de
+    //    gebruiker zelf gewijzigd worden — die worden server-side gezet
+    //    door de RevenueCat-webhook-Cloud-Function via Admin SDK (D-2).
+    //  - Bij CREATE mag `tier` alleen 'klein' zijn (default voor nieuwe
+    //    accounts en gast-signup). `abonnement` mag bij create niet
+    //    aanwezig zijn — dat is een server-verantwoordelijkheid.
     match /gebruikers/{uid} {
       allow read: if request.auth != null && request.auth.uid == uid;
-      allow create: if request.auth != null && request.auth.uid == uid;
-      allow update: if request.auth != null && request.auth.uid == uid &&
-        request.resource.data.get('kringAantal', 0) >= resource.data.get('kringAantal', 0);
+      allow create: if request.auth != null && request.auth.uid == uid
+        && request.resource.data.get('tier', 'klein') == 'klein'
+        && !('abonnement' in request.resource.data.keys());
+      allow update: if request.auth != null && request.auth.uid == uid
+        && !('tier' in request.resource.data.diff(resource.data).affectedKeys())
+        && !('abonnement' in request.resource.data.diff(resource.data).affectedKeys())
+        && request.resource.data.get('kringAantal', 0) >= resource.data.get('kringAantal', 0);
       allow delete: if request.auth != null && request.auth.uid == uid;
       match /apparaten/{apparaatId} {
         // Read verruimd: eigen apparaten altijd, én apparaten van andere

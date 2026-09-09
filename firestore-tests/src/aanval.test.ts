@@ -606,3 +606,89 @@ describe('feedback — aanvallen', () => {
     await assertFails(deleteDoc(doc(db, 'feedback', 'seedFb3')));
   });
 });
+
+// ──────────────────────────────────────────────
+// D-1: gebruikers-doc — tier/abonnement server-only, kringAantal alleen omhoog
+// ──────────────────────────────────────────────
+describe('gebruikers — tier/abonnement server-only', () => {
+  test('A54: eigenaarA mag zichzelf NIET naar tier=groot upgraden', async () => {
+    const db = alsEigenaarA(env).firestore();
+    await assertFails(
+      updateDoc(doc(db, 'gebruikers', EIGENAAR_A_UID), { tier: 'groot' }),
+    );
+  });
+
+  test('A55: eigenaarA mag geen abonnement-veld schrijven via update', async () => {
+    const db = alsEigenaarA(env).firestore();
+    await assertFails(
+      updateDoc(doc(db, 'gebruikers', EIGENAAR_A_UID), {
+        abonnement: { actief: true, tier: 'groot' },
+      }),
+    );
+  });
+
+  test('A56: eigenaarA mag geen abonnement-subveld toevoegen via dot-notatie', async () => {
+    // Firestore-rules zien elke subveld-wijziging aan `abonnement` als
+    // een top-level 'abonnement' in affectedKeys — deze aanval moet
+    // dus falen ook al gaat het om één subveld.
+    const db = alsEigenaarA(env).firestore();
+    await assertFails(
+      updateDoc(doc(db, 'gebruikers', EIGENAAR_A_UID), {
+        'abonnement.actief': true,
+      }),
+    );
+  });
+
+  test('A57: eigenaarA mag kringAantal NIET verlagen', async () => {
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      await updateDoc(doc(ctx.firestore(), 'gebruikers', EIGENAAR_A_UID), {
+        kringAantal: 2,
+      });
+    });
+    const db = alsEigenaarA(env).firestore();
+    await assertFails(
+      updateDoc(doc(db, 'gebruikers', EIGENAAR_A_UID), { kringAantal: 1 }),
+    );
+  });
+
+  test('A58: nieuwe gebruiker mag zichzelf NIET direct als tier=groot registreren', async () => {
+    const db = alsNieuweGast(env).firestore();
+    await env.clearFirestore();
+    await assertFails(
+      setDoc(doc(db, 'gebruikers', NIEUWE_GAST_UID), {
+        email: 'nieuw@test.nl',
+        familieNaam: 'Nieuw',
+        gebruikersNaam: 'Nieuw',
+        accountType: 'familie',
+        tier: 'groot',
+        aangemaaktOp: new Date(),
+      }),
+    );
+  });
+
+  test('A59: nieuwe gebruiker mag geen abonnement-veld meesturen bij create', async () => {
+    const db = alsNieuweGast(env).firestore();
+    await env.clearFirestore();
+    await assertFails(
+      setDoc(doc(db, 'gebruikers', NIEUWE_GAST_UID), {
+        email: 'nieuw@test.nl',
+        familieNaam: 'Nieuw',
+        gebruikersNaam: 'Nieuw',
+        accountType: 'familie',
+        tier: 'klein',
+        abonnement: { actief: true, tier: 'groot' },
+        aangemaaktOp: new Date(),
+      }),
+    );
+  });
+
+  test('A60: eigenaarA mag bij combinatie-update (naam + tier) NIET slagen — atomair geweigerd', async () => {
+    const db = alsEigenaarA(env).firestore();
+    await assertFails(
+      updateDoc(doc(db, 'gebruikers', EIGENAAR_A_UID), {
+        naam: 'Onschuldig',
+        tier: 'groot',
+      }),
+    );
+  });
+});
