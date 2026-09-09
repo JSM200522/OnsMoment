@@ -112,6 +112,19 @@ dependencies {
     // flutter_local_notifications 17.x. Versie 2.1.4 past bij AGP 8.6.0
     // (min. 2.0.4 vereist door de plugin).
     coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.1.4'
+
+    // BEL-D1: onze eigen OnsMomentFcmReceiver.kt gebruikt
+    // com.google.firebase.messaging.RemoteMessage. De Flutter-plugin
+    // firebase_messaging trekt dezelfde klasse al binnen, maar met scope
+    // 'implementation' — dus NIET transitief zichtbaar voor onze
+    // app-module. Zonder deze regel faalt Codemagic met
+    // "Unresolved reference: RemoteMessage".
+    //
+    // Versie hard gepind op 23.4.1 = exact wat firebase_messaging 14.9.4
+    // onder de motorkap al meebrengt. Zo krijgt Gradle nooit twee
+    // conflicterende versies te dedupliceren en blijft het geheel
+    // reproducible tussen lokaal en Codemagic.
+    implementation 'com.google.firebase:firebase-messaging:23.4.1'
 }
 
 apply plugin: 'com.google.gms.google-services'
