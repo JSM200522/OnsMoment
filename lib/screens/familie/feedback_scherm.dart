@@ -8,8 +8,8 @@ import '../../widgets/normaal_scaffold.dart';
 /// FDB-1: Feedback-/ideeënformulier in Instellingen.
 ///
 /// Zichtbaar voor elke ingelogde gebruiker — eigenaar én gast. Doel:
-/// Joshua kan tijdens de eerste testronde snel signalen van echte
-/// families verzamelen zonder aparte kanalen.
+/// tijdens de eerste testronde snel signalen van echte families
+/// verzamelen zonder aparte kanalen.
 ///
 /// Datamodel (platform-neutraal — Platform-principe uit CLAUDE.md):
 ///   feedback/{autoId}
@@ -153,7 +153,7 @@ class _FeedbackSchermState extends State<FeedbackScherm> {
           const Padding(
             padding: EdgeInsets.symmetric(horizontal: 20),
             child: Text(
-              'Je bericht is verstuurd. Ik lees alles zelf — dank dat je '
+              'Je bericht is verstuurd. We lezen alles — dank dat je '
               'de tijd nam om te helpen Ons Moment beter te maken.',
               textAlign: TextAlign.center,
               style: TextStyle(fontSize: 15, color: kBrownLight, height: 1.5),
@@ -182,8 +182,8 @@ class _FeedbackSchermState extends State<FeedbackScherm> {
   Widget _formulier() {
     return ListView(children: [
       const Text(
-        'Wat je hier stuurt komt direct bij Joshua terecht. Ik lees '
-        'alles en gebruik het om Ons Moment te verbeteren.',
+        'Wat je hier stuurt komt direct bij het team van Ons Moment '
+        'terecht. We lezen alles en gebruiken het om de app te verbeteren.',
         style: TextStyle(fontSize: 14, color: kBrownLight, height: 1.5),
       ),
       const SizedBox(height: 16),

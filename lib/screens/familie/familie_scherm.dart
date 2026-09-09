@@ -1779,38 +1779,33 @@ class _StuurTabState extends State<StuurTab> {
       if (DEBUG_VIDEOBELLEN && !widget.alsOntvanger)
         Padding(
           padding: const EdgeInsets.fromLTRB(20, 12, 20, 16),
-          child: Column(children: [
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton.icon(
-                // BEL-D3: eerste keer op de bel-knop tonen we het warme
-                // uitleg-scherm; daarna gaat het direct door. Fail-open
-                // via BelUitlegDialog — nooit blokkeren als prefs faalt.
-                onPressed: () async {
-                  await BelUitlegDialog.toonEersteKeer(context);
-                  if (!context.mounted) return;
-                  Navigator.push(context,
-                      MaterialPageRoute<void>(
-                          builder: (_) => const BelApparaatKiesScherm()));
-                },
-                icon: const Icon(Icons.videocam_rounded, size: 22),
-                label: const Text('Bellen',
-                    style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: kGreen,
-                  foregroundColor: kWhite,
-                  padding: const EdgeInsets.symmetric(vertical: 14),
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(14)),
-                ),
+          child: SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              // BEL-D3: eerste keer op de bel-knop tonen we het warme
+              // uitleg-scherm; daarna gaat het direct door. Het aparte
+              // "Hoe werkt bellen?"-linkje op het homescherm is bewust
+              // WEGGELATEN — het bel-apparaat-kies-scherm heeft het al
+              // naast de titel, en op de homepage voegde het te veel ruis toe.
+              onPressed: () async {
+                await BelUitlegDialog.toonEersteKeer(context);
+                if (!context.mounted) return;
+                Navigator.push(context,
+                    MaterialPageRoute<void>(
+                        builder: (_) => const BelApparaatKiesScherm()));
+              },
+              icon: const Icon(Icons.videocam_rounded, size: 22),
+              label: const Text('Bellen',
+                  style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: kGreen,
+                foregroundColor: kWhite,
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14)),
               ),
             ),
-            // BEL-D3: klein "Hoe werkt bellen?"-linkje voor wie de
-            // uitleg later opnieuw wil zien. Dezelfde dialog als de
-            // eerste-keer-tap; content leeft in BelUitlegTeksten.
-            const SizedBox(height: 4),
-            const BelUitlegLink(),
-          ]),
+          ),
         ),
       ],
     );
