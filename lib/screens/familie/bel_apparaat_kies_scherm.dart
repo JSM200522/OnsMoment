@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import '../../data/bel_uitleg_teksten.dart';
 import '../../services/apparaat_service.dart';
 import '../../services/device_modus_service.dart';
 import '../../theme/kleuren.dart';
 import '../../widgets/normaal_scaffold.dart';
+import '../videobellen/bel_uitleg_dialog.dart';
 import 'bel_scherm.dart';
 
 /// Kies een apparaat om te bellen, met (voor de eigenaar) de
@@ -90,6 +92,23 @@ class _BelApparaatKiesSchermState extends State<BelApparaatKiesScherm> {
       await FirebaseFirestore.instance
           .collection('kringen').doc(kringId)
           .update({'autoAnswer': waarde});
+      // BEL-D3: bij AANZETTEN korte warme hint. We kunnen client-side
+      // niet zien welke modus het ontvanger-apparaat heeft, dus we
+      // tonen 'm áltijd bij aan-zetten. Rustige modus? Dan negeert de
+      // gebruiker 'm terecht. Normale modus? Dan weet-'ie de weg.
+      if (waarde && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: const Text(BelUitlegTeksten.autoAnswerAangezetHint,
+              style: TextStyle(height: 1.4)),
+          backgroundColor: kPeach,
+          duration: const Duration(seconds: 6),
+          action: SnackBarAction(
+            label: 'Uitleg',
+            textColor: kWhite,
+            onPressed: () => BelUitlegDialog.forceerTonen(context),
+          ),
+        ));
+      }
     } catch (_) {
       if (mounted) setState(() => _autoAnswer = !waarde);
     }
@@ -244,9 +263,14 @@ class _BelApparaatKiesSchermState extends State<BelApparaatKiesScherm> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('Start een videogesprek',
-              style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900,
-                  color: kBrown)),
+          const Row(children: [
+            Expanded(child: Text('Start een videogesprek',
+                style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900,
+                    color: kBrown))),
+            // BEL-D3: klein linkje naar dezelfde warme uitleg-dialog
+            // (BelUitlegTeksten). Altijd bereikbaar vanaf dit scherm.
+            BelUitlegLink(),
+          ]),
           const SizedBox(height: 4),
           const Text('Kies hieronder een apparaat om te bellen.',
               style: TextStyle(fontSize: 13, color: kTextMuted, height: 1.4)),
@@ -262,10 +286,9 @@ class _BelApparaatKiesSchermState extends State<BelApparaatKiesScherm> {
                 title: const Text('Gesprekken automatisch beantwoorden',
                     style: TextStyle(color: kBrown,
                         fontWeight: FontWeight.w700, fontSize: 15)),
+                // BEL-D3: één zin uit BelUitlegTeksten. Wijzig 'm daar.
                 subtitle: const Text(
-                    'Als het apparaat van je dierbare aanstaat en Ons Moment '
-                    'openstaat, wordt een videogesprek automatisch beantwoord '
-                    '— je dierbare hoeft niets te doen.',
+                    BelUitlegTeksten.autoAnswerToggleUitleg,
                     style: TextStyle(color: kTextMuted, fontSize: 12,
                         height: 1.4)),
                 value: _autoAnswer,
@@ -273,46 +296,6 @@ class _BelApparaatKiesSchermState extends State<BelApparaatKiesScherm> {
                 onChanged: _zetAutoAnswer,
                 contentPadding: const EdgeInsets.symmetric(
                     horizontal: 16, vertical: 6),
-              ),
-            ),
-            const SizedBox(height: 10),
-            // BEL-D3: korte, eerlijke uitleg voor de eigenaar. Bewust
-            // zonder Android-jargon (fullScreenIntent, BAL, SAW). De
-            // "rustige modus"-tip is de kern — daar werkt bellen 100%
-            // omdat de app altijd voorgrond staat.
-            Container(
-              padding: const EdgeInsets.all(14),
-              decoration: BoxDecoration(
-                color: kCream,
-                borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: kPeachLight),
-              ),
-              child: const Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(children: [
-                    Text('💡', style: TextStyle(fontSize: 18)),
-                    SizedBox(width: 8),
-                    Text('Zo werkt bellen',
-                        style: TextStyle(fontSize: 14,
-                            fontWeight: FontWeight.w800, color: kBrown)),
-                  ]),
-                  SizedBox(height: 8),
-                  Text(
-                    '• Rustige modus (vergrendeld): bellen werkt altijd. '
-                    'Dit is het meest betrouwbaar voor iemand die zelf '
-                    'niet meer kan opnemen.\n'
-                    '• Normale modus, scherm uit: de tablet wordt wakker '
-                    'en het gesprek komt groot in beeld.\n'
-                    '• Normale modus, scherm aan, app dicht: er komt een '
-                    'grote melding. Met "automatisch opnemen" en de juiste '
-                    'toestemming opent het gesprek vanzelf.\n'
-                    '• App volledig geforceerd gestopt: dan komt er '
-                    'niets binnen (geldt voor elke app, ook WhatsApp).',
-                    style: TextStyle(fontSize: 12,
-                        color: kBrownLight, height: 1.5),
-                  ),
-                ],
               ),
             ),
           ],

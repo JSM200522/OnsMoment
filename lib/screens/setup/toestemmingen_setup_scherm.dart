@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
+import '../../data/bel_uitleg_teksten.dart';
+import '../../services/device_modus_service.dart';
 import '../../services/kiosk_service.dart';
 import '../../services/overlay_permission_service.dart';
 import '../../theme/kleuren.dart';
@@ -31,11 +33,16 @@ import '../../widgets/normaal_scaffold.dart';
 /// structuur zijn dan herbruikbaar, alleen de checks veranderen.
 class ToestemmingenSetupScherm extends StatefulWidget {
   final bool autoAnswerActief;
+  /// BEL-D3: [DeviceModusService.VERGRENDELD] of [MELDINGEN]. In
+  /// VERGRENDELDE modus staat het apparaat vast op Ons Moment; de
+  /// overlay-toestemming is dan overbodig — die stap wordt overgeslagen.
+  final String weergaveModus;
   final VoidCallback onKlaar;
 
   const ToestemmingenSetupScherm({
     super.key,
     required this.autoAnswerActief,
+    required this.weergaveModus,
     required this.onKlaar,
   });
 
@@ -71,6 +78,14 @@ class _ToestemmingenSetupSchermState extends State<ToestemmingenSetupScherm>
     if (state == AppLifecycleState.resumed) _ververs();
   }
 
+  /// BEL-D3: overlay-stap alleen relevant bij MELDINGEN-modus met
+  /// autoAnswer aan. Bij VERGRENDELDE modus staat het apparaat vast op
+  /// Ons Moment en werkt automatisch opnemen altijd — geen extra
+  /// toestemming nodig, en dus geen kaartje tonen.
+  bool get _overlayStapNodig =>
+      widget.autoAnswerActief &&
+      widget.weergaveModus != DeviceModusService.VERGRENDELD;
+
   Future<void> _ververs() async {
     if (kIsWeb) {
       setState(() {
@@ -82,7 +97,7 @@ class _ToestemmingenSetupSchermState extends State<ToestemmingenSetupScherm>
     }
     final fsi = await KioskService.kanFullScreenIntent();
     final batt = await KioskService.isBatteryOptimizationUit();
-    final overlay = widget.autoAnswerActief
+    final overlay = _overlayStapNodig
         ? await OverlayPermissionService.heeftToestemming()
         : true;
     if (!mounted) return;
@@ -100,7 +115,7 @@ class _ToestemmingenSetupSchermState extends State<ToestemmingenSetupScherm>
     int r = 0;
     if (_fsiOk == false) r++;
     if (_battOk == false) r++;
-    if (widget.autoAnswerActief && _overlayOk == false) r++;
+    if (_overlayStapNodig && _overlayOk == false) r++;
     return r;
   }
 
@@ -155,17 +170,17 @@ class _ToestemmingenSetupSchermState extends State<ToestemmingenSetupScherm>
                     await KioskService.vraagBatteryOptimizationUit();
                   },
                 ),
-                if (widget.autoAnswerActief) ...[
+                if (_overlayStapNodig) ...[
                   const SizedBox(height: 12),
                   _stapKaart(
                     emoji: '☎️',
                     titel: 'Automatisch opnemen mogelijk maken',
+                    // BEL-D3: twee korte zinnen (waarvoor + zonder), uit
+                    // BelUitlegTeksten zodat de tekst hier gelijk is aan
+                    // de dialog en de FAQ.
                     uitleg:
-                        'Je hebt "automatisch opnemen" aangezet. Geef Ons '
-                        'Moment nog één toestemming — "Weergeven over '
-                        'andere apps" — zodat een gesprek écht vanzelf '
-                        'opent, ook als de tablet net iets anders op het '
-                        'scherm heeft.',
+                        '${BelUitlegTeksten.overlayWaarvoor}\n\n'
+                        '${BelUitlegTeksten.overlayZonder}',
                     status: _overlayOk,
                     knopTekst: 'Instelling openen',
                     onTap: () async {

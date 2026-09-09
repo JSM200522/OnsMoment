@@ -1297,6 +1297,11 @@ class _SetupWizardState extends State<SetupWizard> {
           fullscreenDialog: true,
           builder: (dialogCtx) => ToestemmingenSetupScherm(
             autoAnswerActief: kringAutoAnswer,
+            // BEL-D3: doorgegeven zodat het scherm de overlay-stap
+            // overslaat bij VERGRENDELDE modus — daar staat het apparaat
+            // vast op Ons Moment en werkt auto-answer altijd zonder
+            // extra toestemming.
+            weergaveModus: weergaveModus,
             onKlaar: () => Navigator.of(dialogCtx).pop(),
           ),
         ));

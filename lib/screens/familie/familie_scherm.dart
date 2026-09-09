@@ -35,6 +35,8 @@ import 'kring_aanmaken_scherm.dart';
 import 'pakket_keuze_scherm.dart';
 import 'bel_apparaat_kies_scherm.dart';
 import '../videobellen/bel_diagnose_scherm.dart';
+import '../videobellen/bel_uitleg_dialog.dart';
+import '../../data/bel_uitleg_teksten.dart';
 import '../../data/kring.dart';
 import '../../data/kring_membership.dart';
 import '../../services/kring_service.dart';
@@ -1776,24 +1778,38 @@ class _StuurTabState extends State<StuurTab> {
       if (DEBUG_VIDEOBELLEN && !widget.alsOntvanger)
         Padding(
           padding: const EdgeInsets.fromLTRB(20, 12, 20, 16),
-          child: SizedBox(
-            width: double.infinity,
-            child: ElevatedButton.icon(
-              onPressed: () => Navigator.push(context,
-                  MaterialPageRoute<void>(
-                      builder: (_) => const BelApparaatKiesScherm())),
-              icon: const Icon(Icons.videocam_rounded, size: 22),
-              label: const Text('Bellen',
-                  style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: kGreen,
-                foregroundColor: kWhite,
-                padding: const EdgeInsets.symmetric(vertical: 14),
-                shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(14)),
+          child: Column(children: [
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                // BEL-D3: eerste keer op de bel-knop tonen we het warme
+                // uitleg-scherm; daarna gaat het direct door. Fail-open
+                // via BelUitlegDialog — nooit blokkeren als prefs faalt.
+                onPressed: () async {
+                  await BelUitlegDialog.toonEersteKeer(context);
+                  if (!context.mounted) return;
+                  Navigator.push(context,
+                      MaterialPageRoute<void>(
+                          builder: (_) => const BelApparaatKiesScherm()));
+                },
+                icon: const Icon(Icons.videocam_rounded, size: 22),
+                label: const Text('Bellen',
+                    style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: kGreen,
+                  foregroundColor: kWhite,
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14)),
+                ),
               ),
             ),
-          ),
+            // BEL-D3: klein "Hoe werkt bellen?"-linkje voor wie de
+            // uitleg later opnieuw wil zien. Dezelfde dialog als de
+            // eerste-keer-tap; content leeft in BelUitlegTeksten.
+            const SizedBox(height: 4),
+            const BelUitlegLink(),
+          ]),
         ),
       ],
     );
@@ -6499,6 +6515,10 @@ class _HulpDialog extends StatelessWidget {
         "'Uit kring gaan'. Je hebt daarna geen toegang meer tot die kring. "
         "De eigenaar en de andere kringleden blijven gewoon doorgaan."),
     // ── Videobellen ──
+    // BEL-D3: kop-antwoord dat exact dezelfde 4 punten toont als de
+    // "Zo werkt bellen"-dialog. Één bron van waarheid (BelUitlegTeksten).
+    _FAQ('Videobellen', "In het kort: hoe werkt bellen?",
+        BelUitlegTeksten.faqSamenvatting),
     _FAQ('Videobellen', "Hoe start ik een videogesprek?",
         "Open het tabblad 'Sturen' en tik onderaan op 'Videobellen'. Kies "
         "wie je wilt bellen (het apparaat van je dierbare, of een "
