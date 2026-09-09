@@ -11,12 +11,14 @@ import 'screens/tablet/tablet_scherm.dart';
 import 'screens/tablet/inkomend_gesprek_scherm.dart';
 import 'screens/videobellen/auto_opnemen_waarschuwing_scherm.dart';
 import 'screens/videobellen/gesprek_scherm.dart';
+import 'dart:convert';
 import 'services/apparaat_service.dart';
 import 'services/bel_callkit_service.dart';
 import 'services/bel_log_service.dart';
 import 'services/callkit_flag_service.dart';
 import 'services/device_modus_service.dart';
 import 'services/crash_service.dart';
+import 'services/kiosk_service.dart';
 import 'services/push_service.dart';
 import 'services/video_call_service.dart';
 import 'data/debug_flags.dart';
@@ -127,12 +129,62 @@ class _RouterSchermState extends State<RouterScherm>
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
       PushService.lokaleMeldingenWissen();
+      // BEL-D1: warm-launch pad. Als OnsMomentFcmReceiver de activity
+      // start terwijl de app al in het geheugen zit, komt de payload
+      // via onNewIntent binnen. Bij resume ook checken zodat een
+      // auto-answer bij warm-start dezelfde flow neemt als cold-start.
+      unawaited(_verwerkPendingAutoAnswer());
+    }
+  }
+
+  /// BEL-D1: leest de pending auto-answer payload van MainActivity
+  /// (gecached door OnsMomentFcmReceiver via startActivity) en publiceert
+  /// hem op [PushService.incomingCallNotifier]. `_OntvangerRouter` en
+  /// `FamilieScherm` (voor alsOntvanger-modus) luisteren daarop en
+  /// starten de bestaande auto-answer-flow: 2.5s waarschuwingsscherm →
+  /// GesprekScherm.
+  ///
+  /// Fail-soft: elke fout wordt gelogd maar mag de router-init niet
+  /// blokkeren. Web + niet-Android: KioskService.haalPendingAutoAnswer
+  /// returnt null → deze method is dan een no-op.
+  Future<void> _verwerkPendingAutoAnswer() async {
+    try {
+      final pending = await KioskService.haalPendingAutoAnswer();
+      if (pending == null) return;
+      final payload = pending['payload'] ?? '';
+      if (payload.isEmpty) return;
+      final decoded = jsonDecode(payload);
+      if (decoded is! Map) return;
+      final asMap = Map<String, dynamic>.from(decoded);
+      final call = IncomingCall.uitFcmData(asMap);
+      if (call == null) {
+        unawaited(BelLogService.log(
+            'pending auto-answer payload incompleet: $asMap'));
+        return;
+      }
+      unawaited(BelLogService.log(
+          'pending auto-answer opgehaald (callId=${call.callId}) — '
+          'publiceer naar incomingCallNotifier'));
+      // Server-side autoAnswer-vlag ligt al in de payload; geen forceer
+      // hier — _verwerkInkomendGesprek springt op basis daarvan naar het
+      // waarschuwingsscherm.
+      PushService.incomingCallNotifier.value = call;
+    } catch (e, st) {
+      unawaited(BelLogService.log(
+          'pending auto-answer lookup faalde: $e\n$st'));
     }
   }
 
   Future<void> _laadInitieel() async {
     // Wis badge + openstaande lokale notificaties bij cold start.
     PushService.lokaleMeldingenWissen();
+    // BEL-D1: check op pending auto-answer payload uit OnsMomentFcmReceiver
+    // (BAL-exempted startActivity bij scherm-AAN + app dicht). Als er een
+    // pending payload is → publiceer op incomingCallNotifier zodat
+    // _OntvangerRouter/_FamilieScherm de auto-answer-waarschuwing +
+    // GesprekScherm-flow starten. Fire-and-forget: fout mag de rest van
+    // de router-init niet blokkeren. No-op op web + niet-Android.
+    unawaited(_verwerkPendingAutoAnswer());
     await DeviceModusService.get()
         .timeout(const Duration(seconds: 5), onTimeout: () => null);
     await DeviceModusService.krijgWeergaveModus();

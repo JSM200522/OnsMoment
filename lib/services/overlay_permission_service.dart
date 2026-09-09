@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/services.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 /// BEL-C6 (DEEL A): dunne wrapper rond de Android
 /// SYSTEM_ALERT_WINDOW-permission ("Weergeven over andere apps").
@@ -25,16 +26,36 @@ class OverlayPermissionService {
 
   static const _channel = MethodChannel('nl.onsmoment.kiosk');
 
+  /// SharedPreferences-sleutel waar de laatste-bekende overlay-status
+  /// wordt gecached. Wordt (a) gelezen door de FCM-plugin-bg-isolate
+  /// zodat het skip-notif-pad ook op weinig-CPU scenarios klopt, en
+  /// (b) is een fallback-signaal voor de UX ("weet de app dat het
+  /// aanstaat?"). Ground truth blijft `Settings.canDrawOverlays()`
+  /// (native, via de MethodChannel-call).
+  static const String kOverlayOkPrefsKey = 'bel_overlay_toestemming_ok_v1';
+
   /// True als de app SYSTEM_ALERT_WINDOW-permission heeft. Op Android < 6
   /// (API 22) bestaat de check niet — dan altijd true (permission is
   /// "gratis" op oude versies). Web: altijd false.
+  ///
+  /// Side-effect: de gemeten waarde wordt naar SharedPreferences
+  /// geschreven zodat andere isolates (FCM-plugin-background-handler)
+  /// hem synchroon-goedkoop kunnen lezen zonder MethodChannel-plumbing.
+  /// Fail-soft: prefs-schrijven mag nooit een `false` terugleveren als
+  /// de native-check `true` gaf.
   static Future<bool> heeftToestemming() async {
     if (kIsWeb) return false;
+    bool ok = false;
     try {
-      return await _channel.invokeMethod<bool>('canDrawOverlays') ?? false;
+      ok = await _channel.invokeMethod<bool>('canDrawOverlays') ?? false;
     } catch (_) {
-      return false;
+      ok = false;
     }
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool(kOverlayOkPrefsKey, ok);
+    } catch (_) {}
+    return ok;
   }
 
   /// Opent de Android special-access-settings-pagina voor "Weergeven

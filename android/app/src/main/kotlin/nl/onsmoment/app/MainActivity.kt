@@ -20,6 +20,16 @@ class MainActivity : FlutterActivity() {
     private var kioskChannel: MethodChannel? = null
     private var kioskActief = false
 
+    // BEL-D1: gecacht auto-answer payload uit OnsMomentFcmReceiver-intent.
+    // Wordt gezet zodra de Activity opent via het BAL-exempted
+    // startActivity-pad (scherm AAN + app dicht + overlay-toestemming).
+    // Dart's main-isolate leest 'm via de "haalPendingAutoAnswer"
+    // MethodChannel-call op RouterScherm-init en publiceert 'm dan naar
+    // incomingCallNotifier zodat _verwerkInkomendGesprek de auto-answer
+    // waarschuwing + GesprekScherm-flow start.
+    private var pendingAutoAnswerPayload: String? = null
+    private var pendingAutoAnswerCallId: String? = null
+
     // BEL-S10: als de app door een inkomend_gesprek-melding wordt
     // gelaunched (body-tap OF fullScreenIntent-auto-launch bij scherm-
     // UIT), zet dan CONDITIONEEL de show-when-locked + turn-screen-on
@@ -58,6 +68,18 @@ class MainActivity : FlutterActivity() {
         if (payload.isNullOrEmpty()) {
             Log.d(plugintagBelLaunch, "handle($bron): geen payload, skip")
             return
+        }
+        // BEL-D1: cache payload + callId als deze launch komt van de
+        // OnsMomentFcmReceiver-auto-answer-flow. Dart leest ze op via
+        // "haalPendingAutoAnswer" en start de auto-answer-UX.
+        if (intent.getBooleanExtra(
+                OnsMomentFcmReceiver.EXTRA_AUTO_ANSWER_FROM_FCM, false)) {
+            pendingAutoAnswerPayload = payload
+            pendingAutoAnswerCallId =
+                intent.getStringExtra(OnsMomentFcmReceiver.EXTRA_AUTO_ANSWER_CALL_ID)
+            Log.i(plugintagBelLaunch,
+                "handle($bron): auto-answer-launch gecached " +
+                    "(callId=$pendingAutoAnswerCallId)")
         }
         // Payload is JSON-string van _toonGesprekNotificatie. Kijken naar
         // de type-string zonder volledig te parsen (zou een JSON-lib nodig
@@ -171,6 +193,25 @@ class MainActivity : FlutterActivity() {
                             result.success(Settings.canDrawOverlays(this))
                         } else {
                             result.success(true)
+                        }
+                    }
+                    // BEL-D1: Dart leest hier de FCM-payload uit als de
+                    // Activity zojuist door OnsMomentFcmReceiver is gestart
+                    // vanwege een auto-answer-scenario. Returnt null als
+                    // er geen pending payload is (normale launch).
+                    "haalPendingAutoAnswer" -> {
+                        val payload = pendingAutoAnswerPayload
+                        val callId = pendingAutoAnswerCallId
+                        // Éénmalig — na deze read wist Dart de state.
+                        pendingAutoAnswerPayload = null
+                        pendingAutoAnswerCallId = null
+                        if (payload == null) {
+                            result.success(null)
+                        } else {
+                            result.success(mapOf(
+                                "payload" to payload,
+                                "callId" to (callId ?: "")
+                            ))
                         }
                     }
                     // Opent de special-access-settings-pagina voor

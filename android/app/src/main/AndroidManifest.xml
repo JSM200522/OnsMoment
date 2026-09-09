@@ -90,6 +90,19 @@
             </intent-filter>
         </receiver>
 
+        <!-- BEL-D1 (auto-answer scherm-AAN + app dicht): parallel-receiver
+             op dezelfde FCM-broadcast als firebase_messaging. Fires náást
+             de plugin-receiver, dus de bestaande Dart-flow blijft intact.
+             Zie OnsMomentFcmReceiver.kt voor het volledige contract. -->
+        <receiver
+            android:name=".OnsMomentFcmReceiver"
+            android:exported="true"
+            android:permission="com.google.android.c2dm.permission.SEND">
+            <intent-filter>
+                <action android:name="com.google.android.c2dm.intent.RECEIVE"/>
+            </intent-filter>
+        </receiver>
+
         <meta-data
             android:name="com.google.firebase.messaging.default_notification_channel_id"
             android:value="ons_moment_twinkel"/>

@@ -1073,6 +1073,38 @@ Future<void> _achtergrondGesprekNotificatie(
   await BelLogService.log('_achtergrondGesprekNotificatie start '
       '(caller=$callerName, autoAnswer=$autoAnswer)');
 
+  // BEL-D1: skip de heads-up-notif als de OnsMomentFcmReceiver al een
+  // Activity heeft gestart voor deze callId (scherm-AAN auto-answer via
+  // BAL-exemption). Zonder deze skip krijgt de user een dubbele
+  // ervaring: activity opent én notif met ringtone speelt door tot
+  // MainActivity de melding cancelt. Cross-isolate synced via
+  // SharedPreferences (reload verplicht, in-memory cache van dit isolate
+  // bevat de write van OnsMomentFcmReceiver's process nog niet).
+  if (callId.isNotEmpty) {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.reload();
+      final gestartCallId =
+          prefs.getString('bel_auto_answer_gestart_call_id') ?? '';
+      final gestartTsMs =
+          prefs.getInt('bel_auto_answer_gestart_ts_ms') ?? 0;
+      final leeftijdMs =
+          DateTime.now().millisecondsSinceEpoch - gestartTsMs;
+      if (gestartCallId == callId && leeftijdMs < 60 * 1000) {
+        await BelLogService.log(
+            'skip heads-up: OnsMomentFcmReceiver heeft al Activity '
+            'gestart voor callId=$callId (age=${leeftijdMs}ms)');
+        // Consumeer de vlag zodat een tweede pas hem niet opnieuw skipt.
+        await prefs.remove('bel_auto_answer_gestart_call_id');
+        await prefs.remove('bel_auto_answer_gestart_ts_ms');
+        return;
+      }
+    } catch (e) {
+      await BelLogService.log(
+          'skip-notif check faalde (val op standaard flow): $e');
+    }
+  }
+
   // BEL-B7: vergrendelde-modus guard — die modus draait de app altijd
   // voorgrond en gebruikt het foreground-pad; achtergrond-notificatie
   // is daar hooguit een fallback. Native call-UI (B) zou daar dubbel

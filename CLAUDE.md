@@ -23,6 +23,36 @@ Kernwaarde: "Mantelzorger App helpt JOU. Ons Moment helpt je DIERBARE."
   NU volledig focussen op een sterke Nederlandse launch. Internationale versie =
   apart toekomstproject, te beslissen met echte data (meten, niet gokken).
 
+## Platform-principe (vast uitgangspunt)
+
+Ons Moment MOET op elk apparaat werken en cross-platform naadloos
+samenwerken: iPhone-familie ↔ Android-familie ↔ Android-tablet bij de
+dierbare (en later iPad). Sturen, ontvangen, bellen, auto-answer,
+kringen, uitnodigen: alles gaat tussen al die toestellen door elkaar
+heen. Regels bij elke wijziging:
+
+1. **Data en logica blijven platform-neutraal.** Firestore, Storage,
+   Auth, LiveKit-signalering, kringen, momenten, gesprek-payloads: geen
+   Android-aannames in het datamodel of in de service-lagen. FCM-data
+   is generiek key/value; de server (Cloud Functions) leest platform
+   uit `apparaten/{id}.fcmPlatform` en kiest APNs vs Android-priority.
+2. **Android-native werk zit in een aparte Android-laag** (KioskService,
+   FullScreenIntentService, OverlayPermissionService, MainActivity,
+   OnsMomentFcmService, BootReceiver). Elke publieke Dart-methode is
+   `kIsWeb`-guarded of `defaultTargetPlatform`-gate zodat iOS er
+   NAAST komt zonder herbouw en zonder dat Android↔iOS bellen breekt.
+3. **Geen merk-specifieke trucs** (Samsung/Xiaomi) behalve waar Android
+   dat vereist, altijd met nette fallback. Minimaal Android 12–14+
+   ondersteund.
+4. **Elke PR / wijziging benoemt expliciet**: (a) werkt dit op alle
+   Android-toestellen? (b) raakt dit iOS/cross-platform? (c) blijft
+   de data-laag platform-neutraal?
+
+Wat NOG staat te gebeuren voor iOS (apart traject in FASE G): PushKit +
+CallKit voor betrouwbaar bellen, VoIP-push met apns-priority 10, iOS
+Safari audio-checklist. De hele datalaag en Firestore-rules zijn hier
+al klaar voor.
+
 ## Businessmodel
 
 - Familie Klein €4,99/maand (1 kring, max 8 leden), Familie Groot €7,99/maand (max 3 kringen, max 20 leden/kring)

@@ -103,4 +103,36 @@ class KioskService {
       await _channel.invokeMethod<void>('vraagBatteryOptimizationUit');
     } catch (_) {}
   }
+
+  /// BEL-D1: leest een pending auto-answer payload uit MainActivity als
+  /// de Activity zojuist door OnsMomentFcmReceiver is gestart voor een
+  /// auto-answer scenario (scherm AAN + app dicht + SYSTEM_ALERT_WINDOW).
+  ///
+  /// Returnt null als er geen pending is (normale launch, of receiver
+  /// heeft niet gefired). Bij een geldige match: map met `payload` (JSON-
+  /// string van de FCM-data) en `callId`.
+  ///
+  /// Éénmalig: na deze read wist MainActivity zijn eigen state — een
+  /// tweede call retourneert null. Voorkomt dat een resume-cycle een
+  /// oud auto-answer scherm opnieuw triggert.
+  static Future<Map<String, String>?> haalPendingAutoAnswer() async {
+    if (kIsWeb) return null;
+    try {
+      final r = await _channel.invokeMethod<dynamic>('haalPendingAutoAnswer');
+      if (r == null) return null;
+      if (r is Map) {
+        final payload = r['payload'];
+        final callId = r['callId'];
+        if (payload is String && payload.isNotEmpty) {
+          return {
+            'payload': payload,
+            'callId': callId is String ? callId : '',
+          };
+        }
+      }
+      return null;
+    } catch (_) {
+      return null;
+    }
+  }
 }
