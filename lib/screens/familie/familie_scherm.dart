@@ -4055,7 +4055,7 @@ class _InstellingenTabState extends State<InstellingenTab> {
         // eerste bel-flow (zie _checkBelPromptsMeldingenModus).
         if (DEBUG_VIDEOBELLEN && DEBUG_BEL_DEV)
           _item('🩺', 'Bel-melding diagnose',
-              'Android-versie, toestemming, kanaal-status', () {
+              'Toestemmingen en kanaal-status', () {
             Navigator.push(context, MaterialPageRoute(
                 builder: (c) => const BelDiagnoseScherm()));
           }),

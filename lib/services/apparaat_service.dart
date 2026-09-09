@@ -5,21 +5,24 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 /// Beheert apparaat-detectie en registratie in de sub-collectie
 /// `gebruikers/{familieUid}/apparaten/{apparaatId}`.
 class ApparaatService {
-  /// Geeft een leesbaar label voor het huidige apparaat (bv. 'iPhone',
-  /// 'Android-telefoon', 'MacBook'). Faalt zachtjes naar 'Apparaat'.
+  /// Geeft een leesbaar, platform-neutraal label voor het huidige apparaat
+  /// (bv. 'Telefoon', 'Tablet', 'Computer'). Faalt zachtjes naar
+  /// 'Apparaat'. Bewust géén merknamen (Android/iOS/iPhone/Samsung) —
+  /// deze label wordt gebruikt in de kringleden-lijst en bel-lijst, waar
+  /// gebruikers van verschillende platforms elkaars apparaten zien.
   static Future<String> detecteerLabel() async {
     if (!kIsWeb) return 'Apparaat';
     try {
       final info = await DeviceInfoPlugin().webBrowserInfo;
       final ua = info.userAgent ?? '';
-      if (ua.contains('iPhone')) return 'iPhone';
-      if (ua.contains('iPad')) return 'iPad';
-      if (ua.contains('Android') && ua.contains('Mobile')) return 'Android-telefoon';
-      if (ua.contains('Android')) return 'Android-tablet';
-      if (ua.contains('Macintosh') || ua.contains('Mac OS')) return 'MacBook';
-      if (ua.contains('Windows')) return 'Windows PC';
-      if (ua.contains('Linux')) return 'Linux PC';
-      return 'Onbekend apparaat';
+      if (ua.contains('iPhone')) return 'Telefoon';
+      if (ua.contains('iPad')) return 'Tablet';
+      if (ua.contains('Android') && ua.contains('Mobile')) return 'Telefoon';
+      if (ua.contains('Android')) return 'Tablet';
+      if (ua.contains('Macintosh') || ua.contains('Mac OS')) return 'Computer';
+      if (ua.contains('Windows')) return 'Computer';
+      if (ua.contains('Linux')) return 'Computer';
+      return 'Apparaat';
     } catch (_) {
       return 'Apparaat';
     }

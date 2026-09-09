@@ -160,8 +160,8 @@ class _ToestemmingenSetupSchermState extends State<ToestemmingenSetupScherm>
                   emoji: '🔋',
                   titel: 'Batterij-optimalisatie uit',
                   uitleg:
-                      'Android kan de app stiller zetten als hij denkt dat '
-                      'de app "in slaap" is — dan mist je dierbare '
+                      'Je apparaat kan de app stiller zetten als hij denkt '
+                      'dat de app "in slaap" is — dan mist je dierbare '
                       'berichten en gesprekken. Zet dit uit voor Ons '
                       'Moment.',
                   status: _battOk,
