@@ -151,5 +151,17 @@ service cloud.firestore {
       allow read, update, delete: if isLid(resource.data.kringId);
       allow create: if isLid(request.resource.data.kringId);
     }
+
+    // FDB-1: Feedback-/ideeënformulier (Instellingen). Ingelogde
+    // gebruikers mogen aanmaken, maar de uid op het doc moet gelijk zijn
+    // aan hun eigen auth.uid (audit-trail — voorkomt dat een gebruiker
+    // feedback verstuurt onder de identiteit van iemand anders).
+    // Read/update/delete lopen uitsluitend via Firebase Console/Admin —
+    // een gebruiker mag andermans feedback nooit kunnen inzien.
+    match /feedback/{id} {
+      allow create: if isIngelogd() &&
+        request.resource.data.uid == request.auth.uid;
+      allow read, update, delete: if false;
+    }
   }
 }

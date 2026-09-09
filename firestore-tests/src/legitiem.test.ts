@@ -437,6 +437,53 @@ describe('config/features — feature-flag read', () => {
 });
 
 // ──────────────────────────────────────────────
+// FEEDBACK — ingelogde gebruikers mogen feedback aanmaken
+// ──────────────────────────────────────────────
+describe('feedback — create door ingelogde gebruikers', () => {
+  test('L41: eigenaarA stuurt feedback (idee)', async () => {
+    const db = alsEigenaarA(env).firestore();
+    await assertSucceeds(
+      addDoc(collection(db, 'feedback'), {
+        uid: EIGENAAR_A_UID,
+        weergaveNaam: 'Eigenaar A',
+        categorie: 'idee',
+        bericht: 'Een dagklok voor de nacht zou fijn zijn',
+        appVersie: '1.0.36+41',
+        platform: 'android',
+      }),
+    );
+  });
+
+  test('L42: lidA stuurt feedback (probleem)', async () => {
+    const db = alsLidA(env).firestore();
+    await assertSucceeds(
+      addDoc(collection(db, 'feedback'), {
+        uid: LID_A_UID,
+        weergaveNaam: 'Lid A',
+        categorie: 'probleem',
+        bericht: 'Bel gaat soms niet over bij mijn moeder',
+        appVersie: '1.0.36+41',
+        platform: 'ios',
+      }),
+    );
+  });
+
+  test('L43: nieuwe gast (net ingelogd) stuurt feedback (anders)', async () => {
+    const db = alsNieuweGast(env).firestore();
+    await assertSucceeds(
+      addDoc(collection(db, 'feedback'), {
+        uid: NIEUWE_GAST_UID,
+        weergaveNaam: 'Nieuwe Gast',
+        categorie: 'anders',
+        bericht: 'Bedankje',
+        appVersie: '1.0.36+41',
+        platform: 'web',
+      }),
+    );
+  });
+});
+
+// ──────────────────────────────────────────────
 // APPARATEN — cross-uid read (bel-lijst)
 // ──────────────────────────────────────────────
 describe('apparaten — cross-uid read voor bellijst', () => {

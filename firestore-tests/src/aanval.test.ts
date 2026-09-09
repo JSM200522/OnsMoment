@@ -520,3 +520,89 @@ describe('apparaten — cross-uid aanvallen', () => {
     );
   });
 });
+
+// ──────────────────────────────────────────────
+// FEEDBACK — aanvallen
+// ──────────────────────────────────────────────
+describe('feedback — aanvallen', () => {
+  test('A48: niet-ingelogde gebruiker mag geen feedback aanmaken', async () => {
+    const db = alsGast(env).firestore();
+    await assertFails(
+      addDoc(collection(db, 'feedback'), {
+        uid: 'anon',
+        weergaveNaam: '',
+        categorie: 'idee',
+        bericht: 'anoniem',
+        appVersie: '1.0.36+41',
+        platform: 'web',
+      }),
+    );
+  });
+
+  test('A49: eigenaarA mag GEEN feedback aanmaken met andermans uid (audit-spoof)', async () => {
+    const db = alsEigenaarA(env).firestore();
+    await assertFails(
+      addDoc(collection(db, 'feedback'), {
+        uid: EIGENAAR_B_UID, // gespoofte uid
+        weergaveNaam: 'Fake B',
+        categorie: 'probleem',
+        bericht: 'niet ik',
+        appVersie: '1.0.36+41',
+        platform: 'android',
+      }),
+    );
+  });
+
+  test('A50: eigenaarA mag geen feedback lezen (via bekende id)', async () => {
+    // Seed één feedback-doc als admin
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), 'feedback', 'seedFb1'), {
+        uid: EIGENAAR_B_UID,
+        weergaveNaam: 'Eigenaar B',
+        categorie: 'idee',
+        bericht: 'geheim idee',
+        appVersie: '1.0.36+41',
+        platform: 'android',
+      });
+    });
+    const db = alsEigenaarA(env).firestore();
+    await assertFails(getDoc(doc(db, 'feedback', 'seedFb1')));
+  });
+
+  test('A51: eigenaarA mag geen feedback listen (query)', async () => {
+    const db = alsEigenaarA(env).firestore();
+    await assertFails(getDocs(collection(db, 'feedback')));
+  });
+
+  test('A52: eigenaarA mag geen bestaand feedback-doc updaten', async () => {
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), 'feedback', 'seedFb2'), {
+        uid: EIGENAAR_A_UID,
+        weergaveNaam: 'Eigenaar A',
+        categorie: 'idee',
+        bericht: 'origineel',
+        appVersie: '1.0.36+41',
+        platform: 'android',
+      });
+    });
+    const db = alsEigenaarA(env).firestore();
+    await assertFails(
+      updateDoc(doc(db, 'feedback', 'seedFb2'), { bericht: 'gewijzigd' }),
+    );
+  });
+
+  test('A53: eigenaarA mag geen feedback verwijderen (zelfs eigen doc niet)', async () => {
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      await setDoc(doc(ctx.firestore(), 'feedback', 'seedFb3'), {
+        uid: EIGENAAR_A_UID,
+        weergaveNaam: 'Eigenaar A',
+        categorie: 'idee',
+        bericht: 'niet weg',
+        appVersie: '1.0.36+41',
+        platform: 'android',
+      });
+    });
+    const db = alsEigenaarA(env).firestore();
+    await assertFails(deleteDoc(doc(db, 'feedback', 'seedFb3')));
+  });
+});
