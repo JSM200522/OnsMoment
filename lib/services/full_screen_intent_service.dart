@@ -120,7 +120,7 @@ class FullScreenIntentService {
         content: const Text(
           'Om videogesprekken goed te laten verschijnen, mag Ons Moment '
           '"over je scherm tonen". Zo komt een bel meteen groot in beeld — '
-          'ook als de telefoon vergrendeld is.\n\n'
+          'ook als het scherm uit is.\n\n'
           'Zonder deze instelling komt de bel als gewone melding en zie je '
           'hem gemakkelijk over het hoofd.',
           style: TextStyle(color: kBrown, fontSize: 16, height: 1.4),

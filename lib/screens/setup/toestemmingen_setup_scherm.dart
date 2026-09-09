@@ -148,7 +148,7 @@ class _ToestemmingenSetupSchermState extends State<ToestemmingenSetupScherm>
                   titel: 'Volledig scherm bij een gesprek',
                   uitleg:
                       'Zodat een videogesprek groot in beeld komt — ook '
-                      'als het scherm uit staat of vergrendeld is.',
+                      'als het scherm uit is.',
                   status: _fsiOk,
                   knopTekst: 'Instelling openen',
                   onTap: () async {

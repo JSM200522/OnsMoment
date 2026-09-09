@@ -4,10 +4,12 @@
 /// de setup) lezen HIERUIT. Wijzig de tekst hier — het overige past
 /// zichzelf automatisch aan.
 ///
-/// Toon: kort, warm, zonder Android-jargon, gender-neutraal ("je dierbare").
-/// Kernboodschap die overal terugkomt: in de RUSTIGE MODUS werkt bellen
-/// en automatisch opnemen ALTIJD; in de NORMALE MODUS is één toestemming
-/// nodig voor automatisch opnemen.
+/// Toon: kort, warm, gender-neutraal ("je dierbare"), zonder platform-
+/// jargon (geen Android/iOS/Samsung). Kernboodschap die overal
+/// terugkomt: in de RUSTIGE MODUS werkt bellen en automatisch opnemen
+/// ALTIJD; in de GEWONE MODUS is één toestemming nodig voor automatisch
+/// opnemen. Belangrijk: je belt altijd je dierbare — familieleden
+/// onderling bellen kan niet.
 class BelUitlegTeksten {
   BelUitlegTeksten._();
 
@@ -22,19 +24,19 @@ class BelUitlegTeksten {
         'waarschuwing — voor wie zelf niet kan opnemen. Zet je aan per kring.',
     'Rustige modus: het apparaat staat vast op Ons Moment. Bellen en '
         'automatisch opnemen werken hier altijd, zonder extra instellingen.',
-    'Normale modus + automatisch opnemen: hiervoor is één toestemming '
+    'Gewone modus + automatisch opnemen: hiervoor is één toestemming '
         'nodig op het apparaat van je dierbare ("weergeven over andere '
         'apps"). Die regel je tijdens het instellen.',
   ];
 
   /// Korte zin onder de auto-answer-schakelaar (BelApparaatKiesScherm).
   static const String autoAnswerToggleUitleg =
-      'Werkt altijd in de rustige modus. In de normale modus is één '
+      'Werkt altijd in de rustige modus. In de gewone modus is één '
       'toestemming op het apparaat van je dierbare nodig — regel je bij '
       'het instellen.';
 
   /// Hint als de eigenaar auto-answer aanzet: mocht je dierbare op
-  /// normale modus staan, dan is een toestemming nodig. We tonen dit
+  /// de gewone modus staan, dan is een toestemming nodig. We tonen dit
   /// altijd (we kunnen niet zien welke modus het andere apparaat heeft).
   static const String autoAnswerAangezetHint =
       'Aan het instellen? Kijk op het apparaat van je dierbare bij '
@@ -47,6 +49,13 @@ class BelUitlegTeksten {
       'anders op het scherm heeft.';
   static const String overlayZonder =
       'Zonder deze toestemming tikt je dierbare zelf op de melding.';
+
+  /// Eén-zin waarheid over wie je kunt bellen. Gebruikt in het bel-
+  /// apparaat-kies-scherm en in de FAQ zodat de belangrijke beperking
+  /// (geen familieleden onderling) overal identiek geformuleerd is.
+  static const String wieBelJe =
+      'Je belt altijd je dierbare. Familieleden onderling bellen kan niet '
+      '— Ons Moment is bedoeld voor contact met je dierbare.';
 
   /// Compact FAQ-antwoord dat exact dezelfde vier punten weergeeft, zodat
   /// een gebruiker die de FAQ inloopt dezelfde boodschap ziet als bij de
@@ -62,7 +71,7 @@ class BelUitlegTeksten {
       '• Rustige modus: het apparaat staat vast op Ons Moment. Bellen '
       'en automatisch opnemen werken hier altijd, zonder extra '
       'instellingen.\n\n'
-      '• Normale modus + automatisch opnemen: hiervoor is één '
+      '• Gewone modus + automatisch opnemen: hiervoor is één '
       'toestemming nodig op het apparaat van je dierbare ("weergeven '
       'over andere apps"). Die regel je tijdens het instellen.';
 }

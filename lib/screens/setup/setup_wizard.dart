@@ -277,7 +277,7 @@ class _SetupWizardState extends State<SetupWizard> {
                   alineas: const [
                     'Bij een telefoontje of appje moet je dierbare zelf opnemen, zoeken, of weten hoe het werkt. Bij Ons Moment niet.',
                     'Kan je dierbare nog zelf kijken en terugsturen? Dan doet die mee, zo veel als die wil.',
-                    'Lukt dat niet meer? Dan zet je het apparaat in de rustige modus, vergrendeld op Ons Moment. Alles verschijnt vanzelf op het scherm, zonder knoppen of gedoe.',
+                    'Lukt dat niet meer? Dan zet je het apparaat in de rustige modus: het staat vast op Ons Moment. Alles verschijnt vanzelf op het scherm, zonder knoppen of gedoe.',
                   ],
                 ),
                 _carouselSlide(
@@ -1149,13 +1149,13 @@ class _SetupWizardState extends State<SetupWizard> {
           const SizedBox(height: 20),
           _modusKaart(
             emoji: '🔒',
-            titel: 'Alleen voor Ons Moment',
+            titel: 'Rustige modus',
             modusId: DeviceModusService.VERGRENDELD,
-            uitleg: 'Voor $naam die niet meer zelf op een apparaat kan '
-                'reageren.\n\n'
+            uitleg: 'Het apparaat staat vast op Ons Moment. Voor $naam '
+                'die niet meer zelf op een apparaat kan reageren.\n\n'
                 'Het apparaat:\n'
                 '- Toont alleen Ons Moment\n'
-                '- Kan geen andere apps openen, niet bellen\n'
+                '- Kan niet naar andere apps of andere gesprekken\n'
                 '- $naam kan kijken en luisteren, maar niet terugsturen\n\n'
                 'Kies dit als $naam veel zorg nodig heeft of het '
                 'apparaat niet zelf gebruikt.',
@@ -1164,13 +1164,14 @@ class _SetupWizardState extends State<SetupWizard> {
           const SizedBox(height: 12),
           _modusKaart(
             emoji: '📱',
-            titel: 'Ook voor andere dingen',
+            titel: 'Gewone modus',
             modusId: DeviceModusService.MELDINGEN,
-            uitleg: 'Voor $naam die nog wel zelf wil reageren.\n\n'
+            uitleg: 'Ons Moment werkt naast andere apps. Voor $naam '
+                'die nog wel zelf wil reageren.\n\n'
                 '$naam kan:\n'
                 '- Foto\'s, stem-berichten en muziek terugsturen\n'
                 '- De agenda zien\n'
-                '- Het apparaat gebruiken voor andere apps\n\n'
+                '- Het apparaat gebruiken voor andere dingen\n\n'
                 'Berichten komen binnen als melding.\n\n'
                 'Notities tussen familie zijn voor $naam verborgen.',
             onTap: () => _voltooiOntvanger(DeviceModusService.MELDINGEN),

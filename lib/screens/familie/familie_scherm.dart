@@ -1380,16 +1380,17 @@ class _StuurTabState extends State<StuurTab> {
     VoidCallback? onDone,
   }) {
     final tekst = StringBuffer(
-        'Android kan Ons Moment stiller zetten als hij denkt dat de '
+        'Je apparaat kan Ons Moment stiller zetten als hij denkt dat de '
         'app "in slaap" is — dan mist je dierbare berichten en '
         'inkomende gesprekken.\n\n'
         'Zet dit uit zodat berichten en oproepen altijd aankomen, '
         'ook als de app dicht is.');
     if (samsungTip) {
       tekst.write(
-          '\n\nExtra bij Samsung: kijk ook bij Instellingen → Apparaat- '
-          'onderhoud → Batterij → Achtergrondgebruikslimieten en '
-          'haal Ons Moment uit "Slapende apps" / "Diep slapende apps".');
+          '\n\nExtra tip: sommige apparaten hebben nog een "slapende '
+          'apps"-lijst. Kijk bij Instellingen → Apparaat-onderhoud → '
+          'Batterij → Achtergrondgebruikslimieten en haal Ons Moment '
+          'daar uit.');
     }
     showDialog<void>(
       context: context,
@@ -4024,7 +4025,7 @@ class _InstellingenTabState extends State<InstellingenTab> {
           }),
         if (_benIkEigenaar && !widget.alsOntvanger)
           _item('🔄', 'Wijzig modus van $naam',
-              'Vergrendeld of meldings — op afstand',
+              'Rustige of gewone modus — op afstand',
               () => _toonModusDialog(context, naam)),
         if (_benIkEigenaar && !widget.alsOntvanger)
           _item('✉️', 'Email of wachtwoord wijzigen',
@@ -4157,16 +4158,16 @@ class _InstellingenTabState extends State<InstellingenTab> {
                 fontWeight: FontWeight.w900, color: kBrown)),
         content: Column(mainAxisSize: MainAxisSize.min, children: [
           _modusOptie(
-              emoji: '🔒', titel: 'Alleen voor Ons Moment',
-              uitleg: 'Kiosk — alleen popups, geen andere apps',
+              emoji: '🔒', titel: 'Rustige modus',
+              uitleg: 'Het apparaat staat vast op Ons Moment',
               modusId: DeviceModusService.VERGRENDELD,
               gekozen: gekozen, huidig: _huidigeOntvangerModus,
               onTap: () => setLocal(() =>
                   gekozen = DeviceModusService.VERGRENDELD)),
           const SizedBox(height: 10),
           _modusOptie(
-              emoji: '📱', titel: 'Ook voor andere dingen',
-              uitleg: 'Berichten komen als melding binnen',
+              emoji: '📱', titel: 'Gewone modus',
+              uitleg: 'Ons Moment werkt naast andere apps',
               modusId: DeviceModusService.MELDINGEN,
               gekozen: gekozen, huidig: _huidigeOntvangerModus,
               onTap: () => setLocal(() =>
@@ -6410,13 +6411,14 @@ class _HulpDialog extends StatelessWidget {
         "stellen of in te loggen — het apparaat blijft altijd klaar om "
         "berichten te ontvangen."),
     _FAQ('Algemeen',
-        "Wat is het verschil tussen vergrendelde modus en meldingen-modus?",
-        "In de vergrendelde modus toont het apparaat alleen Ons Moment. Andere "
+        "Wat is het verschil tussen de rustige modus en de gewone modus?",
+        "In de rustige modus staat het apparaat vast op Ons Moment. Andere "
         "apps zijn niet bereikbaar en je dierbare kan niet per ongeluk iets "
         "veranderen. Deze modus past goed bij iemand die meer zorg nodig heeft. "
-        "In de meldingen-modus werkt het apparaat als gewoon: je dierbare kan "
-        "andere apps gebruiken, en Ons Moment laat berichten zien als pop-up. "
-        "Deze modus past bij iemand die nog zelf met het apparaat omgaat."),
+        "In de gewone modus werkt het apparaat als een gewoon toestel: je "
+        "dierbare kan andere apps gebruiken, en Ons Moment laat berichten "
+        "zien als pop-up. Deze modus past bij iemand die nog zelf met het "
+        "apparaat omgaat."),
     _FAQ('Algemeen', "Wat is een kring?",
         "Een kring is de groep mensen rondom één dierbare. In de kring zitten "
         "de familieleden, vrienden en mantelzorgers die berichten kunnen "
@@ -6519,12 +6521,14 @@ class _HulpDialog extends StatelessWidget {
     // "Zo werkt bellen"-dialog. Één bron van waarheid (BelUitlegTeksten).
     _FAQ('Videobellen', "In het kort: hoe werkt bellen?",
         BelUitlegTeksten.faqSamenvatting),
+    _FAQ('Videobellen', "Wie kan ik bellen?",
+        BelUitlegTeksten.wieBelJe),
     _FAQ('Videobellen', "Hoe start ik een videogesprek?",
-        "Open het tabblad 'Sturen' en tik onderaan op 'Videobellen'. Kies "
-        "wie je wilt bellen (het apparaat van je dierbare, of een "
-        "familielid). Op dat apparaat verschijnt de oproep binnen enkele "
-        "seconden. Zodra er is opgenomen, zien jullie elkaar. Ophangen doe "
-        "je met de rode knop in beeld."),
+        "Open het tabblad 'Sturen' en tik onderaan op 'Bellen'. Je belt "
+        "je dierbare op het apparaat waarop Ons Moment draait. Binnen "
+        "enkele seconden verschijnt de oproep daar. Zodra er is "
+        "opgenomen, zien jullie elkaar. Ophangen doe je met de rode "
+        "knop in beeld."),
     _FAQ('Videobellen', "Wat is automatisch opnemen en voor wie is dat?",
         "Voor mensen die zelf geen knop meer kunnen bedienen — omdat "
         "dementie of een lichamelijke beperking dat in de weg zit. Met "
@@ -6535,13 +6539,13 @@ class _HulpDialog extends StatelessWidget {
         "op 'Beantwoorden' tikken. Alleen de eigenaar van de kring kan "
         "deze instelling wijzigen (Instellingen → Videobellen)."),
     _FAQ('Videobellen',
-        "Wat is het verschil tussen vergrendelde en meldingen-modus bij bellen?",
-        "In de vergrendelde modus staat Ons Moment altijd open op het "
+        "Wat is het verschil tussen de rustige en de gewone modus bij bellen?",
+        "In de rustige modus staat Ons Moment altijd open op het "
         "apparaat van je dierbare — een inkomend gesprek verschijnt "
         "direct groot in beeld met de naam van de beller. Deze modus is "
         "het meest betrouwbaar en past bij iemand die zelf geen apparaat "
-        "meer bedient. In de meldingen-modus werkt de tablet als een "
-        "gewone tablet: een oproep komt als volledig-scherm-melding "
+        "meer bedient. In de gewone modus werkt het apparaat als een "
+        "gewoon toestel: een oproep komt als volledig-scherm-melding "
         "binnen met 'Opnemen' en 'Weigeren'. Deze modus vraagt eenmalig "
         "een paar toestemmingen (volledig-scherm en batterij-uitzondering) "
         "zodat oproepen ook doorkomen als de app dicht is."),
@@ -6552,9 +6556,9 @@ class _HulpDialog extends StatelessWidget {
         "niet is opgezet — je kunt op elk moment opnieuw proberen te bellen."),
     _FAQ('Videobellen',
         "Waarom vraagt de app om 'volledig scherm' en 'batterij-uitzondering'?",
-        "Zodat een inkomend gesprek altijd doorkomt — ook als de tablet "
-        "in slaap staat of het scherm uit is. Zonder deze twee "
-        "instellingen kan Android de oproep vertragen of als kleine "
+        "Zodat een inkomend gesprek altijd doorkomt — ook als het "
+        "apparaat in slaap staat of het scherm uit is. Zonder deze twee "
+        "instellingen kan het apparaat de oproep vertragen of als kleine "
         "melding in het meldingenscherm zetten, waar je dierbare hem "
         "gemakkelijk over het hoofd ziet. Beide zijn eenmalige "
         "toestemmingen; je hoeft ze nooit opnieuw te geven."),

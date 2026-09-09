@@ -272,8 +272,11 @@ class _BelApparaatKiesSchermState extends State<BelApparaatKiesScherm> {
             BelUitlegLink(),
           ]),
           const SizedBox(height: 4),
-          const Text('Kies hieronder een apparaat om te bellen.',
+          const Text('Kies hieronder het apparaat van je dierbare.',
               style: TextStyle(fontSize: 13, color: kTextMuted, height: 1.4)),
+          const SizedBox(height: 4),
+          const Text(BelUitlegTeksten.wieBelJe,
+              style: TextStyle(fontSize: 12, color: kTextMuted, height: 1.5)),
           if (_benIkEigenaar) ...[
             const SizedBox(height: 16),
             Container(
