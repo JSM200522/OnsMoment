@@ -13,6 +13,7 @@ import '../../data/geluiden.dart';
 import '../../data/kring.dart';
 import '../../widgets/normaal_scaffold.dart';
 import 'accept_uitnodig_scherm.dart';
+import 'toestemmingen_setup_scherm.dart';
 import '../../widgets/ow_knop.dart';
 import '../../widgets/ow_invoer.dart';
 
@@ -1273,6 +1274,33 @@ class _SetupWizardState extends State<SetupWizard> {
         kringId: kringId,
       );
       await DeviceModusService.zetWeergaveModus(weergaveModus);
+      // BEL-D2: haal kring.autoAnswer op zodat we in het toestemmingen-
+      // scherm ALLEEN de overlay-stap tonen als hij nodig is (auto-answer
+      // aan). Fail-soft: bij een fout gaan we uit van autoAnswer=false —
+      // de stap wordt dan simpelweg overgeslagen; de gebruiker kan hem
+      // later alsnog aanzetten via Instellingen.
+      bool kringAutoAnswer = false;
+      if (kringId != null && kringId.isNotEmpty) {
+        try {
+          final snap = await FirebaseFirestore.instance
+              .collection('kringen').doc(kringId).get()
+              .timeout(const Duration(seconds: 5));
+          kringAutoAnswer = snap.data()?['autoAnswer'] == true;
+        } catch (_) {}
+      }
+      // Toestemmingen-scherm eerst tonen (blocking) VOORDAT we de router
+      // naar ONTVANGER-modus wisselen. Zo blijft de eigenaar in het
+      // wizard-navigator-stack en kan hij netjes terug of "Later" tikken
+      // zonder verwarring op het tablet-startscherm.
+      if (mounted) {
+        await Navigator.of(context).push(MaterialPageRoute<void>(
+          fullscreenDialog: true,
+          builder: (dialogCtx) => ToestemmingenSetupScherm(
+            autoAnswerActief: kringAutoAnswer,
+            onKlaar: () => Navigator.of(dialogCtx).pop(),
+          ),
+        ));
+      }
       await DeviceModusService.zet(DeviceModusService.ONTVANGER);
     } finally {
       if (mounted) setState(() {

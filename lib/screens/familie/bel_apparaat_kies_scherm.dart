@@ -275,6 +275,46 @@ class _BelApparaatKiesSchermState extends State<BelApparaatKiesScherm> {
                     horizontal: 16, vertical: 6),
               ),
             ),
+            const SizedBox(height: 10),
+            // BEL-D3: korte, eerlijke uitleg voor de eigenaar. Bewust
+            // zonder Android-jargon (fullScreenIntent, BAL, SAW). De
+            // "rustige modus"-tip is de kern — daar werkt bellen 100%
+            // omdat de app altijd voorgrond staat.
+            Container(
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: kCream,
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: kPeachLight),
+              ),
+              child: const Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(children: [
+                    Text('💡', style: TextStyle(fontSize: 18)),
+                    SizedBox(width: 8),
+                    Text('Zo werkt bellen',
+                        style: TextStyle(fontSize: 14,
+                            fontWeight: FontWeight.w800, color: kBrown)),
+                  ]),
+                  SizedBox(height: 8),
+                  Text(
+                    '• Rustige modus (vergrendeld): bellen werkt altijd. '
+                    'Dit is het meest betrouwbaar voor iemand die zelf '
+                    'niet meer kan opnemen.\n'
+                    '• Normale modus, scherm uit: de tablet wordt wakker '
+                    'en het gesprek komt groot in beeld.\n'
+                    '• Normale modus, scherm aan, app dicht: er komt een '
+                    'grote melding. Met "automatisch opnemen" en de juiste '
+                    'toestemming opent het gesprek vanzelf.\n'
+                    '• App volledig geforceerd gestopt: dan komt er '
+                    'niets binnen (geldt voor elke app, ook WhatsApp).',
+                    style: TextStyle(fontSize: 12,
+                        color: kBrownLight, height: 1.5),
+                  ),
+                ],
+              ),
+            ),
           ],
           const SizedBox(height: 4),
         ],
