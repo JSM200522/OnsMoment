@@ -139,6 +139,20 @@ Voor elke wijziging:
 
 NOOIT blind pushen — vandaag (15 mei 2026) heeft dat 10 rode builds opgeleverd.
 
+## Vaste werkafspraak: commit ⇒ direct push (harde regel)
+
+Na ELKE commit meteen `git push origin main`. In de samenvatting die
+naar Joshua gaat MOET staan: de `git log origin/main -1` hash + de
+`version:`-regel uit `pubspec.yaml` op origin/main. Nooit "gecommit"
+melden zonder die push-bevestiging.
+
+Waarom: op 9 sept 2026 zaten 7 commits (incl. drie versie-bumps
+41/42/43/44) alleen lokaal. Codemagic bouwde daardoor van origin/main =
+1.0.35+40, en Google Play weigerde met "versiecode 40 al gebruikt". Al
+het werk was op zich klaar, maar onbereikbaar voor de build-server. Het
+harde signaal (git log origin/main + pubspec op origin/main in de
+samenvatting) sluit dit gat af.
+
 ## Sessielog
 
 - 15 mei 2026: V7 release, build #47 groen
