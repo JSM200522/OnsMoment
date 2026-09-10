@@ -9,6 +9,7 @@ import 'screens/setup/setup_wizard.dart';
 import 'screens/familie/familie_scherm.dart';
 import 'screens/tablet/tablet_scherm.dart';
 import 'screens/tablet/inkomend_gesprek_scherm.dart';
+import 'screens/verificatie_afdwingen_scherm.dart';
 import 'screens/videobellen/auto_opnemen_waarschuwing_scherm.dart';
 import 'screens/videobellen/gesprek_scherm.dart';
 import 'dart:convert';
@@ -20,6 +21,7 @@ import 'services/device_modus_service.dart';
 import 'services/crash_service.dart';
 import 'services/kiosk_service.dart';
 import 'services/push_service.dart';
+import 'services/verificatie_gate_service.dart';
 import 'services/video_call_service.dart';
 import 'data/debug_flags.dart';
 import 'theme/kleuren.dart';
@@ -228,14 +230,73 @@ class _RouterSchermState extends State<RouterScherm>
           valueListenable: DeviceModusService.notifier,
           builder: (context, modus, _) {
             if (!authSnap.hasData || modus == null) return const SetupWizard();
+            // VER-1: e-mailverificatie-gate ALLEEN op de familie-tak.
+            // Ontvanger/tablet-modus wordt NOOIT geblokkeerd — de
+            // dierbare mag niet gestraft worden voor een mailtje dat
+            // de mantelzorger nog moet openen. Met flag UIT retourneert
+            // de service altijd false → geen gedragswijziging.
+            final familieKind = modus == DeviceModusService.ONTVANGER
+                ? _OntvangerRouter(familieUid: authSnap.data!.uid)
+                : const _FamilieMetVerificatieGate();
             return _KringWachter(
               familieUid: authSnap.data!.uid,
-              child: modus == DeviceModusService.ONTVANGER
-                  ? _OntvangerRouter(familieUid: authSnap.data!.uid)
-                  : const FamilieScherm(),
+              child: familieKind,
             );
           },
         );
+      },
+    );
+  }
+}
+
+/// VER-1: dunne wrapper die op cold-start én na login checkt of de
+/// familie-gebruiker verplicht zijn e-mailadres moet verifiëren.
+/// Met de flag `emailVerificatieAfdwingen=false` (default in
+/// config/features) retourneert de service altijd `false` → deze
+/// wrapper toont onmiddellijk `FamilieScherm` en er verandert
+/// helemaal niets aan het bestaande gedrag.
+///
+/// Bij een async fout of tijdens laden fallen we terug op
+/// `FamilieScherm` (fail-soft) — nooit iemand ten onrechte
+/// buitensluiten.
+class _FamilieMetVerificatieGate extends StatefulWidget {
+  const _FamilieMetVerificatieGate();
+
+  @override
+  State<_FamilieMetVerificatieGate> createState() =>
+      _FamilieMetVerificatieGateState();
+}
+
+class _FamilieMetVerificatieGateState
+    extends State<_FamilieMetVerificatieGate> {
+  bool _bezigCheck = true;
+  bool _gate = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _check();
+  }
+
+  Future<void> _check() async {
+    final gate = await VerificatieGateService.moetVerifieren();
+    if (!mounted) return;
+    setState(() {
+      _gate = gate;
+      _bezigCheck = false;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_bezigCheck) return const _LaadScherm();
+    if (!_gate) return const FamilieScherm();
+    return VerificatieAfdwingenScherm(
+      onGeverifieerd: () {
+        if (!mounted) return;
+        setState(() {
+          _gate = false;
+        });
       },
     );
   }

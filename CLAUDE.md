@@ -839,12 +839,29 @@ Fix wat nodig is vóór verder gaan naar Fase B.
 ### FASE C — Van test naar echt
 
 - [ ] E-mailverificatie AFDWINGEN (ZeptoMail werkt al sinds 15 aug 2026):
-      Nu staat "e-mailadres nog niet bevestigd" in de UI maar het blokkeert
-      niet. Vóór publieke launch: bepaal wat een niet-geverifieerde gebruiker
-      wel/niet mag + voeg request.auth.token.email_verified == true toe aan
-      Firestore rules. PAS doen als nep-adressen (oma@test.nl) zijn opgeruimd
-      — anders sluit je eigen testers buiten. Volgorde dwingend: betaalsysteem
-      werkt → trial-lock werkt → dan pas verificatie afdwingen.
+      VER-1 (9 sept 2026) is code-compleet: `verificatie_gate_service.dart`
+      + `verificatie_afdwingen_scherm.dart` + RouterScherm-inplug. Draait
+      achter TWEE Firestore-config-flags in `config/features`:
+        - `emailVerificatieAfdwingen: bool` (default false → gate uit)
+        - `emailVerificatieGraceTot: Timestamp` (accounts van vóór deze
+          datum ongestoord — bescherming voor bestaande testers)
+      Gate zit ALLEEN op familie-tak in RouterScherm; ontvanger/tablet-
+      modus wordt nooit geblokkeerd (dierbare mag niet gestraft worden).
+      Fail-soft in de service: elke Firestore-fout of missende config →
+      niet blokkeren. Zolang de flag false is verandert er NIETS aan het
+      huidige gedrag; de bestaande banner in InstellingenTab blijft
+      informatief zichtbaar.
+      **Volgorde dwingend** vóór activeren van de flag:
+        1. Betaalsysteem werkend (D-2 t/m D-6).
+        2. Trial-lock werkend (D-5).
+        3. Nep-testaccounts (oma@test.nl e.a.) opruimen of grace-datum
+           ná hun creationTime zetten.
+        4. `emailVerificatieGraceTot` in Firebase Console zetten op een
+           tijdstip ná alle huidige testers.
+        5. `emailVerificatieAfdwingen: true` flippen in Firebase Console.
+      Server-side sluitstuk (`request.auth.token.email_verified == true`
+      in de rules) is optioneel later — client-side gate is voor nu
+      voldoende.
 - [ ] Trial-expiry-lock (NIET bouwen vóór betaalsysteem werkt):
       Na 14 gratis dagen zonder actief abonnement de eigenaar mild locken —
       toegang beperkt tot PakketKeuzeScherm, maar dierbare blijft ontvangen
