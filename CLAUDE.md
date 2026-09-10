@@ -925,3 +925,15 @@ Wat er straks specifiek bij komt kijken voor iOS:
 - iOS Safari audio-checklist (autoplay-restricties anders dan Android)
 - App Store Connect listing + TestFlight closed beta (verplicht vóór productie)
 - App Store review 1-2 weken
+
+## Post-launch ideeën (bij groei, niet nu)
+
+- **Publiek ideeën-bord**: nu hebben we een simpel privé-feedbackformulier
+  (Firestore `feedback`-collectie, create-only, alleen Joshua ziet het via
+  Console) — dat past bij de testfase + doelgroep. Als het gebruikersaantal
+  groeit naar honderden+: overweeg een publiek ideeën-bord waar gebruikers
+  ideeën posten, anderen erop stemmen (duimpje), en het populairst bovenaan
+  komt. Niet zelf bouwen — koppel een kant-en-klare tool (Canny, Featurebase
+  of Upvoty) via een link in de app. Reden om te wachten: bij weinig
+  gebruikers is een bord leeg/stil, en publiek delen past minder bij deze
+  gevoelige doelgroep. Simpel privé-vak blijft voorlopig het juiste.
