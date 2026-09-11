@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import '../../theme/kleuren.dart';
 import '../../widgets/normaal_scaffold.dart';
 
@@ -33,12 +34,35 @@ class FeedbackScherm extends StatefulWidget {
 }
 
 class _FeedbackSchermState extends State<FeedbackScherm> {
-  static const _appVersie = '1.0.36+41';
+  // FDB-1 (11 sept 2026): dynamisch uit PackageInfo — voorkomt dat een
+  // stale hardcoded versie ('1.0.36+41' pre-fix) meelift in het
+  // feedback-doc. Fail-soft: bij read-fout blijft 'onbekend' staan zodat
+  // de send-flow niet crasht.
+  String _appVersie = 'onbekend';
 
   final _berichtCtrl = TextEditingController();
   String _categorie = 'idee';
   bool _bezig = false;
   bool _klaar = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _leesAppVersie();
+  }
+
+  Future<void> _leesAppVersie() async {
+    try {
+      final info = await PackageInfo.fromPlatform();
+      if (!mounted) return;
+      final v = info.version.trim();
+      final b = info.buildNumber.trim();
+      final samen = b.isEmpty ? v : '$v+$b';
+      if (samen.isNotEmpty) setState(() => _appVersie = samen);
+    } catch (_) {
+      // Fail-soft: laat 'onbekend' staan.
+    }
+  }
 
   @override
   void dispose() {

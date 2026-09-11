@@ -6780,23 +6780,24 @@ class _OntvangenBerichtenSchermState extends State<OntvangenBerichtenScherm> {
         if (mounted) setState(() => _ontvangerApparaatIds = []);
         return;
       }
-      // V9 2.11-a-2: kring-doc + apparaten parallel zodat _kringNaam
-      // al gevuld is bij de eerste render — voorkomt de korte
-      // 'Ontvangen van je dierbare' -> 'Ontvangen van Opa' flash.
-      // V9 2.15: apparaat-id meeladen voor client-side targeting-filter
-      // op ontvanger-kant.
+      // AUD-1-consistency (11 sept 2026): kringLeden moet met eigenaarUid
+      // aangeroepen worden, niet met current-uid. Voor gasten (uid !=
+      // eigenaarUid) leeft de apparaten-subcollectie onder de eigenaar,
+      // niet onder de gast — anders krijgt de gast een lege inbox.
+      // Zelfde patroon als bel_apparaat_kies_scherm.dart:61-66.
+      final kringDoc = await FirebaseFirestore.instance
+          .collection('kringen').doc(kringId).get();
+      final kringData = kringDoc.data();
+      final eigenaarUid =
+          (kringData?['eigenaarUid'] as String? ?? '').trim();
+      final effectiefUid = eigenaarUid.isNotEmpty ? eigenaarUid : uid;
       final results = await Future.wait([
-        FirebaseFirestore.instance.collection('kringen').doc(kringId).get(),
-        ApparaatService.kringLeden(uid, kringId),
+        ApparaatService.kringLeden(effectiefUid, kringId),
         DeviceModusService.krijgApparaatId(),
       ]);
-      final kringDoc = results[0] as DocumentSnapshot;
-      final leden = results[1] as List<Map<String, dynamic>>;
-      final apparaatId = results[2] as String?;
-      final kringData = kringDoc.data();
-      final kringNaam = (kringData is Map)
-          ? kringData['naam'] as String?
-          : null;
+      final leden = results[0] as List<Map<String, dynamic>>;
+      final apparaatId = results[1] as String?;
+      final kringNaam = kringData?['naam'] as String?;
       if (!mounted) return;
       setState(() {
         _kringId = kringId;

@@ -1,7 +1,7 @@
 name: ons_moment
 description: Ons Moment - Verbinding voor mensen met dementie
 publish_to: 'none'
-version: 1.0.47+58
+version: 1.0.48+59
 
 environment:
   sdk: '>=3.3.0 <4.0.0'
@@ -47,6 +47,10 @@ dependencies:
   # B1: alleen toegevoegd als dependency; nog geen code-gebruik. Bij B2
   # volgt manifest-config + PhoneAccount-registratie.
   flutter_callkit_incoming: ^2.5.0
+  # FDB-1 (11 sept 2026): dynamische app-versie voor feedback-doc. Zonder
+  # dit moet _appVersie handmatig meebumpen bij elke release; met dit
+  # leest de app 'm uit de gemergde manifest. Compatibel met Dart 3.3.4.
+  package_info_plus: ^8.0.2
   # Route D (11 sept 2026): purchases_flutter TIJDELIJK verwijderd omdat
   # 8.11.0 Play Billing Library 7.1.1 meebrengt, en Play Console sinds
   # 1 sept 2026 uploads met Billing 7.x weigert. purchases_flutter 9.x
