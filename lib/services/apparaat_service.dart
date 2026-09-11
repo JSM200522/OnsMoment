@@ -115,12 +115,22 @@ class ApparaatService {
   /// Filter: fcmToken aanwezig + kringId klopt — sluit orphan-docs (testresten
   /// zonder actieve push-verbinding) uit zodat ze nooit in de bellijst
   /// verschijnen. Lege lijst bij fout (bv. permission-denied of geen apparaten).
+  ///
+  /// AUD-1 (sept 2026): `.where('kringId', isEqualTo: kringId)` server-side
+  /// zodat de LIST-operatie onder de aangescherpte apparaten-read-rule
+  /// slaagt voor niet-eigenaars (gasten). Zonder deze where-clause kan de
+  /// rules-engine niet statisch bewijzen dat élk terugkerend doc een
+  /// kringId heeft waar de caller lid van is → weigert de hele lijst
+  /// (`false for 'list' @ L59`). Zelfde patroon als
+  /// familie_scherm._ontvangerApparaatIds en kringleden_scherm.
   static Future<List<Map<String, dynamic>>> kringLeden(
       String familieUid, String kringId) async {
     try {
       final snap = await FirebaseFirestore.instance
           .collection('gebruikers').doc(familieUid)
-          .collection('apparaten').get();
+          .collection('apparaten')
+          .where('kringId', isEqualTo: kringId)
+          .get();
       return snap.docs
           .where((doc) {
             final d = doc.data();
