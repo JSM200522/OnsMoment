@@ -1,7 +1,7 @@
 name: ons_moment
 description: Ons Moment - Verbinding voor mensen met dementie
 publish_to: 'none'
-version: 1.0.43+54
+version: 1.0.44+55
 
 environment:
   sdk: '>=3.3.0 <4.0.0'
@@ -47,6 +47,17 @@ dependencies:
   # B1: alleen toegevoegd als dependency; nog geen code-gebruik. Bij B2
   # volgt manifest-config + PhoneAccount-registratie.
   flutter_callkit_incoming: ^2.5.0
+  # D-2 minimaal: RevenueCat SDK. Enige reden om NU toe te voegen: de
+  # bijgeleverde Play Billing Library declareert com.android.vending.BILLING
+  # in het gemergde AndroidManifest, waardoor Google Play Console het
+  # aanmaken van in-app abonnementen toestaat. De koop-flow zelf (D-3..D-6)
+  # volgt later. Cross-platform (Android StoreKit-koppeling wordt straks
+  # via dezelfde SDK in FASE G-iOS aangesloten). Gepind op 8.11.0 — dat
+  # is de laatste 8.x-release en de nieuwste die met onze Dart 3.3.4
+  # (Flutter 3.19.6) werkt. Vanaf major 9 vereist RevenueCat Dart 3.4+;
+  # bij SDK-bump (mee te nemen met andere pack-bumps, zie
+  # [[reference-flutter-versie-stack]]) kunnen we naar 10.x.
+  purchases_flutter: 8.11.0
 
 dependency_overrides:
   record_android: 1.2.0
