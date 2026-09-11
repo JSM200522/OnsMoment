@@ -873,6 +873,20 @@ Fix wat nodig is vóór verder gaan naar Fase B.
 
 ### FASE D — Betaalsysteem + finale flags
 
+**WACHT OP (per 10 sept 2026)**: Verkopersaccount Google Play aangemaakt op
+zakelijk profiel JS Milhous (KVK 94498695). WACHT op Google's testbedrag op
+Revolut (IBAN eindigt op 2199), rond 9–13 sept. Zodra binnen: bedrag invullen
+op payments.google.com → geverifieerd → **D-0 vervolg**: 4 abonnementen
+aanmaken (familie_klein €4,99/€35,99 + familie_groot €7,99/€57,99), **GEEN
+Play-free-trial** (14 dagen proef doen we via eigen `proefStart`-veld),
+license-testers registreren, service-account voor Play Developer API
+aanmaken → koppelen aan RevenueCat (~24u propagatie) → RTDN (Real-Time
+Developer Notifications) instellen. **Daarna D-2 t/m D-6**: RevenueCat SDK
+in Flutter inbouwen, PakketKeuzeScherm-knop activeren, entitlement-listener,
+webhook naar Cloud Function, server-side tier/abonnement update, restore
+flow. RevenueCat-project "Ons Moment" bestaat al. **D-1 (Firestore rules
+server-only tier/abonnement) is klaar** (commit bb5948a, 8 sept 2026).
+
 - [ ] Google Play Billing inbouwen + testen (vereist toestel + Play Store):
       14 dagen proef, pakketten Klein/Groot, jaar 40% korting.
       Kring-aantal-limiet (1 vs 3) server-side afdwingen in Firestore rules.
@@ -914,17 +928,604 @@ Fix wat nodig is vóór verder gaan naar Fase B.
 - [ ] .aab uploaden als closed test (vereist: min. 12 testers, 14 dagen)
 - [ ] Na 14 dagen closed test zonder blockers: productie aanvragen
 
-### FASE G — iOS (apart traject, ná Android live)
+### FASE G — iOS (voorbereiding)
 
-Groot apart traject — niet nu plannen. Fundering staat al klaar
-(data-model platform-neutraal, apns-blok priority 5 al aanwezig in FCM).
-Wat er straks specifiek bij komt kijken voor iOS:
-- Apple Developer-account (99 EUR/jaar) + Mac of Codemagic macOS runner
-- PushKit + CallKit voor betrouwbaar bellen op iOS (apns-prioriteit 10 +
-  VoIP-push), flutter_local_notifications iOS-pad
-- iOS Safari audio-checklist (autoplay-restricties anders dan Android)
-- App Store Connect listing + TestFlight closed beta (verplicht vóór productie)
-- App Store review 1-2 weken
+**Status (11 sept 2026)**: onderzoeksfase, met **correctie op eerdere
+conclusie** over auto-answer (zie punt 2). Android-launch gaat voor;
+iOS-werk pas ná FASE F. Hieronder de complete iOS-gereedheidscheck +
+gefaseerd plan voor later. **PUUR PLAN — geen code aanraken tot Android
+in productie staat.**
+
+---
+
+**1. FUNDERING — is de data/logica-laag iOS-klaar?**
+
+Kort antwoord: **ja voor 90%, één gat om later te dichten.**
+
+Iets specifieks aan iOS blokkeert de fundering nergens:
+- **Firestore/Storage/Auth/kringen/momenten/notities**: geen Android-
+  aannames. Alle koppeling via `kringId` + `familieUid`, geen platform-
+  velden in content-documenten. iPhone-familie ↔ Android-familie ↔
+  Android-tablet werkt straks kruislings uit dezelfde kring. ✓
+- **LiveKit** (`livekit_client ^2.2.4`): WebRTC voor iOS én Android,
+  identieke room-signalering. Cloud Function `getVideoCallToken` is
+  platform-neutraal. ✓
+- **FCM data-only push**: server-code (`functions/src/index.ts`,
+  `start_call.ts`, `cancel_call.ts`) heeft al `apns`-blokken met
+  `apns-push-type: 'background'` + `apns-priority: '5'` +
+  `contentAvailable: true`. Kant-en-klaar voor iOS-momenten-push. ✓
+- **`fcmPlatform`-veld** op `gebruikers/{uid}/apparaten/{id}`:
+  `apparaat_service.dart:102` schrijft al 'android'|'ios'|'web' via
+  `PushService._huidigPlatform()` (push_service.dart:786). De server
+  leest dit veld nog niet, maar het staat klaar voor per-platform
+  routing (bijv. VoIP-push alleen naar iOS). ✓
+- **`kIsWeb`-guards**: 97 keer verspreid over 17 files; `defaultTargetPlatform`
+  wordt op 4 plekken juist gebruikt. Alle Android-native calls (KioskService,
+  OverlayPermissionService) zijn kIsWeb-guarded én ge-try/catched — op iOS
+  wordt de MethodChannel `nl.onsmoment.kiosk` niet gevonden en de code
+  valt fail-soft terug. ✓ Geen `Platform.isAndroid`-branches gevonden die
+  iOS zouden uitsluiten.
+
+**Het ene gat**: `lib/firebase_options.dart` heeft alleen `web` +
+`android` blokken; iOS valt via `default:` terug op `web` — dan raakt
+Firebase op iPhone in de war. Op te lossen zodra Firebase Console een
+iOS-app krijgt (kan NU al zonder Mac).
+
+**Android-native laag** (blijft parallel bestaan naast iOS-native): 535
+regels Kotlin (`MainActivity.kt` 255, `OnsMomentFcmReceiver.kt` 206,
+`BootReceiver.kt` 74) + `AndroidManifest.xml` (135 regels). Alles achter
+één MethodChannel + fail-soft aan Dart-kant, dus iOS krijgt gewoon
+`return false`/`return null` op elke call. Native iOS-equivalent moet
+in Swift geschreven worden (zie punt 2 + punt 6).
+
+---
+
+**2. BELLEN op iOS — twee bewezen auto-answer-routes**
+
+> **Correctie op 10 sept-conclusie**: eerder stond hier dat "auto-answer
+> op iOS niet kan omdat Apple het verbiedt". Dat was te somber en
+> feitelijk onjuist. Uit web-onderzoek 11 sept 2026 blijkt: er zijn
+> **twee productie-waardige routes** waarmee Ons Moment op iOS/iPad
+> automatisch een gesprek opneemt. Elk met eigen sweet-spot en één
+> eerlijke beperking (video op vergrendeld scherm).
+
+**Route A — CallKit + iOS-systeeminstelling "Oproepen automatisch beantwoorden"**
+
+Apple heeft een **ingebouwde systeemfunctie** in Toegankelijkheid:
+`Instellingen → Toegankelijkheid → Aanraken → Audioroutering oproep →
+Oproepen automatisch beantwoorden` (met instelbare vertraging, 3-60s).
+Deze functie beantwoordt automatisch:
+- normale telefoongesprekken
+- FaceTime (audio + video)
+- **alle third-party VoIP-apps die Apple's CallKit gebruiken** —
+  bevestigd voor WhatsApp, Skype, Viber, en soortgelijken
+
+Bron: Apple Support "Route and automatically answer calls on iPhone"
+en AbilityNet iOS 15/16/17/26-gidsen. Werkt óók op iPad. Onze app
+hoeft NIETS bijzonders te doen — een normale CallKit-integratie via
+PushKit VoIP-push activeert automatisch dit accessibility-gedrag als
+de gebruiker het aan heeft staan.
+
+**Gedrag per scherm-toestand (grondig geverifieerd)**:
+
+| iPad-toestand | Gedrag bij Auto-Answer aan + CallKit-call met hasVideo=true |
+|---|---|
+| Ontgrendeld, app open | Auto-beantwoord → `CXAnswerCallAction` fired → app foreground → LiveKit-join → **volledig video + audio** ✓ |
+| Ontgrendeld, app dicht (background/killed) | Auto-beantwoord → iOS launcht app → `CXAnswerCallAction` fired → LiveKit-join → **volledig video + audio** ✓ |
+| Vergrendeld (scherm uit) | Auto-beantwoord → iOS probeert Face ID / Touch ID / passcode-authenticatie. **Slaagt authenticatie**: app foreground → volledig video + audio ✓. **Faalt authenticatie**: gesprek is beantwoord in CallKit-systeem-UI, maar app opent niet en video start niet — **alleen audio tot iemand ontgrendelt** |
+
+Dit lock-screen-gedrag is een **Apple-systeem-grens**, niet iets dat wij
+kunnen omzeilen. Bevestigd door Apple DTS Engineer Kevin Elliott in
+developer forum thread 798090: "Video call op lockscreen — systeem
+probeert unlock, bij succes launcht app; bij mislukking blijft de call
+in de lock-screen UI." Zelfde beperking geldt voor WhatsApp — Apple
+Community-thread 254532378 bevestigt: "WhatsApp videocall answer with
+no video" op locked screen tot handmatig unlock.
+
+**Bekende iOS 16.2+ bug**: zelfs na succesvolle unlock opent de app
+soms niet betrouwbaar bij CallKit answer-op-lockscreen. Fix: in
+`provider(_:perform:CXAnswerCallAction)` polling doen op
+`UIApplication.shared.isProtectedDataAvailable` én
+`applicationState == .active` vóór `action.fulfill()` (JFER's pattern,
+Apple forum thread 712817). Werk: ~30 regels Swift, 30s-timeout.
+
+**Route B — Guided Access + FCM data-only + LiveKit direct (Rustige modus)**
+
+Voor de kwetsbaarste dierbaren (dementie, geen scherm-oppak-vaardigheid):
+iPad in **Begeleide Toegang** (Guided Access,
+`Instellingen → Toegankelijkheid → Begeleide toegang`, activeren met
+3× home-knop / 3× top-knop). Dit locket iPad op Ons Moment als enige
+zichtbare app; verzorger heeft een passcode om af te sluiten. Vergelijk
+met onze Android "Rustige modus" (Screen Pinning + BootReceiver).
+
+Werking: app staat 100% voorgrond. FCM data-only push komt binnen →
+`_backgroundHandler` runt foreground-pad → `incomingCallNotifier` →
+`AutoOpnemenWaarschuwingScherm` (2,5s) → `GesprekScherm` → LiveKit-join
+met camera + microfoon. **Volledig automatisch, ook op vergrendeld
+scherm**, want in Guided Access blijft de app zichtbaar en het scherm
+staat effectief aan. **Geen CallKit gebruikt** in deze modus.
+
+Belangrijk: **CallKit + Guided Access werkt NIET goed** (bevestigd
+door Apple developer forum thread 70084 — Guided Access blokkeert de
+CallKit-UI). Onze Route B omzeilt dit juist door in kiosk-modus
+CallKit uit te schakelen en direct via FCM foreground te reageren. De
+app moet detecteren dat het in Guided Access loopt (via
+`UIAccessibility.isGuidedAccessEnabled`) en dan bij CallKit-registratie
+achterwege laten of hasVideo=false forceren.
+
+Bevestigd Apple-conform: een **voorgrond-app mag camera/microfoon
+starten** zonder user-tap; dat is dagelijkse practice voor video-
+conferencing apps. `NSCameraUsageDescription` +
+`NSMicrophoneUsageDescription` in Info.plist regelen de eerste-run-
+prompt; daarna heeft de app permanent toegang tot beide.
+
+**Route B risico's om in device-test te bevestigen** (niet blokkerend
+voor het plan):
+- Er zijn losse rapporten dat sommige AVAudioSession-configuraties
+  onder Guided Access minder stabiel zijn. Concreet WebRTC-bewijs
+  vonden we niet; foreground-video-conferencing werkt normaal.
+- BootReceiver-equivalent bestaat niet op iOS: als iPad reboot,
+  moet verzorger handmatig Guided Access opnieuw activeren.
+
+**Vergelijking met Route A**: Route B is de 100%-route voor kwetsbaar-
+ste dierbaren op iPad. Route A werkt goed op iPhone én iPad voor
+familie-leden die zelf hun toestel dagelijks ontgrendelen (of het
+ontgrendeld laten op een vaste plek zoals aanrecht/nachtkastje).
+
+**Het volledige iOS-bel-equivalent van onze Android-stack**:
+
+| Android-mechanisme | iOS-equivalent | Werk |
+|---|---|---|
+| FCM data-only + `apns-push-type: background` | Identiek (huidige code werkt) — Route B | ✓ klaar |
+| VoIP-push (Route A voor Auto-Answer via CallKit) | PushKit `apns-push-type: voip` + `apns-priority: 10` + `apns-topic: bundleid.voip` | node-apn in Cloud Function |
+| `flutter_local_notifications` + `fullScreenIntent` | CallKit UI, automatisch bij VoIP-push | flutter_callkit_incoming al in deps |
+| `USE_FULL_SCREEN_INTENT` toestemming | niet nodig — CallKit-recht komt met VoIP-entitlement | Xcode: Signing & Capabilities → Background Modes → VoIP |
+| `SYSTEM_ALERT_WINDOW` + `startActivity` (BEL-D1) | niet nodig — CallKit start app zelf bij fulfill | — |
+| `showWhenLocked` + wake-screen | CallKit doet dit zelf (systeem-niveau) | — |
+| Screen Pinning + auto-herpin (rustige modus) | Guided Access (handmatig door verzorger geactiveerd) | UX-docs + isGuidedAccessEnabled-detectie |
+| BootReceiver (auto-herstart) | **bestaat niet op iOS** — verzorger opent handmatig na reboot | doelgroep-tekst aanpassen |
+| Auto-answer bij scherm-AAN + app dicht | **Route A**: iOS Auto-Answer-instelling doet dit. **Route B**: Guided Access houdt app permanent voorgrond | iOS-specifieke instructies in setup + FAQ |
+| Marimba-ringtone via just_audio (STREAM_RING) | Route A: CallKit `ringtoneSound` via CXProviderConfiguration. Route B: bestaande just_audio-loop werkt gewoon | ~30 min in CXProvider config |
+| Gemist-gesprek notif channel | CallKit registreert gemist gesprek automatisch in system call history | — |
+
+**Netto**: bellen op iOS is met beide routes **kwalitatief goed** en
+matcht Android in de belangrijkste scenario's:
+- **Ontgrendeld iPad / iPhone**: Route A auto-answer werkt volledig
+  (video + audio) — gelijkwaardig aan Android normale modus.
+- **iPad in Guided Access**: Route B werkt volledig — gelijkwaardig
+  aan Android rustige modus (kiosk).
+- **Vergrendeld iPad ZONDER Guided Access + Route A**: alleen audio
+  tot unlock — eerlijke beperking, gedeeld met WhatsApp/Skype/Viber
+  (Apple-systeem-grens). Voor dementie-doelgroep advies: iPad
+  ontgrendeld laten op vaste plek, óf Guided Access gebruiken.
+
+**Werk-inschatting bellen iOS** (aangepast): ~5-7 werkdagen fysieke
+build (LiveKit werkt out-of-the-box, `flutter_callkit_incoming` is
+gebouwd voor CallKit, PushKit-token-plumbing + hasVideo=true bij
+outbound calls + JFER's lockscreen-polling zijn de puzzels).
+
+---
+
+**3. PUSH/APNs — wat moet er geregeld worden**
+
+- **Apple Developer Program** ($99/jaar) — Joshua zakelijk profiel JS
+  Milhous. Aanvragen via developer.apple.com; DUNS-nummer nodig voor
+  organization-account (KVK 94498695 heeft er waarschijnlijk al één).
+  Wachttijd: 1-2 dagen tot een week.
+- **APNs Authentication Key (.p8)** — moderne aanpak, aanbevolen boven
+  Apple Push Certificates (die verlopen jaarlijks; .p8 niet). Genereren
+  in Apple Developer → Keys → +. Uploaden in Firebase Console →
+  onsmonent-project → Cloud Messaging → Apple app configuration →
+  APNs Authentication Key. Daarna stuurt FCM automatisch de juiste
+  APNs-berichten namens Ons Moment.
+- **`apns`-blokken in Cloud Functions**: **al goed voorbereid.** Voor
+  moment-push (`onNieuwMoment` regel 217-225) en gesprek-push
+  (`start_call.ts` regel 264-272) staat `apns-push-type: 'background'` +
+  `apns-priority: '5'` + `contentAvailable: true`. Dat is exact wat
+  Apple vraagt voor data-only wake-op.
+- **VoIP-push voor bellen** — hierin schiet de huidige setup nog
+  tekort. FCM ondersteunt géén VoIP-push (`apns-push-type: 'voip'`);
+  daarvoor moet:
+  1. Een aparte plugin worden toegevoegd (kandidaten: `flutter_voip_pushkit`
+     of native Swift AppDelegate) die de PushKit VoIP-token opvraagt en
+     via MethodChannel doorgeeft aan Dart;
+  2. Deze `voipToken` opgeslagen worden op `apparaten/{id}` als tweede
+     token-veld naast `fcmToken`;
+  3. Cloud Function `startVideoCall` een tweede code-pad krijgen: naar
+     Android → huidige FCM-flow; naar iOS → directe APNs-call via
+     `admin.messaging()`... maar VoIP-push kan **niet** via
+     `admin.messaging()`. Moet via een direct HTTP/2-request naar
+     `api.push.apple.com` met de .p8-key ondertekend als JWT. Grote
+     puzzel — er is een `node-apn` library die dit doet.
+- **PushKit-restricties Apple ≥ 2019**: VoIP-push MOET binnen ~5s een
+  CallKit-UI tonen anders killt Apple de app en trekt uiteindelijk het
+  VoIP-recht in. Onze flow moet: PushKit ontvangt → onmiddellijk
+  CXProvider `reportNewIncomingCall(with:update:)` → daarna LiveKit
+  joinen. Volgorde is strikt.
+- **Sandbox vs. Production APNs**: TestFlight-builds gebruiken sandbox
+  APNs, App Store-builds production. Aparte pijp; Firebase Console kiest
+  automatisch op basis van build-type.
+
+---
+
+**4. PLUGINS — iOS-compatibiliteit**
+
+Alle 22 direct-declared deps in `pubspec.yaml` ondersteunen iOS:
+
+| Plugin | iOS-support | Opmerking |
+|---|---|---|
+| firebase_core/auth/firestore/storage/messaging/crashlytics | ✓ | Podfile-integratie via FlutterFire |
+| flutter_local_notifications ^17.1.2 | ✓ | DarwinInitializationSettings + UNUserNotificationCenter |
+| just_audio ^0.9.36 | ✓ | AVAudioPlayer onder de motorkap |
+| audio_session ^0.1.21 | ✓ | Configureert AVAudioSession — belangrijk voor call-audio |
+| record ^5.1.0 | ✓ | iOS 12+ |
+| image_picker ^1.0.7 | ✓ | UIImagePickerController |
+| file_picker ^8.0.0+1 | ✓ | UIDocumentPicker |
+| path_provider ^2.1.2 | ✓ | |
+| wakelock_plus ^1.2.1 | ✓ | `UIApplication.idleTimerDisabled` — géén programma-lock zoals Android kiosk |
+| shared_preferences ^2.2.2 | ✓ | NSUserDefaults |
+| intl ^0.18.1 | ✓ | pure Dart |
+| http ^1.2.0 | ✓ | pure Dart |
+| device_info_plus ^10.1.0 | ✓ | iOS device-model, systemVersion |
+| video_player 2.9.2 | ✓ | AVPlayer |
+| url_launcher ^6.2.5 | ✓ | |
+| livekit_client ^2.2.4 | ✓ | WebRTC iOS-framework — grote Pod (~30MB), verwacht langere first-build |
+| cloud_functions ^4.6.9 | ✓ | |
+| permission_handler ^11.3.1 | ✓ | Info.plist-usage-strings vereist |
+| flutter_callkit_incoming ^2.5.0 | ✓ | **CallKit is de hoofd-use-case op iOS** — al in deps sinds Optie B-traject, blijft dus gewoon staan voor iOS |
+
+`dependency_overrides: record_android: 1.2.0` is Android-only en wordt
+door iOS-build genegeerd (mag blijven staan).
+
+**Enige plugin-kanttekeningen op iOS**:
+- `wakelock_plus`: op iPad kiosk-scenario is dit slechts "scherm uit
+  voorkomen", niet "app geforceerd voorgrond". Guided Access moet dat
+  doen.
+- `flutter_callkit_incoming` op iOS heeft z'n eigen PushKit-integratie —
+  we hoeven mogelijk geen apart `flutter_voip_pushkit` toe te voegen.
+  Bij VB-fase van iOS uitzoeken.
+
+**Netto**: geen plugin blokkeert iOS. Wel Podfile + `pod install` op
+macOS bij eerste build — verwacht 15-30 min compileren voor livekit +
+firebase pods bij cold cache.
+
+---
+
+**5. OVERIG iOS**
+
+- **Info.plist keys** (verplicht bij Apple review, anders crash op eerste
+  gebruik):
+  - `NSCameraUsageDescription` — "Ons Moment gebruikt uw camera voor
+    videogesprekken met familie."
+  - `NSMicrophoneUsageDescription` — "Ons Moment gebruikt uw microfoon
+    voor spraakberichten en videogesprekken."
+  - `NSPhotoLibraryUsageDescription` — "Ons Moment gebruikt uw foto's
+    om herinneringen te delen met familie."
+  - `NSPhotoLibraryAddUsageDescription` (optioneel, alleen als opslaan)
+  - `NSUserNotificationsUsageDescription` — impliciet via
+    UNUserNotificationCenter.requestAuthorization
+  - `UIBackgroundModes`: `voip`, `audio`, `remote-notification`,
+    `fetch`
+- **App Store Connect listing**:
+  - Screenshots iPhone 6.7" (min. 3) + iPhone 6.5" (fallback) + iPad
+    Pro 12.9" (min. 3 als iPad supported)
+  - App-icoon 1024×1024 (rond of vierkant — Apple kiest)
+  - Store-omschrijving NL + EN (Engels ook verplicht voor EU-listings)
+  - Privacy Policy URL (staat al op onsmoment.app)
+  - Privacy nutrition label — invullen welke data verzameld wordt
+    (Firebase Auth email; Firestore user content; geen advertentie-ID)
+- **App Store Review**:
+  - Duur: **1-2 weken initieel**, meestal 3-5 dagen bij follow-ups
+  - Strenger dan Google: reviewer test met echte account. Toegang tot
+    demo-account nodig (bijv. oma@test.nl reactiveren voor review).
+  - Auto-answer + kiosk-features vragen om uitleg in review-notities:
+    dementiezorg-context, gebruikersgroep. Apple accepteert "Assistive
+    Technology" claims als het gerechtvaardigd is.
+  - Rejection-risico: als de reviewer denkt dat auto-answer een privacy-
+    schending is → wees eerlijk in de app-description dat auto-answer
+    alleen na expliciete opt-in door de familie-eigenaar werkt.
+- **In-App Purchases via Apple = verplicht** voor digitale abonnementen.
+  RevenueCat SDK ondersteunt zowel Google Play Billing als Apple StoreKit
+  via één API — **dit is precies waarom we RevenueCat kozen.** ✓
+  In App Store Connect moeten 4 abonnementen aangemaakt worden,
+  spiegelend aan Google Play (familie_klein €4,99/€35,99 +
+  familie_groot €7,99/€57,99). RevenueCat koppelt de product-IDs
+  automatisch.
+- **Apple's commissie**: 15% (Small Business Program tot $1M/jaar) of
+  30%. Aanmelden voor Small Business Program bij App Store Connect
+  zodra developer-account actief.
+- **Sandbox testers**: aparte Apple Sandbox-accounts (via App Store
+  Connect → Users → Sandbox Testers) voor test-abonnementen.
+  RevenueCat detecteert sandbox automatisch.
+- **iOS Safari audio-checklist** (huidige webbuild op onsmoment.app):
+  autoplay-restricties zijn strenger dan Chrome. Al deels afgevangen
+  in bestaande code (audio_session + AudioAttributes). Web-build
+  bevriezen op huidige status; PWA-installatie niet nodig als native
+  iOS-app er komt.
+
+---
+
+**6. CROSS-PLATFORM MATRIX (beller × ontvanger × modus)**
+
+LiveKit is platform-blind — de bellerkant is irrelevant voor het
+opneem-gedrag. Wat telt is de ontvanger-configuratie:
+
+| Ontvanger-toestel | Modus | Beller: Android | Beller: iPhone | Auto-opnemen? |
+|---|---|---|---|---|
+| Android-tablet | Rustige (kiosk) | ✓ | ✓ | Volautomatisch, altijd |
+| Android-tablet | Meldingen (normaal) | ✓ | ✓ | Volautomatisch met toestemmingen (FSI + battery-opt) |
+| Android-telefoon | Meldingen | ✓ | ✓ | Idem |
+| iPad | Guided Access (Route B) | ✓ | ✓ | Volautomatisch, altijd — 100%-route voor kwetsbare dierbare |
+| iPad | Normaal + "Oproepen automatisch beantwoorden" AAN (Route A) | ✓ | ✓ | Ontgrendeld: volledig video ✓. Vergrendeld: **alleen audio tot Face ID / passcode** |
+| iPad | Normaal + Auto-Answer UIT | ✓ | ✓ | 1-tik opnemen op CallKit-UI (systeem-niveau, ook lock-screen) |
+| iPhone | Normaal + Auto-Answer AAN | ✓ | ✓ | Zelfde gedrag als iPad-Route-A |
+| iPhone | Normaal + Auto-Answer UIT | ✓ | ✓ | 1-tik opnemen op CallKit-UI |
+
+**Kern-takeaway**: iPhone-familie ↔ Android-tablet-dierbare (huidige
+usecase) werkt **exact zoals nu op Android** zodra de iPhone-app er is
+— de tablet-kant is Android en die is al af. Andersom (Android-familie
+belt iPad-dierbare) werkt volledig via Route B (Guided Access) of
+Route A met de accessibility-instelling aan.
+
+---
+
+**7. GEBRUIKERSINSTRUCTIES (voor FAQ / website / in-app setup)**
+
+Platform-afhankelijk tonen — niet het andere platform noemen. Kort,
+warm, geen jargon.
+
+**Voor Android-tablet als ontvanger**:
+> "Automatisch opnemen werkt op deze tablet zonder extra instellingen.
+> Zet Ons Moment tijdens de eerste keer even helemaal open, geef
+> toestemming voor camera, microfoon en meldingen, en klaar. Kiest u
+> voor Rustige modus, dan blijft Ons Moment altijd zichtbaar en neemt
+> automatisch op wanneer familie belt. Kiest u voor Normale modus,
+> dan werkt automatisch opnemen ook — zorg alleen dat u bij de eerste
+> bel de twee instellingen op het scherm bevestigt."
+
+**Voor iPad als ontvanger — Rustige modus (aanbevolen voor kwetsbare
+dierbare)**:
+> "Uw iPad staat straks vast op Ons Moment, zodat uw dierbare niks
+> per ongeluk kan afsluiten. Zo zet u dat aan:
+>
+>  1. Open Instellingen → Toegankelijkheid → Begeleide toegang. Zet
+>     'Begeleide toegang' aan en kies een viercijferige code (schrijf
+>     die op voor uzelf).
+>  2. Open Ons Moment.
+>  3. Druk drie keer snel op de bovenknop (of thuisknop op oudere
+>     iPads). Kies 'Begeleide toegang starten'.
+>
+> Klaar. Vanaf nu blijft Ons Moment altijd op het scherm, en wanneer
+> familie belt neemt de iPad automatisch op. Wilt u de iPad tijdelijk
+> voor iets anders gebruiken? Druk weer drie keer op de bovenknop en
+> vul uw code in."
+
+**Voor iPad/iPhone als ontvanger — Normale modus**:
+> "Om videogesprekken automatisch op te nemen, hoeft u in Ons Moment
+> zelf niets in te stellen. Zet in uw iPad-instellingen één schakelaar
+> aan:
+>
+>  1. Open Instellingen → Toegankelijkheid → Aanraken → Audioroutering
+>     oproep.
+>  2. Tik op 'Oproepen automatisch beantwoorden'.
+>  3. Zet de schakelaar aan en kies een tijd (3 tot 5 seconden werkt
+>     fijn — genoeg om u naar de camera te draaien).
+>
+> Klaar. Vanaf nu neemt uw iPad videogesprekken vanzelf op, ook van
+> Ons Moment. Ligt de iPad met scherm-uit? Dan hoort u eerst de andere
+> persoon; het beeld start zodra u de iPad opneemt en met uw gezicht
+> ontgrendelt. Wilt u dat beeld ook zonder de iPad op te nemen
+> automatisch start? Gebruik dan Begeleide toegang (in de app onder
+> 'Rustige modus')."
+
+Deze teksten later verwerken in `SetupWizard` (iOS-branche via
+`defaultTargetPlatform`) en in de FAQ op onsmoment.app.
+
+**⚠️ EXPLICIETE TAAK BIJ iOS-BOUW — NIET VERGETEN**
+
+> **BEL-UITLEG PER PLATFORM IN DE APP**: de drie gebruikersteksten uit
+> FASE G punt 7 (Android-tablet / iPad-Rustige modus via Begeleide
+> toegang / iPad-Gewone modus via 'Oproepen automatisch beantwoorden')
+> moeten dan in de app zelf komen:
+>
+> 1. In de **Ontvanger-setup** (toestemmingen-stap)
+> 2. In de **FAQ 'Videobellen'**
+> 3. In het **'Zo werkt bellen'-uitlegscherm**
+>
+> Platform-afhankelijk tonen (een iPad ziet alleen de iPad-uitleg,
+> Android alleen de Android-uitleg; het andere platform niet noemen).
+> De eerlijke grens (vergrendelde iPad in Gewone modus → eerst geluid,
+> video na ontgrendelen) kort en warm vermelden.
+>
+> **Kernadvies overal**: Rustige modus is het betrouwbaarst voor wie
+> zelf niet kan opnemen, op beide platforms.
+
+---
+
+**8. INSCHATTING — hoeveel werk, wat zijn de risico's, wat nu voorbereiden**
+
+**Werk-inschatting (kalender)**:
+- Code-werk (met macOS build-toegang): **2-3 weken fulltime**
+  - Fundering iOS-klaar (flutter create --platforms=ios, iOS-blok in
+    firebase_options.dart, GoogleService-Info.plist, Info.plist,
+    Podfile-tuning): 1 dag
+  - APNs .p8-key + Firebase Console koppeling: 0.5 dag
+  - Codemagic macOS-runner + provisioning profiles: 1-2 dagen (nieuw
+    terrein voor Joshua)
+  - Videobellen basis iOS Route A (LiveKit + CallKit + PushKit +
+    hasVideo=true bij outbound + JFER's lockscreen-polling in
+    CXAnswerCallAction-handler): 3-4 dagen
+  - VoIP-push server-kant (voipToken opslag + Cloud Function iOS-VoIP-
+    pad met node-apn + JWT-signing met .p8): 2-3 dagen
+  - Route B implementatie (isGuidedAccessEnabled-detectie + FCM
+    foreground-pad + skip CallKit in kiosk-modus): 1 dag
+  - Auto-answer UX-verwerking (`AutoOpnemenWaarschuwingScherm` blijft
+    identiek voor Route B; nieuwe iOS-branche in `BelApparaatKies` die
+    lockscreen-video-nuance uitlegt): 0.5 dag
+  - Gebruikersinstructies verwerken in SetupWizard iOS-branche: 0.5 dag
+  - IAP via RevenueCat op iOS (identieke SDK, alleen product-IDs
+    koppelen): 1 dag
+  - Info.plist + usage-descriptions + entitlements
+    (Background Modes: voip + audio + remote-notification + fetch): 0.5 dag
+  - App Store Connect listing + screenshots (iPhone + iPad): 2 dagen
+  - TestFlight closed beta setup: 0.5 dag
+  - Buffer + review-iteraties: 2-3 dagen
+- **Store-tijd (wachten)**: 14 dagen TestFlight closed beta minimum +
+  1-2 weken App Store review = **~1 maand kalender**
+- **Totaal iOS-launch: ~1.5-2 kalendermaanden vanaf start iOS-fase**,
+  ná Android live
+
+**Grootste risico's** (aangepast na 11 sept-onderzoek):
+1. **Video op vergrendeld iPad (Route A)** — bij CallKit-auto-answer
+   op vergrendeld scherm probeert iOS eerst Face ID / passcode. Slaagt
+   dit niet, dan wordt het gesprek beantwoord maar blijft in de
+   lock-screen CallKit-UI: **alleen audio tot handmatig ontgrendelen**.
+   Zelfde beperking als WhatsApp/Skype/Viber (Apple-systeem-grens, niet
+   omzeilbaar). Impact: voor kwetsbaarste dierbaren moeten we **Route
+   B (Guided Access) actief aanbevelen**. Route B werkt 100% ook bij
+   scherm-uit-lijkend-vergrendeld want de iPad blijft in feite aan.
+2. **iOS 16.2+ CallKit lockscreen bug** — na successful unlock opent
+   de app soms niet betrouwbaar. Fix: JFER's polling-pattern in
+   CXAnswerCallAction (poll `isProtectedDataAvailable` +
+   `applicationState == .active` vóór `action.fulfill()`). Overzichte-
+   lijke code, maar ~30 regels Swift op meerdere iOS-versies testen.
+3. **CallKit + Guided Access conflict** — bevestigd: werken niet
+   samen. Onze Route B omzeilt dit door in Guided Access CallKit niet
+   te gebruiken. Vergt runtime-detectie via
+   `UIAccessibility.isGuidedAccessEnabled` + notification observer op
+   `UIAccessibility.guidedAccessStatusDidChangeNotification` om switch-
+   momenten op te vangen.
+4. **App Store Review-strengheid** — kans op rejection bij CallKit +
+   auto-answer-uitleg. Vereist zorgvuldige review-notities in de
+   dementie-doelgroep-context. Precedent: apps zoals GrandPad worden
+   goedgekeurd → wij ook goedkeurbaar. Betekent WEL: geen "auto-answer
+   zonder gebruikersintentie" claimen; framen als "wij ondersteunen
+   iOS' ingebouwde Auto-Answer-instelling + Guided Access".
+5. **PushKit VoIP-token beheer** — subtiel: bij re-installatie
+   verandert token; iOS heeft `pushRegistry(_:didInvalidatePushTokenFor:)`
+   voor invalidatie. Server moet dead-token cleanup krijgen (analoog
+   aan huidige FCM-cleanup in `onNieuwMoment` regel 260-274).
+6. **Cloud Function VoIP-pad complexiteit** — directe APNs-call via
+   node-apn + JWT-signing met .p8 (FCM ondersteunt geen VoIP-push).
+   Nieuw terrein. Kans op debug-uren.
+7. **Codemagic macOS-kosten** — iOS-builds zijn ~2-3× duurder in
+   build-minuten dan Android. Codemagic gratis tier heeft 500 min/maand
+   macOS; bij release-builds komt dit snel op.
+8. **Boot-restart bestaat niet op iOS** — als iPad reboot na
+   stroomuitval, moet verzorger handmatig Ons Moment terug openen én
+   Guided Access opnieuw activeren. Reële UX-degradatie t.o.v.
+   Android's BootReceiver + herpin. In gebruikersinstructies benoemen
+   ("na een stroomuitval opent u even Ons Moment en drie-keer-drukken").
+9. **DUNS-nummer** — bij aanvraag Apple Developer Program als
+   organization is DUNS verplicht. Voor JS Milhous (KVK 94498695)
+   waarschijnlijk al toegekend door D&B; check via lookup.dnb.com.
+   Individual-account kan ook (KVK niet verplicht) maar dan staat
+   "Joshua Milhous" i.p.v. "JS Milhous" in de store — minder pro.
+10. **Guided Access + WebRTC audio device-test-punt** — geen concrete
+    rapporten van problemen, maar losse ervaringen suggereren dat
+    AVAudioSession-configuraties in Guided Access soms minder stabiel
+    zijn. Moet in fysieke device-test bevestigd worden vóór we Route B
+    als 100%-oplossing adverteren.
+
+**Wat NU al veilig voor te bereiden (zonder Mac/iPhone)**:
+- [ ] **Firebase Console → iOS-app registreren** onder project onsmonent.
+      Bundle-ID `nl.onsmoment.app` (matcht domein). Downloadt
+      `GoogleService-Info.plist` en levert de iOS-firebase-waarden
+      (apiKey, appId, iosBundleId, iosClientId). Later toe te voegen
+      als `iOS`-blok in `lib/firebase_options.dart`.
+- [ ] **DUNS-nummer voor JS Milhous checken** via lookup.dnb.com. Zo
+      nee: gratis aanvragen bij D&B (2-4 weken doorloop).
+- [ ] **Apple Developer Program aanvragen** ($99/jaar) — kan online,
+      geen Mac nodig. Betalingsprofiel identiek aan Google Play
+      (Revolut IBAN 2199).
+- [ ] **APNs .p8-key genereren** zodra Apple Developer actief. Upload
+      naar Firebase Console → Cloud Messaging → APNs Auth Key. Kan
+      zonder Mac.
+- [ ] **App Store Connect: 4 iOS-abonnementen aanmaken** zodra Apple
+      Developer actief (familie_klein_maand/jaar + familie_groot_maand/
+      jaar, prijzen identiek aan Google Play). Koppelen aan bestaand
+      RevenueCat-project "Ons Moment" zodra Google Play iOS-koppeling
+      ook actief is.
+- [ ] **Info.plist usage-descriptions in NL alvast draften** in een
+      apart tekstdocument (Camera/Microfoon/Foto's).
+- [ ] **onsmoment.app-tekst voorbereiden**: iOS-sectie in FAQ met
+      twee routes (Route B Guided Access voor kwetsbare dierbare op
+      iPad = 100% automatisch; Route A "Oproepen automatisch
+      beantwoorden" in iOS-toegankelijkheid voor familie op iPhone/
+      iPad). Eerlijk over lockscreen-video-nuance in Route A.
+      Gebruikersinstructies zoals opgesteld in FASE G punt 7 direct
+      als basis-copy gebruiken.
+- [ ] **DEBUG_VIDEOBELLEN-audit vóór iOS-start**: bevestig dat alle
+      productie-flows achter deze flag met flag=false NIET breken op
+      Android. Zo ja: iOS mag straks parallel starten met flag=false.
+
+**Wat vereist Mac/iPhone (LATER, niet nu voor te bereiden)**:
+- `flutter create --platforms=ios .` in repo-root (genereert `ios/`
+  map met Xcode-project)
+- Podfile-tuning + `pod install` op macOS
+- Xcode-signing + provisioning profiles + certificates
+- Codemagic macOS-runner configureren
+- Fysieke iPhone/iPad-tests voor VoIP-push (simulator ondersteunt geen
+  echte APNs voor VoIP)
+- TestFlight-uploads + closed beta
+- Guided Access-workflow live testen op iPad
+
+**Beslispunt vóór start iOS-fase (D-day + 1 maand)**: wil Joshua een
+Mac Mini kopen (~€700 nieuw / ~€400 refurbished) of Codemagic macOS-
+runner huren? Voor closed test volstaat Codemagic; voor iteratieve
+debugging is een eigen Mac gemakkelijker. Aanbeveling: **Codemagic-only
+starten**, Mac Mini pas als iOS ≥ 100 gebruikers heeft.
+
+## Opruimen ná launch (inventarisatie, nog niet doen)
+
+> Snapshot 10 sept 2026. **PUUR TER INFO** — niets van deze lijst nu aanraken.
+> Bevestigd: geen enkele wijziging aan werkende code gemaakt bij het opstellen.
+> Gebruiken pas ná closed test + productielaunch, in kleine PR's met device-test.
+
+**Categorie A — dode code / ongebruikte imports (ooit veilig weg)**
+
+| # | Wat + waar | Achter flag? | Elders gebruikt? | Toelichting |
+|---|---|---|---|---|
+| A1 | Unused import `'../../data/labels.dart'` — `lib/screens/familie/familie_scherm.dart:31` | nee | analyzer: geen | 1-regel weg |
+| A2 | Ongebruikt veld `_isAccountMaker` — `familie_scherm.dart:3728` (wordt gezet op :3769 maar nergens gelezen) | nee | analyzer: geen | veld + setState-regel weg; `_benIkEigenaar` dekt eigenaar-checks |
+| A3 | Ongebruikte optionele params `initial`/`bestaand` op `_NieuwMomentDialog` — `familie_scherm.dart:4665` | nee | analyzer: nooit meegegeven | dialog wordt alleen zonder args opgeroepen; params + init-lezers versimpelen |
+| A4 | Ongebruikte optionele params `initial`/`bestaand` op `_EenmaligMomentDialog` — `familie_scherm.dart:4804` | nee | analyzer: nooit meegegeven | idem A3 |
+| A5 | `test/widget_test.dart` — Flutter counter-boilerplate; verwijst naar niet-bestaande `MyApp` + unused import van `main.dart` | nee | build: geen | complete file kan weg óf vervangen door echte test |
+
+**Categorie B — test-hulpmiddel achter flag (laten staan, veilig zolang flag uit)**
+
+| # | Wat + waar | Achter flag? | Elders gebruikt? | Toelichting |
+|---|---|---|---|---|
+| B1 | `DEBUG_AUDIO` toast-diagnose — `debug_flags.dart:3` (=false). Gate op `familie_scherm.dart:271` + `tablet_scherm.dart:302` | ✓ (=false) | 2 aanroepen | veilig te houden; ooit weg als iOS-audio bewezen stabiel |
+| B2 | `DEBUG_FORCE_LOGOUT` — `debug_flags.dart:7` (=false). Gate op `main.dart:648` | ✓ (=false) | 1 aanroep | veilig te houden; ooit weg als force-logout-flow stabiel |
+| B3 | `DEBUG_TESTMODUS` + heel test-modus-blok — `debug_flags.dart:12` (=false). UI-panel `familie_scherm.dart:1626-1654` (Switch), veld `_testModus` :1133 | ✓ UI gate (=false) | veld wél gelezen door `!_testModus`-branches (1696, 2403, 2414) + `'testModus'`-veld in payload (2216, 2409, 2742) + `functions/src/index.ts:56` (skip-check) | UI-blok is dood zolang flag uit; veld/payload MAG NIET WEG — server + planning-logica leest het. Later kan het UI-blok versimpeld naar één regel of het hele mechanisme geschrapt worden |
+| B4 | `DEBUG_BEL_DEV` — `debug_flags.dart:54` (=false). Ontgrendelt Bel-diagnose menu-item (familie_scherm.dart:4051) + callkit dev long-press-toggle (:4069) | ✓ (=false) | 2 gates | veilig te houden achter flag; hangt aan C1/C2/C3 opruiming |
+| B5 | `DEBUG_KIOSK` — `debug_flags.dart:29` (=true) → **moet naar false vóór bredere release** (staat al in FASE D-checklist). Gate op `tablet_scherm.dart:71, 269` | ✓ (=true) | 2 gates | flag flippen; code zelf blijft (feature) |
+| B6 | `DEBUG_VIDEOBELLEN` — `debug_flags.dart:20` (=true) → **moet naar false vóór bredere release** (of vervangen door Firestore-config in V6, staat in FASE D). Gates in main.dart, familie_scherm.dart, tablet_scherm.dart, video_call_service.dart | ✓ (=true) | 5+ gates | flag flippen; code blijft (feature) |
+| B7 | `CALLKIT_HARD_UIT` — `debug_flags.dart:43` (=true, permanent). "Kill-switch Optie B", bewust bewaard voor archief | ✓ (=true) | leest logica in push_service, callkit_flag_service | LATEN — bewuste keuze in CLAUDE.md architectuur-sectie |
+
+**Categorie C — bewaren tot na closed test (dan pas beoordelen)**
+
+| # | Wat + waar | Achter flag? | Elders gebruikt? | Toelichting |
+|---|---|---|---|---|
+| C1 | `BelLogService` — `lib/services/bel_log_service.dart` (80 regels, SharedPreferences rollende log) | nee (log is altijd aan) | ~50 aanroepen: main.dart (7), push_service.dart (22), video_call_service.dart (5), bel_scherm.dart (4), gesprek_scherm.dart (4), bel_diagnose_scherm.dart (2) | wachten op groene device-testen; daarna alle `BelLogService.log(...)`-aanroepen + service weghalen, of achter `DEBUG_BEL_DEV` gaten |
+| C2 | `BelDiagnoseScherm` — `lib/screens/videobellen/bel_diagnose_scherm.dart` (403 regels) | ✓ (`DEBUG_VIDEOBELLEN && DEBUG_BEL_DEV`) | 1 nav-push (familie_scherm.dart:4054) | complete bestand + import + menu-item weg zodra bel-flow productie-groen |
+| C3 | `_toonCallkitDevToggle` dialog + long-press op logo — `familie_scherm.dart:4069-4143` | ✓ (`DEBUG_BEL_DEV`) | intern (long-press) | dialog + GestureDetector weg; logo blijft |
+| C4 | `FullScreenIntentService.forceerPromptVoorTest` (regel 34) + `resetGuardVoorTest` (regel 84) | nee (methods niet gegated, maar alleen aangeroepen vanuit BelDiagnoseScherm) | 1 call (bel_diagnose_scherm.dart:121) | verwijderen samen met C2; `controleerEnPromptAlsNodig` blijft |
+| C5 | `CallkitFlagService` — `lib/services/callkit_flag_service.dart` (140+ regels, Firestore-flag + SharedPreferences override) | ↔ `CALLKIT_HARD_UIT=true` neutraliseert effect | main.dart (warmup), push_service.dart (2× read), familie_scherm.dart (dev-toggle-dialog) | code + import weg zodra callkit-archief officieel geschrapt (samen met C6/C7) |
+| C6 | `BelCallkitService` — `lib/services/bel_callkit_service.dart` (~350 regels, callkit-plumbing) | ↔ `CALLKIT_HARD_UIT=true` | main.dart (warmup+events+replay), push_service.dart (show+beeindig), video_call_service.dart (beeindigAlles) | leven aan Optie B; bewust bewaard voor archief (CLAUDE.md-sectie "NIET meer proberen"). Pas weghalen als iOS-traject callkit definitief niet inruilt |
+| C7 | Dep `flutter_callkit_incoming` in pubspec.yaml | ↔ CALLKIT_HARD_UIT | wordt geïmporteerd door C6 + FullScreenIntentService (voor `canUseFullScreenIntent` — WEL nodig) | pas weg als FSI-check via andere plugin/kanaal komt |
+| C8 | `Battery-optimalisatie`-tegel in `BelDiagnoseScherm:207-237` (dubbelt met `toestemmingen_setup_scherm.dart:161-170` = productie-versie) | ✓ via C2 | productie-versie in setup blijft | verdwijnt automatisch met C2 |
+| C9 | 78 losse `debugPrint(...)`-calls in `lib/**/*.dart`: bel_callkit_service (26), push_service (18), uitnodiging_service (7), full_screen_intent_service (5), kring_service (4), bel_log_service (4), device_modus_service (3), callkit_flag_service (3), verificatie_gate_service (2), bel_diagnose_scherm (2), familie_scherm (2), widgets/video_speler (1), video_call_service (1) | nee | log alleen zichtbaar via ADB/logcat | in release-build zijn `debugPrint`-calls al goedkoop (kDebugMode-gate intern). Optioneel later filteren; NIET nu, geeft géén productie-issue |
+
+**Overzicht per categorie**: A = 5 items · B = 7 items · C = 9 items.
+
+**Bekende non-items** (bewust GEEN opruim-punt):
+- Geen `TODO`/`FIXME`/`XXX`-markers in `lib/` (grep leeg — nette repo).
+- Geen losse `print(...)` calls buiten `debugPrint`.
+- `_testModus`-veld + `testModus`-payload-veld: functioneel gebruikt door
+  server + planning-logica (functions/src/index.ts:56). NIET weghalen bij
+  DEBUG_TESTMODUS-cleanup — alleen de UI-switch.
 
 ## Post-launch ideeën (bij groei, niet nu)
 
