@@ -2,6 +2,97 @@
 
 > Dit bestand is het permanente geheugen voor elke Claude-sessie in dit project. Lees dit eerst voordat je iets doet.
 
+## ⚠️ DEADLINE — vóór 1 nov 2026
+
+**FLUTTER-UPGRADE + BILLING LIBRARY 8 MOET vóór 1 nov 2026.**
+
+Google Play-verlenging aangevraagd (11 sept 2026): Billing 7.1.1 → moet
+naar 8.0.0+. Extensie loopt tot **1 nov 2026** — daarna geen uploads meer.
+
+Er is **GEEN** purchases_flutter-versie die Billing 8 meebrengt binnen
+Flutter 3.19.6 / Dart 3.3.4. purchases_flutter 9.0.0+ vereist
+**Flutter 3.22.0 / Dart 3.4.0** (breaking bump) en raakt bijna zeker ook
+firebase_*, intl en record mee (zie memory-notitie
+[[reference-flutter-versie-stack]]).
+
+**Traject** — in een APARTE branch, vóór abonnementen-activatie
+(FASE D-2 t/m D-6) EN vóór 1 nov 2026:
+
+1. Flutter SDK 3.19.6 → 3.22.x (lokaal + Codemagic-config).
+2. `flutter clean && flutter pub upgrade --major-versions`.
+3. purchases_flutter 8.11.0 → 9.x.
+4. Verwacht meebumpen: firebase_core/auth/firestore/storage/messaging/
+   crashlytics, intl (0.18.1 → nieuwer), record (5.1.0 → nieuwer),
+   mogelijk livekit_client + flutter_callkit_incoming.
+5. **VOLLEDIGE regressie-test** op echt toestel: signup (familie),
+   gast-signup via code, bellen rustige + gewone modus, kiosk-uitgang
+   + failsafe-herpin, meldingen (incl. badge + largeIcon), dagklok
+   weekstrip + dagoverzicht, plannen momenten (dagelijks + eenmalig,
+   alle 5 mediatypen).
+6. Codemagic-release-build → upload → verifieer in Play Console dat de
+   Billing 7.x-waarschuwing weg is en Billing 8+ meekomt.
+
+Werk-inschatting: **~1-2 volle dagen** inclusief regressie-test.
+
+**Wat NIET doen:**
+- ❌ Direct op `main` werken zonder regressie-test — zie sessielog
+  15 mei 2026: 10 rode builds op één dag toen dit werd overgeslagen.
+- ❌ Tegelijk met abonnementen-activatie (FASE D-2..D-6) — te veel
+  variabelen tegelijk als iets stuk gaat.
+- ❌ Gradle-override op Billing Library met purchases_flutter 8.11.0
+  laten staan — RevenueCat 8.11.0 is tegen Billing 7 API's
+  gecompileerd, Billing 8 heeft APIs verwijderd → runtime-crashes.
+
+### ROUTE D UITGEVOERD (11 sept 2026)
+
+`purchases_flutter` (RevenueCat) is TIJDELIJK uit de app gehaald omdat
+Play Billing Library 7.1.1 een blokkerende upload-fout gaf ("moet 8.0.0+")
+in Play Console → Gesloten testrelease, en er geen verlenging-optie
+beschikbaar was in de Console. Reden: `purchases_flutter 8.11.0` brengt
+Billing 7.x mee; `purchases_flutter 9.x` (met Billing 8) vereist
+Flutter 3.22 / Dart 3.4 (breaking upgrade — zie bovenstaand traject).
+
+**Wat is er precies gebeurd** (commits volgen deze note):
+- `purchases_flutter: 8.11.0` uitgecommentarieerd in `pubspec.yaml`.
+- `import 'package:purchases_flutter/purchases_flutter.dart'` uit
+  `main.dart` verwijderd.
+- `_initRevenueCat()`-functie + `unawaited(_initRevenueCat())` call
+  uit `main.dart` verwijderd.
+- `kRevenueCatAndroidKey` / `kRevenueCatIosKey`-constants BEWAARD
+  voor snelle terugzet zonder key-management aan te raken.
+- `defaultTargetPlatform` / `TargetPlatform`-imports opgeschoond
+  (waren alleen door `_initRevenueCat` gebruikt).
+
+**Gevolg NU**:
+- **BILLING-permissie tijdelijk uit de APK** — geen probleem zolang de
+  betaalknop in `PakketKeuzeScherm` disabled is en er geen abonnementen
+  actief verkocht worden.
+- **Play Console-upload werkt weer** — de kringLeden-fix (`6933569`)
+  en signup-fix (`3f1dd01`) kunnen op het test-toestel getest worden.
+- RevenueCat-dashboard-koppeling (Google Play service-account) staat
+  LOS hiervan en kan gewoon afgemaakt worden — abonnementen aanmaken
+  in Play Console / RevenueCat vereist de library NIET in de app.
+
+**TERUGZETTEN bij FASE D (betaalsysteem activeren, vóór 1 nov 2026)**
+als ÉÉN gebundeld traject op aparte branch:
+
+1. Flutter 3.19.6 → 3.22.x (lokaal + Codemagic-config).
+2. `flutter clean && flutter pub upgrade --major-versions`.
+3. `purchases_flutter: ^9.x` terug in pubspec.yaml (brengt Billing 8
+   + BILLING-permissie automatisch terug in de APK-manifest).
+4. Import + `unawaited(_initRevenueCat())` + `_initRevenueCat()`-
+   functie terug in `main.dart` (was letterlijk 30 regels;
+   git-history heeft de exacte code op commit `d6f8ab7`).
+5. Verwacht meebumpen: firebase_*/intl/record — zie
+   [[reference-flutter-versie-stack]].
+6. VOLLEDIGE regressie-test: signup, gast-signup, bellen rustig+gewoon,
+   kiosk, meldingen, dagklok, plannen momenten.
+7. Codemagic-build → upload → verifieer dat de Billing-waarschuwing
+   weg is en Billing 8+ meekomt.
+
+**NIET op main zonder regressie-test** — zie hoofdregel bovenaan deze
+sectie.
+
 ## Het doel
 
 Ons Moment is een digitale knuffel voor mensen met dementie, verstandelijke beperking of erge vergeetachtigheid — en hun familie die zich machteloos voelt op afstand.
@@ -913,6 +1004,30 @@ server-only tier/abonnement) is klaar** (commit bb5948a, 8 sept 2026).
       onsmoment.app; Rich Results Test groen voor schema-data.
 - [ ] NOOIT DNS naar Lovable wijzen (185.158.133.1 / _lovable CNAME) —
       domein blijft bij Netlify. Lovable alleen als editor gebruiken.
+
+### Vóór de closed test (gast-fase)
+
+Kleine gast-blockers die de eigenaar zelf nooit voelt maar wél opduiken
+zodra echte gasten (via uitnodig-code) meedoen. Timing bewust NA FASE E
+en VÓÓR FASE F closed test — te vroeg fixen levert niks op, te laat
+betekent bugreports van de eerste testers.
+
+- [ ] **ORPHAN-APPARATEN OPRUIMEN**: apparaat-docs zonder geldig kringId
+      (of met een vreemd kringId) verstoren de bel-lijst voor GASTEN. Uit
+      de audit (sept 2026, commits `3f1dd01` + `6933569`): de rules-engine
+      kan bij een `.collection('apparaten').get()` de per-doc-filter op
+      `resource.data.kringId` niet statisch bewijzen als er docs zonder
+      valide kringId in de subcollectie staan → weigert de héle lijst
+      voor niet-eigenaars. Voor de eigenaar zelf werkt het toch (eerste
+      rule-tak `auth.uid == uid`), dus het is nu **onzichtbaar** — maar
+      echte gasten krijgen een lege of geweigerde bel-lijst.
+      Actie: eenmalige opruimscript óf runtime-filter die orphan-docs
+      (kringId leeg / kringId wijst naar niet-bestaande kring) verwijdert
+      of maskeert. Zie ook "Openstaande punten → Orphan-cleanup dry-run"
+      voor de 17 geïdentificeerde docs en 2 beschermde apparaten
+      (telefoon "j", tablet "Madeira").
+      Geen live-blocker, wél gast-blocker. Doen vóór de eerste
+      uitnodig-code naar externe testers gaat.
 
 ### FASE F — Google Play live
 
