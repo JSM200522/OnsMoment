@@ -142,40 +142,62 @@ class _KringAanmakenSchermState extends State<KringAanmakenScherm> {
         proefStartOntbreekt = data?['proefStart'] == null;
       } catch (_) {}
 
-      final batch = FirebaseFirestore.instance.batch();
-      KringService.voegKringMetEigenaarToeAanBatch(
-        batch: batch,
-        kringId: kringId,
-        eigenaarUid: uid,
-        ontvangerNaam: naam,
-        foto: fotoUrl,
-        noodcontactNaam: _noodNaamCtrl.text.trim(),
-        noodcontactTel: _noodTelCtrl.text.trim(),
-        herkenningsgeluid: _gekozenGeluid,
-        eigenaarNaam: eigenaarNaam,
-      );
-      // Server-side teller: Firestore-rules checken kringAantal < tierLimit.
-      // proefStart-backfill voor gast-die-eigenaar-wordt zodat het
-      // PakketKeuzeScherm de 14-dagen teller kan tonen en de trial-lock
-      // (FASE C) niet direct dichtklapt.
+      // FIX-signup-batch (sept 2026): niet één grote batch — Firestore-
+      // rules evalueren batch-writes tegen de PRE-batch state, dus
+      // isEigenaar (op leden-create) en isLid (op dagelijkse_momenten)
+      // faalden omdat kringen/{K} en leden/{uid} in dezelfde batch pas
+      // werden aangemaakt. Zelfde patroon als setup_wizard: 3 stappen
+      // waarbij elke volgende leest wat de vorige heeft gecommitteerd.
+      final kringRef =
+          FirebaseFirestore.instance.collection('kringen').doc(kringId);
+      final gebruikersRef =
+          FirebaseFirestore.instance.collection('gebruikers').doc(uid);
+
+      // Batch A — kringen + gebruikers.update(kringAantal++).
+      // Rule tierKringLimietOk leest gebruikers pre-batch: bestaande
+      // kringAantal < maxKringen (client heeft dat al gecheckt op :108).
+      // Update-rule staat kringAantal-verhoging toe.
+      final batchA = FirebaseFirestore.instance.batch();
+      batchA.set(kringRef,
+          KringService.bouwKringMap(
+            kringId: kringId,
+            eigenaarUid: uid,
+            ontvangerNaam: naam,
+            foto: fotoUrl,
+            noodcontactNaam: _noodNaamCtrl.text.trim(),
+            noodcontactTel: _noodTelCtrl.text.trim(),
+            herkenningsgeluid: _gekozenGeluid,
+          ));
       final gebruikersUpdate = <String, Object>{
         'kringAantal': FieldValue.increment(1),
       };
       if (proefStartOntbreekt) {
         gebruikersUpdate['proefStart'] = FieldValue.serverTimestamp();
       }
-      batch.update(
-          FirebaseFirestore.instance.collection('gebruikers').doc(uid),
-          gebruikersUpdate);
+      batchA.update(gebruikersRef, gebruikersUpdate);
+      await batchA.commit();
 
+      // Write B — eigenaar-membership. Rule isEigenaar leest kringen/{K}
+      // dat nu bestaat (batch A gecommitteerd) → passes.
+      await kringRef.collection('leden').doc(uid).set(
+          KringService.bouwEigenaarMembershipMap(
+            eigenaarUid: uid,
+            eigenaarNaam: eigenaarNaam,
+          ));
+
+      // Batch C — dagelijkse_momenten. Rule isLid leest leden/{uid} dat
+      // nu bestaat → passes. Als deze batch faalt: kring werkt, alleen
+      // default items ontbreken — user kan zelf toevoegen via
+      // Momenten beheren.
       const defaults = [
         {'emoji': '☀️', 'label': 'Goedemorgen', 'uur': 8,  'minuut': 30},
         {'emoji': '☕', 'label': 'Tijd voor koffie', 'uur': 10, 'minuut': 0},
         {'emoji': '🍽️', 'label': 'Lunchtijd', 'uur': 12, 'minuut': 30},
         {'emoji': '🌙', 'label': 'Welterusten', 'uur': 20, 'minuut': 0},
       ];
+      final batchC = FirebaseFirestore.instance.batch();
       for (final m in defaults) {
-        batch.set(
+        batchC.set(
             FirebaseFirestore.instance.collection('dagelijkse_momenten').doc(),
             {
               'kringId': kringId,
@@ -190,8 +212,7 @@ class _KringAanmakenSchermState extends State<KringAanmakenScherm> {
               'aangemaaktOp': FieldValue.serverTimestamp(),
             });
       }
-
-      await batch.commit();
+      await batchC.commit();
 
       // V9 2.2b: switch direct naar de nieuwe kring. De notifier in
       // DeviceModusService triggert _FamilieSchermState + NotitiesTab om

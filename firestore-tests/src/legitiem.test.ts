@@ -4,8 +4,10 @@
  */
 import {
   assertSucceeds,
+  assertFails,
   RulesTestEnvironment,
 } from '@firebase/rules-unit-testing';
+import { writeBatch, serverTimestamp } from 'firebase/firestore';
 import {
   maakTestOmgeving,
   seedData,
@@ -333,6 +335,118 @@ describe('gebruikers', () => {
         aangemaaktOp: new Date(),
       }),
     );
+  });
+
+  // REGRESSION-GUARD: het OUDE registratie-patroon (alles in één
+  // WriteBatch) MOET onder de huidige rules falen — Firestore evalueert
+  // batch-writes tegen pre-batch state, dus isEigenaar/isLid op docs die
+  // in dezelfde batch worden aangemaakt geven een evaluation error.
+  // Deze test verandert nooit → als hij ooit stiekem gaat slagen zijn de
+  // rules per ongeluk permissief gemaakt en verdient het onderzoek.
+  test('L27b-bis: OUDE single-batch signup FAALT (regression-guard, mag niet stilzwijgend slagen)', async () => {
+    await env.clearFirestore();
+    const db = alsNieuweGast(env).firestore();
+    const nieuweKringId = 'oudeSingleBatchKring';
+    const batch = writeBatch(db);
+    batch.set(doc(db, 'gebruikers', NIEUWE_GAST_UID), {
+      email: 'nieuw@test.nl',
+      familieNaam: 'Sara',
+      accountType: 'familie',
+      tier: 'klein',
+      kringAantal: 1,
+      aangemaaktOp: serverTimestamp(),
+      proefStart: serverTimestamp(),
+    });
+    batch.set(doc(db, 'kringen', nieuweKringId), {
+      eigenaarUid: NIEUWE_GAST_UID,
+      naam: 'Oma',
+      herkenningsgeluid: 'twinkel',
+      type: 'familie',
+      modus: 'vergrendeld',
+      aangemaaktOp: serverTimestamp(),
+    });
+    batch.set(doc(db, 'kringen', nieuweKringId, 'leden', NIEUWE_GAST_UID), {
+      userUid: NIEUWE_GAST_UID,
+      rol: 'eigenaar',
+      gejoindOp: serverTimestamp(),
+      uitgenodigdDoor: null,
+      weergaveNaam: 'Sara',
+    });
+    batch.set(doc(collection(db, 'dagelijkse_momenten')), {
+      kringId: nieuweKringId,
+      emoji: '☀️',
+      label: 'Goedemorgen',
+      uur: 8,
+      minuut: 30,
+      actief: true,
+      aangemaaktOp: serverTimestamp(),
+    });
+    await assertFails(batch.commit());
+  });
+
+  // KRITIEK: reproduceert de NIEUWE setup_wizard._familieRegistreren
+  // registratie-flow (3 sequentiële batches). Faalt deze test → geen
+  // enkele nieuwe familie-gebruiker kan een account aanmaken. LAUNCH-BLOCKER.
+  test('L27b-ter: NIEUWE signup-flow (3 sequentiële batches: gebruiker+kring → leden → dagelijkse_momenten) SLAAGT', async () => {
+    await env.clearFirestore();
+    const db = alsNieuweGast(env).firestore();
+    const nieuweKringId = 'nieuweSequentieleKring';
+
+    // Batch A — gebruikers (create) + kringen (create).
+    const batchA = writeBatch(db);
+    batchA.set(doc(db, 'gebruikers', NIEUWE_GAST_UID), {
+      email: 'nieuw@test.nl',
+      familieNaam: 'Sara',
+      gebruikersNaam: 'Sara',
+      ontvangerNaam: 'Oma',
+      ontvangerFoto: '',
+      noodcontactNaam: '',
+      noodcontactTel: '',
+      herkenningsgeluid: 'twinkel',
+      accountType: 'familie',
+      tier: 'klein',
+      kringAantal: 1,
+      aangemaaktOp: serverTimestamp(),
+      proefStart: serverTimestamp(),
+    });
+    batchA.set(doc(db, 'kringen', nieuweKringId), {
+      eigenaarUid: NIEUWE_GAST_UID,
+      naam: 'Oma',
+      herkenningsgeluid: 'twinkel',
+      type: 'familie',
+      modus: 'vergrendeld',
+      aangemaaktOp: serverTimestamp(),
+    });
+    await assertSucceeds(batchA.commit());
+
+    // Write B — eigenaar-membership. Kring bestaat nu.
+    await assertSucceeds(
+      setDoc(doc(db, 'kringen', nieuweKringId, 'leden', NIEUWE_GAST_UID), {
+        userUid: NIEUWE_GAST_UID,
+        rol: 'eigenaar',
+        gejoindOp: serverTimestamp(),
+        uitgenodigdDoor: null,
+        weergaveNaam: 'Sara',
+      }),
+    );
+
+    // Batch C — dagelijkse_momenten. Leden-doc bestaat nu → isLid=true.
+    const batchC = writeBatch(db);
+    for (let i = 0; i < 4; i++) {
+      batchC.set(doc(collection(db, 'dagelijkse_momenten')), {
+        kringId: nieuweKringId,
+        emoji: '☀️',
+        label: 'Moment ' + i,
+        uur: 8 + i * 3,
+        minuut: 0,
+        mediaType: '',
+        mediaUrl: '',
+        tekstBericht: '',
+        actief: true,
+        aangemaaktOp: serverTimestamp(),
+      });
+    }
+    await assertSucceeds(batchC.commit());
   });
 
   // D-1: legitieme updates die tier/abonnement NIET raken blijven werken.

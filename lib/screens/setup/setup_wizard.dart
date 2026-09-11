@@ -823,12 +823,28 @@ class _SetupWizardState extends State<SetupWizard> {
         }
       }
 
-      // Profiel + dagelijkse momenten atomair via WriteBatch.
-      // Bij fail wordt de auth-user in de catch hieronder weer verwijderd
-      // zodat retry met dezelfde email mogelijk blijft.
-      final batch = FirebaseFirestore.instance.batch();
-      batch.set(
-          FirebaseFirestore.instance.collection('gebruikers').doc(uid), {
+      // FIX-signup-batch (sept 2026): niet één grote WriteBatch meer.
+      // Firestore-rules evalueren elke write in een batch tegen de
+      // PRE-batch database-state — geen intra-batch get()/exists(). De
+      // leden-create-rule (isEigenaar) leest kringen/{K}, en de
+      // dagelijkse_momenten-create-rule (isLid) leest kringen/{K}/leden/{uid}.
+      // Beide docs worden in de setup-batch aangemaakt, dus die reads
+      // faalden ("evaluation error"). Oplossing: 3 sequentiële batches
+      // waarbij elke volgende batch leest wat de vorige heeft
+      // gecommitteerd. Rollback bij failure: auth-user delete (catch
+      // hieronder) — orphan Firestore-docs zijn zonder auth onbereikbaar
+      // en retry met dezelfde email werkt door de auth-cleanup.
+      final gebruikersRef =
+          FirebaseFirestore.instance.collection('gebruikers').doc(uid);
+      final kringId = KringService.genereerKringId();
+      final kringRef =
+          FirebaseFirestore.instance.collection('kringen').doc(kringId);
+
+      // Batch A — gebruikers + kringen atomair. tierKringLimietOk leest
+      // gebruikers pre-batch (bestaat nog niet) → huidigAantal=0 → 0<1=true.
+      // kringAantal=1 in de gebruikers-write matcht post-batch de realiteit.
+      final batchA = FirebaseFirestore.instance.batch();
+      batchA.set(gebruikersRef, {
         'email': _emailCtrl.text.trim(),
         'familieNaam': _naamCtrl.text.trim(),
         'gebruikersNaam': _naamCtrl.text.trim(),
@@ -843,24 +859,32 @@ class _SetupWizardState extends State<SetupWizard> {
         'aangemaaktOp': FieldValue.serverTimestamp(),
         'proefStart': FieldValue.serverTimestamp(),
       });
+      batchA.set(kringRef,
+          KringService.bouwKringMap(
+            kringId: kringId,
+            eigenaarUid: uid,
+            ontvangerNaam: _ontvangerNaamCtrl.text.trim(),
+            foto: profielFotoUrl,
+            noodcontactNaam: _noodNaamCtrl.text.trim(),
+            noodcontactTel: _noodTelCtrl.text.trim(),
+            herkenningsgeluid: _gekozenGeluid,
+          ));
+      await batchA.commit();
 
-      // V9 schema: kring + eigenaar-membership atomair in batch.
-      // KringId wordt teruggegeven zodat dagelijkse_momenten hieronder
-      // hetzelfde id meekrijgen. eigenaarNaam (V9 2.8-a-1) belandt als
-      // weergaveNaam in de eigenaar-leden-doc voor de kringleden-lijst.
-      final kringId = KringService.voegKringMetEigenaarToeAanBatch(
-        batch: batch,
-        eigenaarUid: uid,
-        ontvangerNaam: _ontvangerNaamCtrl.text.trim(),
-        foto: profielFotoUrl,
-        noodcontactNaam: _noodNaamCtrl.text.trim(),
-        noodcontactTel: _noodTelCtrl.text.trim(),
-        herkenningsgeluid: _gekozenGeluid,
-        eigenaarNaam: _naamCtrl.text.trim(),
-      );
+      // Write B — eigenaar-membership. Rule isEigenaar leest kringen/{K}
+      // dat nu bestaat en eigenaarUid=uid heeft → passes.
+      await kringRef.collection('leden').doc(uid).set(
+          KringService.bouwEigenaarMembershipMap(
+            eigenaarUid: uid,
+            eigenaarNaam: _naamCtrl.text.trim(),
+          ));
 
+      // Batch C — dagelijkse_momenten. Rule isLid leest leden/{uid} dat
+      // nu bestaat → passes. Als deze batch faalt: user heeft werkend
+      // account, mist alleen default items — geen fatale error.
+      final batchC = FirebaseFirestore.instance.batch();
       for (final m in _momenten) {
-        batch.set(
+        batchC.set(
             FirebaseFirestore.instance.collection('dagelijkse_momenten').doc(),
             {
           'kringId': kringId,
@@ -875,7 +899,7 @@ class _SetupWizardState extends State<SetupWizard> {
           'aangemaaktOp': FieldValue.serverTimestamp(),
         });
       }
-      await batch.commit();
+      await batchC.commit();
 
       if (fotoUploadFaalde && mounted) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(

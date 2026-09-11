@@ -17,32 +17,25 @@ class KringService {
   static String genereerKringId() =>
       FirebaseFirestore.instance.collection('kringen').doc().id;
 
-  /// Voegt een nieuwe kring + eigenaar-membership toe aan een meegegeven
-  /// WriteBatch. Atomic met alle andere writes in dezelfde batch — caller
-  /// committet zelf.
+  /// Bouwt de Firestore-map voor een nieuwe kring — zonder te schrijven.
+  /// Caller committet zelf via `set(kringRef, map)` of `batch.set(...)`.
   ///
-  /// Pure refactor van wat eerder inline in setup_wizard._familieRegistreren
-  /// gebeurde. Geen gedrag-wijziging: zelfde velden, zelfde collecties,
-  /// zelfde aangemaaktOp = serverTimestamp.
-  ///
-  /// Returns: de gegenereerde (of meegegeven) kringId zodat andere writes
-  /// in dezelfde batch hem kunnen hergebruiken (bv. dagelijkse_momenten).
-  static String voegKringMetEigenaarToeAanBatch({
-    required WriteBatch batch,
+  /// Waarom apart van [bouwEigenaarMembershipMap]: Firestore-rules
+  /// evalueren batch-writes tegen de PRE-batch state. De leden-create-
+  /// rule (`isEigenaar`) leest `kringen/{K}` — die moet dus AL bestaan
+  /// vóórdat de leden-write wordt beoordeeld. Setup_wizard schrijft
+  /// daarom eerst de kring (batch A) en pas dan de eigenaar-membership.
+  static Map<String, dynamic> bouwKringMap({
+    required String kringId,
     required String eigenaarUid,
     required String ontvangerNaam,
     String? foto,
     String? noodcontactNaam,
     String? noodcontactTel,
     String herkenningsgeluid = 'twinkel',
-    String? kringId,
-    String eigenaarNaam = '',
   }) {
-    final id = kringId ?? genereerKringId();
-    final kringRef = FirebaseFirestore.instance.collection('kringen').doc(id);
-
     final kring = Kring(
-      id: id,
+      id: kringId,
       naam: ontvangerNaam,
       foto: (foto == null || foto.isEmpty) ? null : foto,
       noodcontactNaam: (noodcontactNaam == null || noodcontactNaam.isEmpty)
@@ -60,8 +53,16 @@ class KringService {
     );
     final kringMap = kring.toFirestoreMap(bijUpdate: true);
     kringMap['aangemaaktOp'] = FieldValue.serverTimestamp();
-    batch.set(kringRef, kringMap);
+    return kringMap;
+  }
 
+  /// Bouwt de Firestore-map voor een eigenaar-membership — zonder te
+  /// schrijven. Caller committet zelf; zie [bouwKringMap] voor de reden
+  /// waarom kring en leden apart geschreven moeten worden.
+  static Map<String, dynamic> bouwEigenaarMembershipMap({
+    required String eigenaarUid,
+    String eigenaarNaam = '',
+  }) {
     final membership = Membership(
       userUid: eigenaarUid,
       rol: AccountRol.eigenaar,
@@ -69,11 +70,7 @@ class KringService {
       uitgenodigdDoor: null,
       weergaveNaam: eigenaarNaam.isEmpty ? null : eigenaarNaam,
     );
-    batch.set(
-        kringRef.collection('leden').doc(eigenaarUid),
-        membership.toFirestoreMap(bijCreate: true));
-
-    return id;
+    return membership.toFirestoreMap(bijCreate: true);
   }
 
   /// V9 2.8-a-1: verwijdert een membership-doc uit een kring. Wordt
