@@ -4,8 +4,12 @@ publish_to: 'none'
 version: 1.0.60+71
 
 environment:
-  sdk: '>=3.3.0 <4.0.0'
-  flutter: '>=3.19.0'
+  # FASE D-1 (12 sept 2026): Dart 3.4 / Flutter 3.22 vereist voor
+  # purchases_flutter ^9.x (die Billing Library 8 meebrengt vóór de
+  # deadline van 1 nov 2026). Zie CLAUDE.md "⚠️ DEADLINE — vóór
+  # 1 nov 2026". Route D wordt in deze branch omgekeerd.
+  sdk: '>=3.4.0 <4.0.0'
+  flutter: '>=3.22.0'
 
 dependencies:
   flutter:
@@ -51,13 +55,12 @@ dependencies:
   # dit moet _appVersie handmatig meebumpen bij elke release; met dit
   # leest de app 'm uit de gemergde manifest. Compatibel met Dart 3.3.4.
   package_info_plus: ^8.0.2
-  # Route D (11 sept 2026): purchases_flutter TIJDELIJK verwijderd omdat
-  # 8.11.0 Play Billing Library 7.1.1 meebrengt, en Play Console sinds
-  # 1 sept 2026 uploads met Billing 7.x weigert. purchases_flutter 9.x
-  # (met Billing 8) vereist Flutter 3.22 / Dart 3.4 (breaking bump).
-  # Terugzetten bij FASE D-2 gebundeld met de Flutter-upgrade, vóór
-  # 1 nov 2026. Zie CLAUDE.md "⚠️ DEADLINE — vóór 1 nov 2026".
-  # purchases_flutter: 8.11.0
+  # FASE D-1 (12 sept 2026): purchases_flutter TERUG na Flutter-upgrade.
+  # 9.x brengt Play Billing Library 8 mee (dekt de 1 nov 2026-deadline)
+  # + de com.android.vending.BILLING-permissie in de merged manifest,
+  # waardoor Play Console het aanmaken van abonnementen weer toestaat.
+  # Route D (commit 906f501) wordt in deze feature-branch omgekeerd.
+  purchases_flutter: ^9.0.0
 
 dependency_overrides:
   record_android: 1.2.0

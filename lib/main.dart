@@ -1,10 +1,12 @@
 import 'dart:async';
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart'
+    show defaultTargetPlatform, kIsWeb, TargetPlatform;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:purchases_flutter/purchases_flutter.dart';
 import 'screens/setup/setup_wizard.dart';
 import 'screens/familie/familie_scherm.dart';
 import 'screens/tablet/tablet_scherm.dart';
@@ -26,18 +28,17 @@ import 'services/video_call_service.dart';
 import 'data/debug_flags.dart';
 import 'theme/kleuren.dart';
 
-/// D-2 minimaal: RevenueCat public app-specific API-keys.
+/// FASE D-1: RevenueCat public app-specific API-keys.
 ///
-/// TIJDELIJK NIET ACTIEF (Route D, 11 sept 2026) — purchases_flutter is
-/// uit de pubspec gehaald vanwege de Play Billing 7.1.1 → 8.0.0+ upload-
-/// blocker. Zie CLAUDE.md "⚠️ DEADLINE — vóór 1 nov 2026" en de
-/// "ROUTE D UITGEVOERD"-note. Constants blijven bewaard zodat bij FASE D
-/// (purchases_flutter 9.x + Flutter 3.22 upgrade) alleen de _initRevenueCat-
-/// aanroep + import terug hoeven, zonder key-management aan te raken.
+/// Joshua haalt deze uit RevenueCat → Project settings → API keys →
+/// "Public app-specific" (per platform één). VERVANG de lege strings
+/// hieronder door de echte waarden zodra beschikbaar. Zolang de
+/// betreffende platform-key leeg is, wordt Purchases.configure
+/// overgeslagen (fail-soft) en blijft de app volledig werken.
 ///
 /// Public keys zijn bedoeld om in de client te staan — géén secret.
-/// RevenueCat's server-side webhook-secret (dat komt bij D-6) is wél
-/// geheim en hoort NIET in deze file.
+/// RevenueCat's server-side webhook-secret (bij de webhook Cloud
+/// Function) is wél geheim en hoort NIET in deze file.
 const String kRevenueCatAndroidKey = '';
 const String kRevenueCatIosKey = '';
 
@@ -89,12 +90,50 @@ void main() async {
   // call → notifier met autoAnswer=true → main-flow springt naar het
   // waarschuwingsscherm + GesprekScherm.
   unawaited(BelCallkitService.replayGeaccepteerdeCalls());
-  // Route D (11 sept 2026): _initRevenueCat + Purchases.configure zijn
-  // TIJDELIJK verwijderd omdat purchases_flutter 8.11.0 Play Billing 7.1.1
-  // meebrengt, en Play Console daar sinds 1 sept 2026 uploads op weigert.
-  // Terugzetten bij FASE D-2 samen met de Flutter 3.22 / purchases_flutter
-  // 9.x upgrade — zie CLAUDE.md "⚠️ DEADLINE — vóór 1 nov 2026".
+  // FASE D-1 (12 sept 2026): RevenueCat init TERUG na Flutter-upgrade.
+  // purchases_flutter 9.x brengt Billing Library 8 mee + de
+  // com.android.vending.BILLING-permissie in de merged manifest,
+  // waardoor Play Console het aanmaken van abonnementen weer toestaat.
+  // Fail-soft: bij lege key of Purchases-fout blijft de app volledig
+  // functioneel; alleen de RevenueCat-SDK is dan slapend.
+  unawaited(_initRevenueCat());
   runApp(const OnsMomentApp());
+}
+
+/// FASE D-1 SDK-init voor RevenueCat. Fail-soft op elk pad:
+///  - web:               skip (SDK werkt niet in de browser).
+///  - lege API-key:      skip met een leesbare debug-melding.
+///  - Purchases-fout:    vangen, loggen, doorlopen.
+///
+/// Op elk platform wordt de bijbehorende public key gebruikt zodat de
+/// iOS-branche (FASE G) hier straks vanzelf mee opstart zonder verdere
+/// wijziging. Onbekende platforms (bv. desktop) worden overgeslagen.
+Future<void> _initRevenueCat() async {
+  if (kIsWeb) return;
+  final String key;
+  switch (defaultTargetPlatform) {
+    case TargetPlatform.android:
+      key = kRevenueCatAndroidKey;
+      break;
+    case TargetPlatform.iOS:
+      key = kRevenueCatIosKey;
+      break;
+    default:
+      return;
+  }
+  if (key.isEmpty) {
+    debugPrint('💳 RevenueCat: geen API-key ingesteld voor '
+        '$defaultTargetPlatform — configure overgeslagen (fail-soft)');
+    return;
+  }
+  try {
+    await Purchases.configure(PurchasesConfiguration(key));
+    debugPrint('💳 RevenueCat: SDK geïnitialiseerd voor '
+        '$defaultTargetPlatform');
+  } catch (e, st) {
+    debugPrint('⚠️ RevenueCat init faalde (fail-soft, app blijft '
+        'werken): $e\n$st');
+  }
 }
 
 class OnsMomentApp extends StatelessWidget {
