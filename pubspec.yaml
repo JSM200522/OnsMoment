@@ -71,6 +71,14 @@ dependencies:
 
 dependency_overrides:
   record_android: 1.2.0
+  # FASE D-1 (13 sept 2026): win32 5.5.0 gebruikt UnmodifiableUint8ListView
+  # die in Dart 3.13 uit dart:typed_data is verwijderd → Codemagic-build
+  # fail 3. win32 5.14+ heeft de fix. Override omdat win32 een transitieve
+  # dep is (via path_provider_windows, shared_preferences_windows) — een
+  # gewone dependencies-declaratie zou hem niet forceren.
+  # Windows-only package; wij zijn Android-first, maar de tree moet
+  # resolven anders faalt de compile.
+  win32: ^5.14.0
 
 dev_dependencies:
   flutter_test:
