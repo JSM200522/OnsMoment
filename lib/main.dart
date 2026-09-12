@@ -162,6 +162,13 @@ class _RouterSchermState extends State<RouterScherm>
   /// (voorkomt dubbele call bij cold-start waar _laadInitieel het al deed).
   /// Bij een NIEUWE uid (re-login, account-switch) → verse fcmToken +
   /// laatstActief + kringId-backfill via PushService.registreerHuidigApparaat.
+  ///
+  /// A-8 (12 sept 2026): eerst actieve kring wissen + zetten voor de
+  /// nieuwe uid. Zonder deze stap bevatte `actieveKringNotifier` nog de
+  /// kringId van gebruiker A tijdens de push-registratie van gebruiker B
+  /// → `_bepaalKringIdVoorApparaat` faalde de contains-check → schreef
+  /// `kringId: null` op B's apparaat-doc → `onNieuwMoment` skipt het
+  /// apparaat → eerste push naar B werkt niet.
   Future<void> _bijAuthWissel(User? user) async {
     if (user == null) {
       _laatstGeregistreerdeUid = null;
@@ -170,6 +177,14 @@ class _RouterSchermState extends State<RouterScherm>
     if (user.uid == _laatstGeregistreerdeUid) return;
     _laatstGeregistreerdeUid = user.uid;
     try {
+      // A-8: eerst kring-context resetten en de eigenaars-kring van de
+      // NIEUWE uid pakken vóór PushService leest via
+      // _bepaalKringIdVoorApparaat. Bij een gast (geen eigen kring)
+      // valt zetActieveKringVoorEigenaar stil terug en pakt
+      // PushService de kringId via collectionGroup mijnKringIds — met
+      // een mogelijk index-race (B-7, apart traject).
+      await DeviceModusService.wisActieveKring();
+      await DeviceModusService.zetActieveKringVoorEigenaar(user.uid);
       final apparaatId = await DeviceModusService.krijgApparaatId();
       unawaited(ApparaatService.updateLaatstActief(
           familieUid: user.uid, apparaatId: apparaatId));
