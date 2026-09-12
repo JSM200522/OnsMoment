@@ -35,6 +35,10 @@ export { cancelVideoCall } from './cancel_call';
 // subcollecties + andermans apparaten met deze kringId + Storage +
 // memberships in andermans kringen (anonymiseren) + eigen data + auth.
 export { verwijderAccount } from './verwijder_account';
+// FASE D-2 — RevenueCat webhook. Ontvangt subscription-events en
+// schrijft server-side tier/abonnement naar gebruikers/{uid} (D-1
+// rules staan client-writes op deze velden niet toe).
+export { revenuecatWebhook } from './revenuecat_webhook';
 
 /**
  * Spiegel van PushService.channelIdVoorGeluid in
