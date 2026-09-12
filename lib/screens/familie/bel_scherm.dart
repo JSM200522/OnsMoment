@@ -127,13 +127,51 @@ class _BelSchermState extends State<BelScherm> {
       }
       setState(() => _fase = _Fase.actief);
       unawaited(_startRingback());
-    } catch (e) {
+    } catch (e, st) {
+      // BEL-UX (12 sept 2026): warme user-facing melding, geen stack-
+      // trace of framework-code (`[firebase_functions/unavailable]`) meer
+      // in beeld. Volledige exception + stack blijft in BelLogService voor
+      // dev-diagnose via BelDiagnoseScherm.
+      unawaited(BelLogService.log(
+          'BelScherm start faalde: $e\n$st'));
       if (!mounted) return;
       setState(() {
         _fase = _Fase.fout;
-        _foutmelding = e.toString();
+        _foutmelding = _leesbareBelFout(e);
       });
     }
+  }
+
+  /// Vertaalt Firebase/technische fouten naar een warme, korte tekst voor
+  /// de dierbare-doelgroep. Onbekende oorzaken vallen terug op een
+  /// generieke "probeer opnieuw"-boodschap — nooit een stack-trace.
+  String _leesbareBelFout(Object e) {
+    final s = e.toString().toLowerCase();
+    if (s.contains('unavailable') ||
+        s.contains('kon doel-apparaat')) {
+      return 'Het apparaat van je dierbare reageert niet. Vraag of '
+          'het aan staat en met internet verbonden is, en probeer '
+          'het dan opnieuw.';
+    }
+    if (s.contains('permission-denied') ||
+        s.contains('alleen de dierbare')) {
+      return 'Dit gesprek kan nu niet gestart worden. Probeer het '
+          'opnieuw, of neem contact op als het blijft mislukken.';
+    }
+    if (s.contains('not-found') || s.contains('bestaat niet')) {
+      return 'Het apparaat is niet meer gekoppeld aan de kring. '
+          'Vraag je dierbare om opnieuw in te loggen.';
+    }
+    if (s.contains('failed-precondition') ||
+        s.contains('niet bereikbaar')) {
+      return 'Het apparaat van je dierbare is even niet bereikbaar. '
+          'Probeer het over een paar minuten opnieuw.';
+    }
+    if (s.contains('network') || s.contains('internet')) {
+      return 'Geen internetverbinding. Controleer je verbinding en '
+          'probeer het opnieuw.';
+    }
+    return 'Er ging iets mis. Probeer het opnieuw.';
   }
 
   Future<void> _startRingback() async {

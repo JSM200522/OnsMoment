@@ -131,17 +131,54 @@ class _RouterSchermState extends State<RouterScherm>
     with WidgetsBindingObserver {
   bool _initieelGeladen = false;
 
+  /// AUTH-1 (12 sept 2026): re-registreer PushService bij elke sign-in
+  /// (cold-start én re-login binnen dezelfde app-sessie). Zonder deze
+  /// listener behoudt het apparaat-doc de fcmToken van de vorige sessie —
+  /// bij een uitlog+opnieuw-inloggen op de ontvanger-tablet was dat een
+  /// stille bel-blocker: startVideoCall vond een geldig doel-apparaat
+  /// maar FCM.send() faalde op de stale token → 'unavailable / Kon
+  /// doel-apparaat niet bereiken'. _laadInitieel doet dit ook maar
+  /// alleen bij cold-start (initState draait één keer).
+  StreamSubscription<User?>? _authSub;
+  String? _laatstGeregistreerdeUid;
+
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _laadInitieel();
+    _authSub =
+        FirebaseAuth.instance.authStateChanges().listen(_bijAuthWissel);
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _authSub?.cancel();
     super.dispose();
+  }
+
+  /// Idempotent: negeer als het dezelfde uid is als de vorige registratie
+  /// (voorkomt dubbele call bij cold-start waar _laadInitieel het al deed).
+  /// Bij een NIEUWE uid (re-login, account-switch) → verse fcmToken +
+  /// laatstActief + kringId-backfill via PushService.registreerHuidigApparaat.
+  Future<void> _bijAuthWissel(User? user) async {
+    if (user == null) {
+      _laatstGeregistreerdeUid = null;
+      return;
+    }
+    if (user.uid == _laatstGeregistreerdeUid) return;
+    _laatstGeregistreerdeUid = user.uid;
+    try {
+      final apparaatId = await DeviceModusService.krijgApparaatId();
+      unawaited(ApparaatService.updateLaatstActief(
+          familieUid: user.uid, apparaatId: apparaatId));
+      unawaited(PushService.registreerHuidigApparaat(
+          familieUid: user.uid, apparaatId: apparaatId));
+    } catch (e) {
+      unawaited(BelLogService.log(
+          'AUTH-1 push re-register faalde bij auth-wissel: $e'));
+    }
   }
 
   /// Wist lokale notificaties + badge zodra de app naar de voorgrond komt.
