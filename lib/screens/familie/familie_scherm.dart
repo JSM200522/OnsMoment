@@ -4054,8 +4054,19 @@ class _InstellingenTabState extends State<InstellingenTab> {
             Navigator.push(context, MaterialPageRoute(
                 builder: (c) => const BelDiagnoseScherm()));
           }),
-        _item('🚪', 'Uitloggen', 'Logt uit en wist apparaat-instellingen',
-            _bevestigUitloggen),
+        // J-5 (12 sept 2026): Uitloggen alleen zichtbaar in familie-mode.
+        // In ontvanger-mode (rustige modus zonder InstellingenTab, én
+        // gewone modus mét alsOntvanger=true) verbergen we de knop, anders
+        // kan iemand met fysieke toegang tot de dierbare-tablet uitloggen
+        // → 'Familielid' kiezen in setup-wizard → eigenaar-acties doen
+        // (autoAnswer, kring verwijderen, leden verwijderen). Als de
+        // eigenaar de tablet wil resetten, doet die dat via
+        // Instellingen → Wijzig modus op zijn eigen toestel, of via
+        // fabrieksreset van de tablet.
+        if (!widget.alsOntvanger)
+          _item('🚪', 'Uitloggen',
+              'Logt uit en wist apparaat-instellingen',
+              _bevestigUitloggen),
         const SizedBox(height: 30),
         Center(child: GestureDetector(
           // BEL-B verborgen dev-toggle: long-press op logo opent de
