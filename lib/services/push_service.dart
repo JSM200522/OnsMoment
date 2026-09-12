@@ -512,6 +512,23 @@ class PushService {
     }
   }
 
+  /// B-1 (12 sept 2026): wist de gepersisteerde idToken uit SharedPrefs.
+  /// Aangeroepen bij elke signOut (via _RouterSchermState._bijAuthWissel
+  /// wanneer user == null). Zonder deze wis bleef een ~1u geldige
+  /// bearer-token in plaintext prefs staan; een aanvaller met fysieke
+  /// toegang (of geroot toestel) kon 'm gebruiken om cancelVideoCall
+  /// namens de uitgelogde user te bereiken. Fail-soft.
+  ///
+  /// Follow-up (noted): migreer naar flutter_secure_storage voor deze
+  /// bearer-token. Nu niet — vergt extra dep + iOS-Keychain-setup.
+  static Future<void> wisAchtergrondIdToken() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove(_kBelIdTokenKey);
+      await prefs.remove(_kBelIdTokenTsKey);
+    } catch (_) {}
+  }
+
   /// BEL-C3: rustige "Gemist gesprek van [naam]"-melding. Aangeroepen
   /// door InkomendGesprekScherm zodra de 35s-timeout afloopt zonder dat
   /// er is opgenomen. Bewust géén ringtone/fullScreenIntent — dit is

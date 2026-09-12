@@ -172,6 +172,10 @@ class _RouterSchermState extends State<RouterScherm>
   Future<void> _bijAuthWissel(User? user) async {
     if (user == null) {
       _laatstGeregistreerdeUid = null;
+      // B-1 (12 sept 2026): idToken uit prefs wissen bij signOut zodat
+      // het achtergrond-isolate niet meer met een 1u geldige bearer-
+      // token kan pingen namens de uitgelogde gebruiker. Fail-soft.
+      unawaited(PushService.wisAchtergrondIdToken());
       return;
     }
     if (user.uid == _laatstGeregistreerdeUid) return;
