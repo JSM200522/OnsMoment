@@ -2308,6 +2308,19 @@ class _StuurTabState extends State<StuurTab> {
         await ref.putData(bytes, SettableMetadata(contentType: contentType));
         mediaUrl = await ref.getDownloadURL();
       } else if (_type == 'video' && _mediaBytes != null) {
+        // B-10 (12 sept 2026): size-guard vóór upload. Zonder deze check
+        // laadt putData de complete video in geheugen → OOM-crash op
+        // zwakke tablets bij 4K-video (100MB+). 25MB matcht ruwweg
+        // 30-60s HD-video op moderne telefoons. Iets ruimer dan het
+        // liedjes-vangnet (15MB) want video's zijn intrinsiek groter.
+        if (_mediaBytes!.length > 25 * 1024 * 1024) {
+          if (mounted) {
+            setState(() => _bezig = false);
+            _toonFout('Deze video is te groot om te versturen — '
+                'probeer een kortere video (max 25 MB).');
+          }
+          return;
+        }
         // V9 2.23: extensie en content-type dynamisch afgeleid van de
         // originele bestandsnaam, zodat .mov (iPhone) correct wordt
         // gemarkeerd en overal afspeelt. Onbekende/afwijkende extensies
@@ -2377,6 +2390,20 @@ class _StuurTabState extends State<StuurTab> {
         // achterlaten.
         mediaUrl = await _uploadMetProgress(ref, liedBytes, 'audio/mpeg');
       } else if (_type == 'foto' && _mediaBytes != null) {
+        // B-10 (12 sept 2026): size-guard vóór upload. HEIC-foto's van
+        // recente iPhones (iOS 12+, cross-platform relevant) én RAW-
+        // foto's kunnen 10-20MB zijn. Zonder guard: OOM-risico op
+        // zwakke tablets + trage upload op 4G. 15MB is ruim voor JPG
+        // en dekt de meeste HEIC-conversies.
+        if (_mediaBytes!.length > 15 * 1024 * 1024) {
+          if (mounted) {
+            setState(() => _bezig = false);
+            _toonFout('Deze foto is te groot (${(_mediaBytes!.length /
+                (1024 * 1024)).toStringAsFixed(0)} MB). '
+                'Kies er één van maximaal 15 MB.');
+          }
+          return;
+        }
         // G-1 (12 sept 2026): kringId in het Storage-pad zodat de
         // nieuwe storage.rules membership-check per kring kan doen.
         // Legacy momenten/<ts>.<ext> blijven leesbaar via de gedoogde
