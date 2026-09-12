@@ -26,8 +26,13 @@ plugins {
     // uit Codemagic-build-fail: "Starting AGP 9+, only the new DSL
     // interface will be read. This results in a build failure...").
     id "com.android.application" version "8.11.1" apply false
-    // Kotlin 1.9.22 → 2.0.21. AGP 8.11 vereist Kotlin 2.0+.
-    id "org.jetbrains.kotlin.android" version "2.0.21" apply false
+    // Kotlin 1.9.22 → 2.0.21 (eerste bump) → 2.2.20 (Flutter 3.47.4
+    // minimum uit tweede Codemagic-build-fail: "Your project's Kotlin
+    // version (2.0.21) is lower than Flutter's minimum supported version
+    // of 2.2.20"). Kotlin 2.2.x werkt met AGP 8.11 en Gradle 8.14.
+    // kotlin-stdlib wordt automatisch door het Kotlin Gradle Plugin
+    // meegebracht in matching versie — geen aparte pin nodig.
+    id "org.jetbrains.kotlin.android" version "2.2.20" apply false
 }
 
 include ":app"
