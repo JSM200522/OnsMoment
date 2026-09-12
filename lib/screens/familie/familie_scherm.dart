@@ -32,6 +32,7 @@ import '../../data/labels.dart';
 import 'feedback_scherm.dart';
 import 'privacybeleid_scherm.dart';
 import 'verwijder_account_flow.dart';
+import '../setup/toestemmingen_setup_scherm.dart';
 import 'kringleden_scherm.dart';
 import 'kring_aanmaken_scherm.dart';
 import 'pakket_keuze_scherm.dart';
@@ -4071,6 +4072,22 @@ class _InstellingenTabState extends State<InstellingenTab> {
             'Hoe we omgaan met jouw gegevens', () {
           Navigator.push(context, MaterialPageRoute(
               builder: (c) => const PrivacybeleidScherm()));
+        }),
+        // C-1-vervolg (12 sept 2026): stroomuitval-proof checklist —
+        // bereikbaar in beide modi zodat eigenaar op de dierbare-tablet
+        // óók kan aftikken zonder complete setup te herstarten. Niet-
+        // destructief; als dierbare er per abuis op tikt: hij ziet
+        // status-vinkjes, geen risico.
+        _item('🔧', 'Instellingen voor deze tablet bijwerken',
+            'Meldingen, automatisch opnemen, opstarten na herstart', () {
+          Navigator.push(context, MaterialPageRoute(
+              builder: (c) => ToestemmingenSetupScherm(
+                    autoAnswerActief: true,
+                    weergaveModus:
+                        DeviceModusService.weergaveModusNotifier.value
+                            ?? DeviceModusService.VERGRENDELD,
+                    onKlaar: () => Navigator.of(c).pop(),
+                  )));
         }),
         _item('💬', 'Feedback en ideeën',
             'Deel wat je fijn vindt of wat beter kan', () {

@@ -5,6 +5,7 @@ import '../../data/bel_uitleg_teksten.dart';
 import '../../services/device_modus_service.dart';
 import '../../services/kiosk_service.dart';
 import '../../services/overlay_permission_service.dart';
+import '../../services/stroomuitval_service.dart';
 import '../../theme/kleuren.dart';
 import '../../widgets/normaal_scaffold.dart';
 
@@ -56,6 +57,9 @@ class _ToestemmingenSetupSchermState extends State<ToestemmingenSetupScherm>
   bool? _fsiOk;
   bool? _battOk;
   bool? _overlayOk;
+  bool? _notifOk;
+  bool? _autostartOk;
+  bool _oemHeeftAutostart = false;
   bool _bezig = false;
 
   @override
@@ -92,6 +96,9 @@ class _ToestemmingenSetupSchermState extends State<ToestemmingenSetupScherm>
         _fsiOk = true;
         _battOk = true;
         _overlayOk = true;
+        _notifOk = true;
+        _autostartOk = true;
+        _oemHeeftAutostart = false;
       });
       return;
     }
@@ -100,22 +107,36 @@ class _ToestemmingenSetupSchermState extends State<ToestemmingenSetupScherm>
     final overlay = _overlayStapNodig
         ? await OverlayPermissionService.heeftToestemming()
         : true;
+    final notif = await StroomuitvalService.notificatieToegestaan();
+    final oemNodig = await StroomuitvalService.isBlokkerendeOem();
+    final autostart = oemNodig
+        ? await StroomuitvalService.autostartAttested()
+        : true;
     if (!mounted) return;
     setState(() {
       _fsiOk = fsi;
       _battOk = batt;
       _overlayOk = overlay;
+      _notifOk = notif;
+      _oemHeeftAutostart = oemNodig;
+      _autostartOk = autostart;
     });
   }
 
   bool get _allesOk =>
-      (_fsiOk ?? false) && (_battOk ?? false) && (_overlayOk ?? true);
+      (_fsiOk ?? false) &&
+      (_battOk ?? false) &&
+      (_overlayOk ?? true) &&
+      (_notifOk ?? false) &&
+      (_autostartOk ?? true);
 
   int get _resterend {
     int r = 0;
     if (_fsiOk == false) r++;
     if (_battOk == false) r++;
     if (_overlayStapNodig && _overlayOk == false) r++;
+    if (_notifOk == false) r++;
+    if (_oemHeeftAutostart && _autostartOk == false) r++;
     return r;
   }
 
@@ -188,6 +209,32 @@ class _ToestemmingenSetupSchermState extends State<ToestemmingenSetupScherm>
                     },
                   ),
                 ],
+                // C-1-vervolg: POST_NOTIFICATIONS (Android 13+). Zonder
+                // dit komt geen enkele melding aan — niet voor
+                // gesprekken, niet voor momenten.
+                const SizedBox(height: 12),
+                _stapKaart(
+                  emoji: '🔔',
+                  titel: 'Meldingen aan',
+                  uitleg:
+                      'Zet meldingen aan, zodat berichten en gesprekken '
+                      'altijd bij je dierbare aankomen. Zonder dit '
+                      'blijft het scherm stil, ook als er een moment of '
+                      'oproep binnenkomt.',
+                  status: _notifOk,
+                  knopTekst: 'Zet aan',
+                  onTap: () async {
+                    await StroomuitvalService.vraagNotificatieToestemming();
+                  },
+                ),
+                // C-1-vervolg: OEM-autostart (alleen Samsung/Xiaomi/
+                // Huawei/Oppo/Vivo/Realme). Op Pixel/stock Android
+                // wordt deze stap OVERGESLAGEN — geen verwarrende
+                // vinkje voor een instelling die daar niet bestaat.
+                if (_oemHeeftAutostart) ...[
+                  const SizedBox(height: 12),
+                  _autostartKaart(),
+                ],
                 const SizedBox(height: 16),
                 Container(
                   padding: const EdgeInsets.all(14),
@@ -233,6 +280,100 @@ class _ToestemmingenSetupSchermState extends State<ToestemmingenSetupScherm>
           ),
         ),
       ),
+    );
+  }
+
+  /// C-1-vervolg: OEM-autostart-kaart met TWEE knoppen. Android geeft
+  /// geen publieke API om autostart-status te lezen; we vragen de
+  /// eigenaar zelf te bevestigen dat 'ie het heeft aangezet. Bij
+  /// tik op "Ik heb het aangezet" slaan we dat op in prefs (user-
+  /// attested) en verdwijnt de stap.
+  Widget _autostartKaart() {
+    final ok = _autostartOk == true;
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: kWhite,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(
+            color: ok ? kGreen : kPeachLight, width: ok ? 2 : 1.5),
+        boxShadow: [BoxShadow(color: kPeach.withOpacity(0.05),
+            blurRadius: 10, offset: const Offset(0, 3))],
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          const Text('🔄', style: TextStyle(fontSize: 22)),
+          const SizedBox(width: 10),
+          const Expanded(child: Text('Automatisch opstarten',
+              style: TextStyle(fontSize: 15,
+                  fontWeight: FontWeight.w800, color: kBrown))),
+          if (ok)
+            const Icon(Icons.check_circle, color: kGreen, size: 24)
+          else
+            const Icon(Icons.radio_button_unchecked,
+                color: kPeachLight, size: 24),
+        ]),
+        const SizedBox(height: 8),
+        const Text(
+          "Zet 'automatisch opstarten' aan. Zo komt Ons Moment vanzelf "
+          'terug als de tablet opnieuw opstart — bijvoorbeeld na een '
+          'stroomstoring. Zonder dit zou het scherm van je dierbare '
+          'leeg blijven tot je er zelf bij bent.',
+          style: TextStyle(fontSize: 13, color: kBrownLight, height: 1.5),
+        ),
+        if (!ok) ...[
+          const SizedBox(height: 10),
+          const Text(
+            'Open de instelling van dit merk-toestel, zoek "Automatisch '
+            'opstarten" (of "Autostart") en zet Ons Moment aan. Tik '
+            'daarna hieronder op "Ik heb het aangezet".',
+            style: TextStyle(fontSize: 12, color: kBrown, height: 1.5,
+                fontStyle: FontStyle.italic),
+          ),
+          const SizedBox(height: 12),
+          Row(children: [
+            OutlinedButton(
+              onPressed: _bezig ? null : () async {
+                setState(() => _bezig = true);
+                try {
+                  await StroomuitvalService.openOemAutostartInstellingen();
+                } finally {
+                  if (mounted) setState(() => _bezig = false);
+                }
+              },
+              style: OutlinedButton.styleFrom(
+                foregroundColor: kBrown,
+                side: const BorderSide(color: kPeach, width: 1.5),
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 14, vertical: 12),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12)),
+              ),
+              child: const Text('Instelling openen',
+                  style: TextStyle(
+                      fontSize: 13, fontWeight: FontWeight.w700)),
+            ),
+            const SizedBox(width: 10),
+            ElevatedButton(
+              onPressed: _bezig ? null : () async {
+                await StroomuitvalService.markeerAutostartGedaan();
+                if (mounted) await _ververs();
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: kPeach,
+                foregroundColor: kWhite,
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 14, vertical: 12),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12)),
+              ),
+              child: const Text('Ik heb het aangezet',
+                  style: TextStyle(
+                      fontSize: 13, fontWeight: FontWeight.w800)),
+            ),
+          ]),
+        ],
+      ]),
     );
   }
 
