@@ -33,10 +33,10 @@ if (keystorePropertiesFile.exists()) {
 android {
     namespace "nl.onsmoment.app"
     // Play Store-eis: targetSdk 36 (Android 16) verplicht per 31 aug 2026.
-    // compileSdk op 35 gehouden: AGP 8.6.0 + Gradle 8.7 schrijven de
-    // targetSdk in het manifest zonder SDK-36-platform nodig te hebben.
-    // compileSdk ophogen naar 36 pas als Codemagic SDK 36 beschikbaar heeft.
-    compileSdk 35
+    // FASE D-1 (13 sept 2026): compileSdk 35 → 36. Codemagic met Flutter
+    // 3.47.4 heeft SDK 36 beschikbaar in de standaard build-image.
+    // Match tussen compileSdk en targetSdk voorkomt latente API-inconsistenties.
+    compileSdk 36
     // Vast gepind: enkele plugins (o.a. wakelock_plus) eisen een hogere NDK
     // dan flutter.ndkVersion op de huidige Flutter-SDK levert. Codemagic
     // waarschuwde hierover — hardcoden voorkomt drift tussen build-machines.
