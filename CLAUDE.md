@@ -995,6 +995,87 @@ server-only tier/abonnement) is klaar** (commit bb5948a, 8 sept 2026).
       videobel in productie is geweest (collectie verschijnt dan in Console).
 - [ ] Budget-alert verhogen van €5 naar €20–50 bij eerste echte gebruikers.
 
+### FASE D+ — Proefperiode & conversie-optimalisatie (14 dagen gratis → betaald)
+
+Strategie voor bij en ná het bouwen van FASE D. **Grotendeels NIET-NU-BOUWEN**
+— eerst launch + echte gebruiksdata. Vastgelegd hier zodat de aanpak ook
+over sessies heen consistent blijft en we niet in generieke SaaS-tactieken
+vervallen die botsen met onze emotionele doelgroep.
+
+**KERN-INZICHT (belangrijkste)**: conversie wordt NIET bepaald door de
+reminder aan het eind van de proef, maar door **ACTIVATIE in de eerste
+24-48u**. Gebruikers die het aha-moment niet binnen 48u ervaren hebben
+70-80% kans om af te haken. Voor Ons Moment is het aha-moment: **de eerste
+keer dat een dierbare een moment ontvangt en de familie ziet dat het
+werkt**. Alles moet erop gericht zijn dat een nieuwe eigenaar binnen de
+eerste dagen een dierbare instelt ÉN het eerste moment succesvol
+verstuurt. Elke drempel in setup→eerste-moment kost conversie.
+
+**Benchmarks 2026** (SaaS + trial-first apps):
+- Gemiddelde trial-naar-betaald: ~25% (top ~38%).
+- Voor trial-first apps: 4-6% "goed", 10-15% "geweldig".
+- 14 dagen is standaard trial-lengte — goede keuze, houden.
+
+#### Wat NU al borgen (bij het bouwen van FASE D betaalsysteem)
+
+- [ ] **Proefteller behouden** — "Je hebt nog {n} van je 14 gratis dagen"
+      staat al in `PakketKeuzeScherm`. Rustig laten, niet dramatiseren.
+- [ ] **Transparantie over opzeggen** — "Geen verplichtingen. Doe je
+      niets, dan stopt het vanzelf." staat al in de PakketKeuzeScherm-
+      footer. Vertrouwen = hogere conversie. Prominent houden.
+- [ ] **Setup→eerste-moment wrijvingsloos** — dit is de hoogste hefboom.
+      Bij het bouwen van FASE D: meet expliciet hoeveel eigenaars binnen
+      24u en 48u hun eerste moment sturen. Elke frictie-stap tussen
+      "account aangemaakt" en "eerste moment landt op dierbare's scherm"
+      is een lek.
+
+#### Wat LATER (na launch, met echte gebruiksdata — NIET nu bouwen)
+
+- [ ] **Gedrags-gebaseerde herinneringen** i.p.v. puur tijd-gebaseerd —
+      converteren 3-4× beter. Iemand die actief stuurt krijgt ander
+      bericht dan iemand die vastliep bij setup. Warm en emotioneel,
+      passend bij onze doelgroep — geen zakelijke SaaS-toon.
+- [ ] **"Wat je zou missen"-boodschap** tegen einde proef — verwijs naar
+      opgebouwde waarde ("je deelde deze maand {x} momenten met {naam}").
+      Sterker dan "je proef loopt af".
+- [ ] **Win-back voor afhakers** — warme mail na afloop ("je dierbare mist
+      je momenten — kom terug").
+- [ ] **Activatie-check rond dag 2** — wie nog geen moment stuurde krijgt
+      een vriendelijke, helpende nudge. Vraag of hulp bij setup nodig is.
+
+#### Concrete NL-teksten (klaar voor later gebruik — copy-paste-ready)
+
+- **Proefteller (rustig)**: "Je hebt nog {n} van je 14 gratis dagen." /
+  bij ≤3 dagen: "Nog {n} dagen gratis — daarna kies je een pakket om
+  door te gaan."
+- **Transparantie**: "Geen verplichtingen. Doe je niets, dan stopt het
+  vanzelf."
+- **Activatie-nudge dag 2** (voor wie nog niks stuurde, warm): "Je bent
+  er bijna! Stuur je eerste moment naar {naam} — een foto, een liedje of
+  gewoon een lief bericht. Je zult zien hoe leuk het is als het bij hen
+  aankomt."
+- **Waarde-herinnering einde proef** (voor actieve gebruikers): "De
+  afgelopen twee weken deelde je {x} momenten met {naam}. Blijf
+  verbonden — kies een pakket en ga door waar je gebleven was."
+- **Zachte eind-reminder** (≤2 dagen): "Je gratis periode loopt bijna
+  af. Wil je {naam} elke dag een klein moment blijven sturen? Kies een
+  pakket — vanaf €4,99 per maand."
+- **Win-back na afloop** (warm, geen druk): "Je momenten worden gemist.
+  {naam} keek elke dag uit naar je berichtjes. Kom terug wanneer je wilt
+  — je kring staat nog voor je klaar."
+
+#### Wat NIET doen (bewust vermijden)
+
+- ❌ Aggressieve upsell-modals die de app blokkeren voor proef-afloop
+  — botst met "geen verplichtingen"-belofte en de rustige app-toon.
+- ❌ Zakelijke SaaS-taal ("upgrade nu", "unlock premium features") —
+  past niet bij een app over dementie en mantelzorg.
+- ❌ Trial korter maken dan 14 dagen om urgentie te forceren — bij onze
+  doelgroep (familie leert het samen, moet dierbare instellen op ander
+  toestel) is 14 dagen nodig om überhaupt bij het aha-moment te komen.
+- ❌ Dark patterns rond opzeggen. Vertrouwen bouwen kost jaren, weg
+  laten glippen kost dagen.
+
 ### FASE E — Website publiceren (Lovable-tokens terug ~8 sept)
 
 - [ ] Publiceren naar Netlify: verbeterde mobiele weergave, prijs-presentatie,
@@ -1644,6 +1725,19 @@ starten**, Mac Mini pas als iOS ≥ 100 gebruikers heeft.
 
 ## Post-launch ideeën (bij groei, niet nu)
 
+- **Storage-migratie legacy momenten** (G-1 optie B): storage.rules
+  gedoogt momenteel `/momenten/<file>` zonder kringId als
+  `read=auth-only` (legacy-tak, commit 9b29913). Bestaande momenten
+  van vóór 12 sept 2026 zitten daar. Post-launch, als de collectie
+  gemigreerd is, kan de legacy-tak op `allow read: if false` gezet
+  worden. Aanpak: eenmalige Cloud Function die alle
+  `momenten/<ts>.<ext>`-files verplaatst naar
+  `momenten/<kringId>/<ts>.<ext>` op basis van de Firestore-moment-
+  doc's `kringId`, en de `mediaUrl`-velden in Firestore bijwerkt. Na
+  succesvolle migratie: storage.rules legacy-tak dichtzetten +
+  redeploy. Momenten zijn efemeer (dagelijkse berichten) — na een
+  paar weken is de legacy-map grotendeels leeg, dus mogelijk is
+  wachten + rule dichtzetten (zonder migratie) al voldoende.
 - **Publiek ideeën-bord**: nu hebben we een simpel privé-feedbackformulier
   (Firestore `feedback`-collectie, create-only, alleen Joshua ziet het via
   Console) — dat past bij de testfase + doelgroep. Als het gebruikersaantal

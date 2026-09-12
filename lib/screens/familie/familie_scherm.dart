@@ -2294,8 +2294,13 @@ class _StuurTabState extends State<StuurTab> {
         }
         const ext = kIsWeb ? 'webm' : 'm4a';
         const contentType = kIsWeb ? 'audio/webm' : 'audio/mp4';
+        // G-1 (12 sept 2026): kringId in het Storage-pad zodat de
+        // nieuwe storage.rules membership-check per kring kan doen.
+        // Legacy momenten/<ts>.<ext> blijven leesbaar via de gedoogde
+        // legacy-tak in storage.rules; nieuwe uploads landen op
+        // momenten/<kringId>/<ts>.<ext>.
         final ref = FirebaseStorage.instance.ref()
-            .child('momenten')
+            .child('momenten').child(kringId)
             .child('${DateTime.now().millisecondsSinceEpoch}.$ext');
         await ref.putData(bytes, SettableMetadata(contentType: contentType));
         mediaUrl = await ref.getDownloadURL();
@@ -2317,8 +2322,13 @@ class _StuurTabState extends State<StuurTab> {
             : ext == 'm4v'
                 ? 'video/x-m4v'
                 : 'video/mp4';
+        // G-1 (12 sept 2026): kringId in het Storage-pad zodat de
+        // nieuwe storage.rules membership-check per kring kan doen.
+        // Legacy momenten/<ts>.<ext> blijven leesbaar via de gedoogde
+        // legacy-tak in storage.rules; nieuwe uploads landen op
+        // momenten/<kringId>/<ts>.<ext>.
         final ref = FirebaseStorage.instance.ref()
-            .child('momenten')
+            .child('momenten').child(kringId)
             .child('${DateTime.now().millisecondsSinceEpoch}.$ext');
         mediaUrl = await _uploadMetProgress(ref, _mediaBytes!, contentType);
       } else if (_type == 'lied') {
@@ -2350,8 +2360,13 @@ class _StuurTabState extends State<StuurTab> {
           }
           return;
         }
+        // G-1 (12 sept 2026): kringId in het Storage-pad zodat de
+        // nieuwe storage.rules membership-check per kring kan doen.
+        // Legacy momenten/<ts>.<ext> blijven leesbaar via de gedoogde
+        // legacy-tak in storage.rules; nieuwe uploads landen op
+        // momenten/<kringId>/<ts>.<ext>.
         final ref = FirebaseStorage.instance.ref()
-            .child('momenten')
+            .child('momenten').child(kringId)
             .child('${DateTime.now().millisecondsSinceEpoch}.mp3');
         // V9-mp3-fix: dezelfde progress-upload als video (zie
         // _uploadMetProgress) — zonder feedback lijkt de app op 4G te
@@ -2359,8 +2374,13 @@ class _StuurTabState extends State<StuurTab> {
         // achterlaten.
         mediaUrl = await _uploadMetProgress(ref, liedBytes, 'audio/mpeg');
       } else if (_type == 'foto' && _mediaBytes != null) {
+        // G-1 (12 sept 2026): kringId in het Storage-pad zodat de
+        // nieuwe storage.rules membership-check per kring kan doen.
+        // Legacy momenten/<ts>.<ext> blijven leesbaar via de gedoogde
+        // legacy-tak in storage.rules; nieuwe uploads landen op
+        // momenten/<kringId>/<ts>.<ext>.
         final ref = FirebaseStorage.instance.ref()
-            .child('momenten')
+            .child('momenten').child(kringId)
             .child('${DateTime.now().millisecondsSinceEpoch}.jpg');
         await ref.putData(_mediaBytes!,
             SettableMetadata(contentType: 'image/jpeg'));
