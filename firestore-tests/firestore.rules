@@ -73,7 +73,16 @@ service cloud.firestore {
       allow create: if isIngelogd() &&
         request.resource.data.eigenaarUid == request.auth.uid &&
         tierKringLimietOk();
-      allow update, delete: if isEigenaar(kringId);
+      // Update: eigenaar mag alles behalve eigenaarUid overschrijven.
+      // Zonder deze check kon eigenaar per abuis (of via een app-bug)
+      // zichzelf uit-updaten door eigenaarUid op een andere uid te zetten
+      // — dan zou hij de kring niet meer kunnen beheren en zou iemand
+      // anders onterecht eigenaar-rechten krijgen. Eigenaars-overdracht
+      // via de client is bewust niet ondersteund; dat moet server-side
+      // (Admin SDK) als het ooit komt.
+      allow update: if isEigenaar(kringId) &&
+        request.resource.data.eigenaarUid == resource.data.eigenaarUid;
+      allow delete: if isEigenaar(kringId);
 
       match /leden/{lidId} {
         allow read: if isLid(kringId);

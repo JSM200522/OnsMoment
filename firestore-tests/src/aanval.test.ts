@@ -691,4 +691,26 @@ describe('gebruikers — tier/abonnement server-only', () => {
       }),
     );
   });
+
+  // A-61 (12 sept 2026): kring-update-rule staat eigenaarUid-overschrijving
+  // niet meer toe. Zonder deze bescherming kon eigenaar zichzelf per abuis
+  // uit-updaten of de kring naar een andere uid overzetten via de client.
+  test('A61: eigenaarA mag zichzelf NIET uit-updaten van eigen kring via eigenaarUid', async () => {
+    const db = alsEigenaarA(env).firestore();
+    await assertFails(
+      updateDoc(doc(db, 'kringen', KRING_A_ID), {
+        eigenaarUid: 'iemandAnders',
+      }),
+    );
+  });
+
+  test('A62: eigenaarA mag GEEN combinatie-update doen die eigenaarUid verandert', async () => {
+    const db = alsEigenaarA(env).firestore();
+    await assertFails(
+      updateDoc(doc(db, 'kringen', KRING_A_ID), {
+        naam: 'Nieuwe Naam',
+        eigenaarUid: EIGENAAR_B_UID,
+      }),
+    );
+  });
 });
