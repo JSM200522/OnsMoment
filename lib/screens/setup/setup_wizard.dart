@@ -75,6 +75,9 @@ class _SetupWizardState extends State<SetupWizard> {
     super.initState();
     // Knop in stap 2 (ontvanger-profiel) blijft disabled tot de naam is ingevuld.
     _ontvangerNaamCtrl.addListener(_herbouw);
+    // B-9 (12 sept 2026): in herstel-mode staat óók een JOUW NAAM-veld
+    // op stap 2; die moet de knop óók disablen als hij leeg is.
+    _naamCtrl.addListener(_herbouw);
   }
 
   void _herbouw() {
@@ -653,6 +656,24 @@ class _SetupWizardState extends State<SetupWizard> {
           style: TextStyle(color: kTextMuted, fontSize: 12)))),
     const SizedBox(height: 24),
 
+    // B-9 (12 sept 2026): bij herstel na inloggen zit de eigen naam
+    // NIET in _naamCtrl (die staat normaal op stap 1 bij registreren,
+    // maar in herstel gaan we van inloggen → stap 2). Zonder dit veld
+    // zou familieNaam/gebruikersNaam LEEG in de gebruikers-doc komen
+    // + leeg in de eigenaar-leden-doc als weergaveNaam. Voor normale
+    // registratie is dit veld overbodig (al ingevuld op stap 1).
+    if (_isHerstel) ...[
+      _sectieKop('🧑 Jouw naam',
+          'Zo verschijn jij in de kringleden-lijst.'),
+      const SizedBox(height: 12),
+      OWInvoer(
+        emoji: '🙂',
+        label: 'JOUW NAAM',
+        hint: 'Bijv. Sara',
+        controller: _naamCtrl,
+      ),
+      const SizedBox(height: 24),
+    ],
     _sectieKop('👤 Naam',
         'Zo verschijnt je dierbare in de app en bij berichten.'),
     const SizedBox(height: 12),
@@ -742,9 +763,13 @@ class _SetupWizardState extends State<SetupWizard> {
   // KNOP & ACTIES
   // ───────────────────────────────────────────────────
   /// Ontvanger-naam is verplicht bij het aanmaken van een nieuwe kring.
+  /// B-9: bij herstel-mode is óók _naamCtrl (jouw eigen naam) verplicht
+  /// op stap 2, want die is bij normale registratie op stap 1 ingevuld
+  /// maar bij herstel via inloggen gaan we direct van stap 1 → stap 2.
   bool get _ontvangerNaamVerplichtMaarLeeg =>
       _rol == 'familie' && !_isInloggen && _stap == 2
-      && _ontvangerNaamCtrl.text.trim().isEmpty;
+      && (_ontvangerNaamCtrl.text.trim().isEmpty
+          || (_isHerstel && _naamCtrl.text.trim().isEmpty));
 
   Widget _knop() {
     final geblokkeerd = _ontvangerNaamVerplichtMaarLeeg;
@@ -1048,6 +1073,26 @@ class _SetupWizardState extends State<SetupWizard> {
       await DeviceModusService.zet(DeviceModusService.FAMILIE);
       await DeviceModusService.zetActieveKring(kringId);
     } catch (e) {
+      // B-9-continuatie (12 sept 2026): warme afhandeling van
+      // 'email-already-in-use'. Zonder deze switch kreeg de gebruiker
+      // een dead-end Engelse Firebase-melding en zat vast: nieuwe
+      // registratie faalt, en zonder duidelijke doorverwijzing kwam
+      // hij niet bij het inlog-scherm om zijn half-account af te maken.
+      if (e is FirebaseAuthException && e.code == 'email-already-in-use') {
+        if (mounted) {
+          setState(() {
+            _isInloggen = true;
+            _stap = 1;
+            _naamCtrl.clear();
+            _bezig = false;
+          });
+          _toonFout('Er is al een account met dit e-mailadres. Log '
+              'hieronder in met je wachtwoord — als de vorige '
+              'registratie halverwege is gestopt, maken we je account '
+              'automatisch voor je af.');
+        }
+        return;
+      }
       if (cred?.user != null) {
         try {
           await cred!.user!.delete();
