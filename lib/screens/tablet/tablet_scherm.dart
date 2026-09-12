@@ -68,7 +68,7 @@ class _TabletSchermState extends State<TabletScherm>
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     WakelockPlus.enable();
-    if (DEBUG_KIOSK && !kIsWeb) {
+    if (KIOSK_INGESCHAKELD && !kIsWeb) {
       KioskService.init(_onTaskUnpinnedDoorGebruiker);
       // K-2: Screen Pinning activeren in vergrendelde rustige modus.
       // null = backwards-compat (oudere accounts zonder weergaveModus) →
@@ -266,7 +266,7 @@ class _TabletSchermState extends State<TabletScherm>
     // event dat na stopLockTask() arriveert nooit een herpin triggert op een
     // al-disposed widget. Daarna UI herstel + stopLockTask (no-op als er
     // geen lock actief is — veilig om altijd aan te roepen).
-    if (DEBUG_KIOSK && !kIsWeb) {
+    if (KIOSK_INGESCHAKELD && !kIsWeb) {
       KioskService.wis();
       KioskService.herstelSysteemUI();
       KioskService.stop();

@@ -19,14 +19,33 @@ const bool DEBUG_TESTMODUS = false;
 /// per kring kunnen uitrollen zonder release.
 const bool DEBUG_VIDEOBELLEN = true;
 
-/// Kiosk-hardening: vergrendelt de rustige modus via Android Screen
-/// Pinning (startLockTask zonder device-owner). Alleen actief als de
-/// weergaveModus 'vergrendeld' is. De eigenaar heft de lock op door de
-/// modus te wisselen naar 'meldingen' via de bestaande instelling —
-/// dat pad is gegarandeerd en wordt nooit door deze flag geblokkeerd.
-/// Zet op false als de testresultaten negatief zijn; bij false gedraagt
-/// de app zich exact als vóór deze feature.
-const bool DEBUG_KIOSK = true;
+/// **PRODUCTIE-FLAG** — kiosk-hardening voor de rustige modus.
+/// Vergrendelt via Android Screen Pinning (startLockTask zonder
+/// device-owner). Alleen actief als weergaveModus 'vergrendeld' is.
+/// De eigenaar heft de lock op door de modus te wisselen naar
+/// 'meldingen' via de bestaande instelling — dat pad is gegarandeerd
+/// en wordt nooit door deze flag geblokkeerd.
+///
+/// **BLIJFT TRUE IN PRODUCTIE** — zonder deze flag doet KioskService
+/// niets en gedraagt de rustige modus zich als een gewone tablet
+/// (geen screen-pinning, geen herpin, geen kiosk-exit-detection).
+/// Voor dementie-doelgroep is dat een launch-blocker.
+///
+/// Historie: voorheen was dit DEBUG_KIOSK met de instructie 'zet op
+/// false vóór productie' — die valkuil is gefixt door hernoemen naar
+/// KIOSK_INGESCHAKELD.
+const bool KIOSK_INGESCHAKELD = true;
+
+/// **DEPRECATED** — deze flag was voorheen de kill-switch voor de
+/// kiosk-feature. De valkuil was: de FASE D-checklist zei 'zet op
+/// false vóór productie', en dan werkte de rustige modus opeens niet
+/// meer omdat KioskService.start() nergens werd aangeroepen.
+///
+/// Nu vervangen door [KIOSK_INGESCHAKELD] (permanent true in
+/// productie). Deze DEBUG_KIOSK-constante is alleen nog beschikbaar
+/// voor eventuele extra debug-logs — verandert nergens meer het
+/// productie-gedrag.
+const bool DEBUG_KIOSK = false;
 
 /// BEL-B: harde compile-time kill-switch voor Optie B (ConnectionService/
 /// TelecomManager via flutter_callkit_incoming). Bij TRUE draait de app

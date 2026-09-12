@@ -986,7 +986,12 @@ server-only tier/abonnement) is klaar** (commit bb5948a, 8 sept 2026).
 - [ ] Right to erasure implementeren (AVG art. 17, verwijderAccount()-flow)
 - [ ] In-app teksten/FAQ controleren: staat overal "per kring", nergens "totaal"?
 - [ ] DEBUG_VIDEOBELLEN → false in lib/data/debug_flags.dart
-- [ ] DEBUG_KIOSK → false in lib/data/debug_flags.dart
+- [x] ~~DEBUG_KIOSK → false in lib/data/debug_flags.dart~~ **VERVANGEN**
+      (12 sept 2026): de kiosk-feature draait nu op `KIOSK_INGESCHAKELD`
+      (permanent true in productie). `DEBUG_KIOSK` staat al op false
+      en heeft geen invloed meer op de kiosk-flow — hernoemen fixte
+      de valkuil dat "DEBUG_KIOSK → false" per abuis de rustige modus
+      brak. Geen actie meer nodig hier.
 - [ ] V4 autoAnswer Firestore-rule handmatig toevoegen in Console:
       alleen eigenaarUid mag autoAnswer schrijven op kring-doc
 - [ ] Web API-key beperken tot jsm200522.github.io (Google Cloud Console →

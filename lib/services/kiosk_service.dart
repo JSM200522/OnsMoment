@@ -19,7 +19,7 @@ class KioskService {
   static void Function()? _onTaskUnpinnedCallback;
 
   /// Registreer de onTaskUnpinned-callback en activeer de channel-handler.
-  /// Aanroepen vanuit TabletScherm.initState (enkel als DEBUG_KIOSK && !kIsWeb).
+  /// Aanroepen vanuit TabletScherm.initState (enkel als KIOSK_INGESCHAKELD && !kIsWeb).
   static void init(void Function() onTaskUnpinned) {
     _onTaskUnpinnedCallback = onTaskUnpinned;
     _channel.setMethodCallHandler(_verwerkNatiefBericht);
