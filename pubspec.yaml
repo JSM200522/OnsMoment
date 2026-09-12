@@ -16,12 +16,19 @@ dependencies:
     sdk: flutter
   flutter_localizations:
     sdk: flutter
-  firebase_core: ^2.27.0
-  firebase_auth: ^4.17.8
-  cloud_firestore: ^4.15.8
-  firebase_storage: ^11.6.9
-  firebase_messaging: ^14.7.20
-  firebase_crashlytics: ^3.5.0
+  # FASE D-1 (13 sept 2026): Firebase-generation na core 3.0 (mei 2024).
+  # Alle brothers zijn tegelijk gebumpt naar de eerste major die met
+  # core 3.x meekwam — Firebase-packages MOETEN dezelfde generatie
+  # gebruiken want ze delen platform-interfaces.
+  # Als resolver hierbij klaagt over hogere ranges, kunnen we naar
+  # ^4.x/^5.x-generation. Deze eerste poging gebruikt ruime ^-ranges
+  # zodat pub de nieuwste 3.x-compat versies kiest.
+  firebase_core: ^3.0.0
+  firebase_auth: ^5.0.0
+  cloud_firestore: ^5.0.0
+  firebase_storage: ^12.0.0
+  firebase_messaging: ^15.0.0
+  firebase_crashlytics: ^4.0.0
   flutter_local_notifications: ^17.1.2
   just_audio: ^0.9.36
   # BEL-E5: expliciete dep zodat we AndroidAudioAttributes kunnen zetten
@@ -42,7 +49,7 @@ dependencies:
   url_launcher: ^6.2.5
   livekit_client: ^2.2.4
   # Fase VB-V1: HTTPS-callable naar getVideoCallToken (europe-west1).
-  cloud_functions: ^4.6.9
+  cloud_functions: ^5.0.0
   # Fase VB-V1: runtime-permissie voor camera bij eerste bel. Android-first
   # (iOS-integratie zit in de package; web is no-op — geen call daar dankzij
   # kIsWeb-guard in VideoCallService).
