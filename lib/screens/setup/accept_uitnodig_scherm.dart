@@ -120,8 +120,18 @@ class _AcceptUitnodigSchermState extends State<AcceptUitnodigScherm> {
         } else if (e.code == 'user-not-found') {
           _toonFout('Geen account gevonden met dit e-mailadres. '
               'Klik op "Maak een nieuw account aan".');
+        } else if (e.code == 'network-request-failed') {
+          _toonFout('Geen internetverbinding. Controleer je verbinding '
+              'en probeer opnieuw.');
+        } else if (e.code == 'too-many-requests') {
+          _toonFout('Even te veel pogingen. Wacht een paar minuten en '
+              'probeer opnieuw.');
+        } else if (e.code == 'user-disabled') {
+          _toonFout('Dit account is uitgeschakeld. Neem contact op '
+              'via info@onsmoment.app.');
         } else {
-          _toonFout('Inloggen mislukt: ${e.code}');
+          _toonFout('Inloggen mislukt — probeer het over enkele minuten '
+              'opnieuw, of neem contact op via info@onsmoment.app.');
         }
       }
     } catch (e) {

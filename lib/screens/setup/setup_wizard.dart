@@ -1098,7 +1098,13 @@ class _SetupWizardState extends State<SetupWizard> {
           await cred!.user!.delete();
         } catch (_) {}
       }
-      _toonFout('Account aanmaken mislukt: ${e.toString()}');
+      // Warme NL-mapping voor de bekende FirebaseAuthException-codes.
+      // 'email-already-in-use' vangt de switch hierboven al af; hier
+      // dekken we de rest (network, too-many-requests, weak-password,
+      // invalid-email, user-disabled, operation-not-allowed).
+      _toonFout(_warmFirebaseAuthFoutTekst(e,
+          fallback: 'Account aanmaken mislukt — probeer het over enkele '
+              'minuten opnieuw of neem contact op via info@onsmoment.app.'));
     } finally {
       if (mounted) setState(() => _bezig = false);
     }
@@ -1508,6 +1514,39 @@ class _SetupWizardState extends State<SetupWizard> {
         _bezig = false;
         _bezigModus = null;
       });
+    }
+  }
+
+  /// B-9-c (12 sept 2026): warme NL-teksten voor de bekende
+  /// FirebaseAuthException-codes zodat geen enkele foutmelding een
+  /// dead-end met rauwe Engelse code wordt. Onbekende code → warme
+  /// generieke fallback met verwijzing naar info@onsmoment.app.
+  String _warmFirebaseAuthFoutTekst(Object err, {required String fallback}) {
+    if (err is! FirebaseAuthException) return fallback;
+    switch (err.code) {
+      case 'network-request-failed':
+        return 'Geen internetverbinding. Controleer je verbinding en '
+            'probeer het opnieuw.';
+      case 'too-many-requests':
+        return 'Even te veel pogingen. Wacht een paar minuten en '
+            'probeer het opnieuw.';
+      case 'weak-password':
+        return 'Wachtwoord is te zwak — kies er minstens 6 tekens.';
+      case 'invalid-email':
+        return 'E-mailadres lijkt niet te kloppen.';
+      case 'user-disabled':
+        return 'Dit account is uitgeschakeld. Neem contact op via '
+            'info@onsmoment.app.';
+      case 'operation-not-allowed':
+        return 'Aanmelden is tijdelijk niet mogelijk. Neem contact op '
+            'via info@onsmoment.app als het blijft mislukken.';
+      case 'wrong-password':
+      case 'invalid-credential':
+        return 'Wachtwoord klopt niet. Probeer opnieuw.';
+      case 'user-not-found':
+        return 'Geen account gevonden met dit e-mailadres.';
+      default:
+        return fallback;
     }
   }
 

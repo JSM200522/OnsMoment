@@ -90,8 +90,25 @@ class _GastSignupSchermState extends State<GastSignupScherm> {
         case 'invalid-email':
           _toonFout('E-mailadres lijkt niet te kloppen.');
           break;
+        case 'network-request-failed':
+          _toonFout('Geen internetverbinding. Controleer je verbinding '
+              'en probeer opnieuw.');
+          break;
+        case 'too-many-requests':
+          _toonFout('Even te veel pogingen. Wacht een paar minuten en '
+              'probeer opnieuw.');
+          break;
+        case 'user-disabled':
+          _toonFout('Dit account is uitgeschakeld. Neem contact op '
+              'via info@onsmoment.app.');
+          break;
+        case 'operation-not-allowed':
+          _toonFout('Aanmelden is tijdelijk niet mogelijk. Neem contact '
+              'op via info@onsmoment.app als het blijft mislukken.');
+          break;
         default:
-          _toonFout('Aanmaken mislukt: ${e.code}');
+          _toonFout('Aanmaken mislukt — probeer het over enkele minuten '
+              'opnieuw, of neem contact op via info@onsmoment.app.');
       }
       return;
     } catch (_) {
