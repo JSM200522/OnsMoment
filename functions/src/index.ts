@@ -31,6 +31,10 @@ export { startVideoCall } from './start_call';
 // Fase VB-V3: beller cancelt vóór callee opneemt → data-FCM naar callee
 // zodat het inkomend-scherm sluit en de ringtone stopt.
 export { cancelVideoCall } from './cancel_call';
+// AVG art. 17 — recht op verwijdering. Cascade: eigen kringen +
+// subcollecties + andermans apparaten met deze kringId + Storage +
+// memberships in andermans kringen (anonymiseren) + eigen data + auth.
+export { verwijderAccount } from './verwijder_account';
 
 /**
  * Spiegel van PushService.channelIdVoorGeluid in
@@ -209,6 +213,19 @@ export const onNieuwMoment = onDocumentCreated(
       tokens,
       android: {
         priority: 'high',
+      },
+      // iOS: data-only achtergrondberichten vereisen apns-push-type 'background'
+      // met priority 5 (Apple staat 10 alleen toe bij alert-berichten). Dit
+      // wekt de achtergrond-handler op iOS betrouwbaar — zonder dit blok levert
+      // FCM data-only berichten op iOS met onbekende/lage prioriteit af.
+      apns: {
+        headers: {
+          'apns-push-type': 'background',
+          'apns-priority': '5',
+        },
+        payload: {
+          aps: { contentAvailable: true },
+        },
       },
       data: {
         momentId,

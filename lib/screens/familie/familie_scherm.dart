@@ -31,6 +31,7 @@ import '../../widgets/video_speler.dart';
 import '../../data/labels.dart';
 import 'feedback_scherm.dart';
 import 'privacybeleid_scherm.dart';
+import 'verwijder_account_flow.dart';
 import 'kringleden_scherm.dart';
 import 'kring_aanmaken_scherm.dart';
 import 'pakket_keuze_scherm.dart';
@@ -4052,6 +4053,13 @@ class _InstellingenTabState extends State<InstellingenTab> {
           _item('💳', 'Abonnement',
               'Proefperiode en pakketten bekijken',
               () => PakketKeuzeScherm.toon(context)),
+        // AVG-1 (12 sept 2026): recht op verwijdering. Alleen zichtbaar
+        // voor familie-mode; ontvanger-tablet-uitloggen loopt via
+        // eigenaar-modus-wissel (J-5 fix).
+        if (!widget.alsOntvanger)
+          _item('🗑️', 'Account verwijderen',
+              'Wist ALLES — onomkeerbaar',
+              () => startVerwijderAccountFlow(context)),
         const SizedBox(height: 20),
         _sectie('OVERIG'),
         _item('❓', 'Hulp en uitleg', 'Veelgestelde vragen', () {

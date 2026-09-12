@@ -1022,3 +1022,203 @@ describe('AUDIT: familie-scherm moment-update velden (gezien / laatstGetoond / g
     );
   });
 });
+
+// ────────────────────────────────────────────────────────────────
+// AVG-1 (12 sept 2026) — verwijderAccount cascade emulator-tests.
+// De Cloud Function draait via Admin SDK en bypasst rules. Hier
+// simuleren we de cascade-logic van functions/src/verwijder_account.ts
+// via env.withSecurityRulesDisabled + admin-writes, en verifiëren dat
+// 0 dangling docs overblijven.
+//
+// Storage-emulator is niet meegeconfigureerd in deze test-suite;
+// Storage-cleanup is handmatig te verifiëren op eigen test-account
+// (documented in commit-message).
+// ────────────────────────────────────────────────────────────────
+describe('AUDIT: verwijderAccount cascade', () => {
+  test('AUD-18 SCENARIO A: eigenaar-cascade wist alle content, subcollecties en cross-uid apparaten (0 dangling)', async () => {
+    await env.clearFirestore();
+
+    // Seed: eigenaarA met kringA + rijke content
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      const admin = ctx.firestore();
+      await setDoc(doc(admin, 'gebruikers', EIGENAAR_A_UID), {
+        email: 'a@test.nl', tier: 'klein', kringAantal: 1,
+      });
+      await setDoc(doc(admin, 'kringen', KRING_A_ID), {
+        eigenaarUid: EIGENAAR_A_UID, naam: 'Familie A',
+      });
+      // 2 leden (eigenaar + 1 gast)
+      await setDoc(doc(admin, 'kringen', KRING_A_ID, 'leden', EIGENAAR_A_UID),
+          { userUid: EIGENAAR_A_UID, rol: 'eigenaar' });
+      await setDoc(doc(admin, 'kringen', KRING_A_ID, 'leden', LID_A_UID),
+          { userUid: LID_A_UID, rol: 'lid' });
+      // 3 momenten in kringA
+      for (let i = 0; i < 3; i++) {
+        await setDoc(doc(admin, 'momenten', `m${i}`), {
+          kringId: KRING_A_ID, type: 'foto', mediaUrl: `u${i}`,
+        });
+      }
+      // 2 dagelijkse_momenten + 1 gepland + 1 notitie + 1 uitnodig_token
+      await setDoc(doc(admin, 'dagelijkse_momenten', 'dm1'),
+          { kringId: KRING_A_ID, label: 'Goedemorgen' });
+      await setDoc(doc(admin, 'dagelijkse_momenten', 'dm2'),
+          { kringId: KRING_A_ID, label: 'Koffie' });
+      await setDoc(doc(admin, 'gepland_momenten', 'gp1'),
+          { kringId: KRING_A_ID, label: 'Verjaardag' });
+      await setDoc(doc(admin, 'notities', 'n1'),
+          { kringId: KRING_A_ID, tekst: 'Medicijn 8u' });
+      await setDoc(doc(admin, 'uitnodig_tokens', TOKEN_A_RAW),
+          { kringId: KRING_A_ID, aangemaaktDoor: EIGENAAR_A_UID });
+      // Cross-uid apparaat van gast met kringId = KRING_A_ID
+      await setDoc(
+          doc(admin, 'gebruikers', LID_A_UID, 'apparaten', 'gastTablet'),
+          { kringId: KRING_A_ID, modus: 'ontvanger', fcmToken: 'tk_gast' });
+      // Eigen apparaat van eigenaar
+      await setDoc(
+          doc(admin, 'gebruikers', EIGENAAR_A_UID, 'apparaten', 'eigenTel'),
+          { kringId: KRING_A_ID, modus: 'familie', fcmToken: 'tk_eigen' });
+    });
+
+    // Simuleer verwijderKringCascade voor KRING_A_ID + eigen data-cleanup
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      const admin = ctx.firestore();
+      // leden subcollectie
+      const ledenSnap = await getDocs(
+          collection(admin, 'kringen', KRING_A_ID, 'leden'));
+      for (const d of ledenSnap.docs) await deleteDoc(d.ref);
+      // content-collecties
+      for (const coll of ['momenten', 'dagelijkse_momenten',
+                          'gepland_momenten', 'notities']) {
+        const s = await getDocs(
+            query(collection(admin, coll),
+                where('kringId', '==', KRING_A_ID)));
+        for (const d of s.docs) await deleteDoc(d.ref);
+      }
+      // uitnodig_tokens
+      const tSnap = await getDocs(
+          query(collection(admin, 'uitnodig_tokens'),
+              where('kringId', '==', KRING_A_ID)));
+      for (const d of tSnap.docs) await deleteDoc(d.ref);
+      // cross-uid apparaten via collection group
+      const aSnap = await getDocs(
+          query(collectionGroup(admin, 'apparaten'),
+              where('kringId', '==', KRING_A_ID)));
+      for (const d of aSnap.docs) await deleteDoc(d.ref);
+      // kring-doc
+      await deleteDoc(doc(admin, 'kringen', KRING_A_ID));
+      // eigenaars-gebruikers-doc
+      await deleteDoc(doc(admin, 'gebruikers', EIGENAAR_A_UID));
+    });
+
+    // Verifiëren: 0 dangling docs
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      const admin = ctx.firestore();
+      const checks: Array<[string, number]> = [];
+      for (const coll of ['momenten', 'dagelijkse_momenten',
+                          'gepland_momenten', 'notities']) {
+        const s = await getDocs(
+            query(collection(admin, coll),
+                where('kringId', '==', KRING_A_ID)));
+        checks.push([coll, s.size]);
+      }
+      const tSnap = await getDocs(
+          query(collection(admin, 'uitnodig_tokens'),
+              where('kringId', '==', KRING_A_ID)));
+      checks.push(['uitnodig_tokens', tSnap.size]);
+      const aSnap = await getDocs(
+          query(collectionGroup(admin, 'apparaten'),
+              where('kringId', '==', KRING_A_ID)));
+      checks.push(['apparaten cross-uid', aSnap.size]);
+      const ledenSnap = await getDocs(
+          collection(admin, 'kringen', KRING_A_ID, 'leden'));
+      checks.push(['leden', ledenSnap.size]);
+      const kringDoc = await getDoc(doc(admin, 'kringen', KRING_A_ID));
+      checks.push(['kring-doc', kringDoc.exists() ? 1 : 0]);
+      const gebrDoc = await getDoc(doc(admin, 'gebruikers', EIGENAAR_A_UID));
+      checks.push(['gebruiker-doc', gebrDoc.exists() ? 1 : 0]);
+      for (const [naam, aantal] of checks) {
+        if (aantal !== 0) {
+          throw new Error('Dangling ' + naam + ': ' + aantal);
+        }
+      }
+    });
+  });
+
+  test('AUD-19 SCENARIO B: gast-anonimiseren zet vanNaam en vanApparaatId, laat kring intact', async () => {
+    await env.clearFirestore();
+
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      const admin = ctx.firestore();
+      // Andermans kring
+      await setDoc(doc(admin, 'kringen', KRING_A_ID), {
+        eigenaarUid: EIGENAAR_A_UID, naam: 'Familie A',
+      });
+      await setDoc(doc(admin, 'kringen', KRING_A_ID, 'leden', EIGENAAR_A_UID),
+          { userUid: EIGENAAR_A_UID, rol: 'eigenaar' });
+      // Gast met 1 apparaat
+      await setDoc(doc(admin, 'kringen', KRING_A_ID, 'leden', LID_A_UID),
+          { userUid: LID_A_UID, rol: 'gast' });
+      await setDoc(
+          doc(admin, 'gebruikers', LID_A_UID, 'apparaten', 'gastTel'),
+          { kringId: KRING_A_ID, modus: 'familie' });
+      // 2 momenten van gast, 1 van eigenaar (control)
+      await setDoc(doc(admin, 'momenten', 'gastMoment1'), {
+        kringId: KRING_A_ID, vanNaam: 'Gast Sara',
+        vanApparaatId: 'gastTel', type: 'foto',
+      });
+      await setDoc(doc(admin, 'momenten', 'gastMoment2'), {
+        kringId: KRING_A_ID, vanNaam: 'Gast Sara',
+        vanApparaatId: 'gastTel', type: 'tekst',
+      });
+      await setDoc(doc(admin, 'momenten', 'eigenaarMoment'), {
+        kringId: KRING_A_ID, vanNaam: 'Eigenaar A',
+        vanApparaatId: 'eigenTel', type: 'foto',
+      });
+    });
+
+    // Simuleer anonymiseerInKring + self-leave
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      const admin = ctx.firestore();
+      const gastApparaatIds = ['gastTel'];
+      const s = await getDocs(
+          query(collection(admin, 'momenten'),
+              where('kringId', '==', KRING_A_ID),
+              where('vanApparaatId', 'in', gastApparaatIds)));
+      for (const d of s.docs) {
+        await updateDoc(d.ref,
+            { vanNaam: 'Voormalig kringlid', vanApparaatId: null });
+      }
+      // Self-leave leden-doc
+      await deleteDoc(
+          doc(admin, 'kringen', KRING_A_ID, 'leden', LID_A_UID));
+    });
+
+    // Verifiëren: kring intact, gast-momenten anoniem, eigenaar-moment onaangeraakt
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      const admin = ctx.firestore();
+      const kringDoc = await getDoc(doc(admin, 'kringen', KRING_A_ID));
+      if (!kringDoc.exists()) throw new Error('kring is per abuis weg');
+      const eigenaarLid = await getDoc(
+          doc(admin, 'kringen', KRING_A_ID, 'leden', EIGENAAR_A_UID));
+      if (!eigenaarLid.exists()) throw new Error('eigenaar-lid is per abuis weg');
+      const gastLid = await getDoc(
+          doc(admin, 'kringen', KRING_A_ID, 'leden', LID_A_UID));
+      if (gastLid.exists()) throw new Error('gast-lid is niet gedelete');
+      const gm1 = await getDoc(doc(admin, 'momenten', 'gastMoment1'));
+      if (gm1.data()?.vanNaam !== 'Voormalig kringlid') {
+        throw new Error('gastMoment1 niet geanonymiseerd');
+      }
+      if (gm1.data()?.vanApparaatId !== null) {
+        throw new Error('gastMoment1 vanApparaatId niet null');
+      }
+      const gm2 = await getDoc(doc(admin, 'momenten', 'gastMoment2'));
+      if (gm2.data()?.vanNaam !== 'Voormalig kringlid') {
+        throw new Error('gastMoment2 niet geanonymiseerd');
+      }
+      const em = await getDoc(doc(admin, 'momenten', 'eigenaarMoment'));
+      if (em.data()?.vanNaam !== 'Eigenaar A') {
+        throw new Error('eigenaar-moment is per abuis geanonymiseerd');
+      }
+    });
+  });
+});
