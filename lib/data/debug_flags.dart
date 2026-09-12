@@ -11,13 +11,25 @@ const bool DEBUG_FORCE_LOGOUT = false;
 /// bij de ontvanger i.p.v. op de geplande tijd).
 const bool DEBUG_TESTMODUS = false;
 
-/// Master-flag voor de videobel-functie (Fase VB-V0..V6). Zolang deze
-/// uit staat is de belknop nergens zichtbaar, doet VideoCallService
-/// niets, en verandert er niets aan de bestaande momenten/meldingen-
-/// flow. Zet op true in een debug-build om test-scherm en belflow te
-/// ontgrendelen. Bij V6 verhuist deze naar Firestore-config zodat we
-/// per kring kunnen uitrollen zonder release.
-const bool DEBUG_VIDEOBELLEN = true;
+/// **PRODUCTIE-FLAG** — master-flag voor de videobel-functie.
+/// Blijft TRUE in productie: gate op de belknop in StuurTab, de FSI-
+/// toestemmingsdialog op de tablet, en de inkomend-gesprek-listeners
+/// in main.dart. Zonder deze flag doet VideoCallService niets en
+/// verdwijnen alle bel-features — voor de dementie-doelgroep is dat
+/// een launch-blocker.
+///
+/// Historie: voorheen DEBUG_VIDEOBELLEN met de instructie 'zet op
+/// false vóór productie' — die valkuil (bel-functie zou dan
+/// verdwijnen) is gefixt door hernoemen naar VIDEOBELLEN_INGESCHAKELD.
+/// Bij V6+ Firestore-config-flag kan dit per kring uitrollen.
+const bool VIDEOBELLEN_INGESCHAKELD = true;
+
+/// **DEPRECATED** — deze flag was voorheen master-gate + dev-gate
+/// gecombineerd. Nu vervangen door [VIDEOBELLEN_INGESCHAKELD]
+/// (permanent true in productie) voor de master-gate. Deze flag is
+/// nog beschikbaar voor eventuele extra dev-logs — verandert nergens
+/// meer het productie-gedrag.
+const bool DEBUG_VIDEOBELLEN = false;
 
 /// **PRODUCTIE-FLAG** — kiosk-hardening voor de rustige modus.
 /// Vergrendelt via Android Screen Pinning (startLockTask zonder

@@ -1220,7 +1220,7 @@ class _StuurTabState extends State<StuurTab> {
     // battery-optimization. Vergrendelde modus (TabletScherm) doet dit
     // al zelfstandig; familie-app op eigen telefoon krijgt geen calls
     // en heeft deze prompts niet nodig.
-    if (widget.alsOntvanger && !kIsWeb && DEBUG_VIDEOBELLEN) {
+    if (widget.alsOntvanger && !kIsWeb && VIDEOBELLEN_INGESCHAKELD) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         _checkBelPromptsMeldingenModus();
       });
@@ -1779,7 +1779,7 @@ class _StuurTabState extends State<StuurTab> {
           const SizedBox(height: 4),
         ],
       ]))),
-      if (DEBUG_VIDEOBELLEN && !widget.alsOntvanger)
+      if (VIDEOBELLEN_INGESCHAKELD && !widget.alsOntvanger)
         Padding(
           padding: const EdgeInsets.fromLTRB(20, 12, 20, 16),
           child: SizedBox(
@@ -4099,7 +4099,7 @@ class _InstellingenTabState extends State<InstellingenTab> {
         // aan Android-versie, FSI-toestemming of kanaal-status te
         // sleutelen. Toestemmingen worden warm gevraagd tijdens de
         // eerste bel-flow (zie _checkBelPromptsMeldingenModus).
-        if (DEBUG_VIDEOBELLEN && DEBUG_BEL_DEV)
+        if (VIDEOBELLEN_INGESCHAKELD && DEBUG_BEL_DEV)
           _item('🩺', 'Bel-melding diagnose',
               'Toestemmingen en kanaal-status', () {
             Navigator.push(context, MaterialPageRoute(

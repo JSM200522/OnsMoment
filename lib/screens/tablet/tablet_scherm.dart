@@ -155,7 +155,7 @@ class _TabletSchermState extends State<TabletScherm>
     // FSI-2: check USE_FULL_SCREEN_INTENT toestemming (Android 14+).
     // Alleen relevant als videobellen actief is. Pas na de eerste frame
     // zodat het dialoogje boven een volledig opgebouwd scherm zweeft.
-    if (DEBUG_VIDEOBELLEN && !kIsWeb) {
+    if (VIDEOBELLEN_INGESCHAKELD && !kIsWeb) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         _checkFullScreenIntentToestemming();
       });

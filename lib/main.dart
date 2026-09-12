@@ -476,7 +476,7 @@ class _OntvangerRouterState extends State<_OntvangerRouter> {
   }
 
   void _startIncomingCallListener() {
-    if (!DEBUG_VIDEOBELLEN) return;
+    if (!VIDEOBELLEN_INGESCHAKELD) return;
     void cb() {
       _verwerkInkomendGesprek(PushService.incomingCallNotifier.value);
     }
@@ -620,7 +620,7 @@ class _OntvangerRouterState extends State<_OntvangerRouter> {
   }
 
   void _startCancelledCallListener() {
-    if (!DEBUG_VIDEOBELLEN) return;
+    if (!VIDEOBELLEN_INGESCHAKELD) return;
     void cb() {
       final geannuleerdId = PushService.cancelledCallIdNotifier.value;
       if (geannuleerdId == null) return;
