@@ -7,6 +7,8 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.os.Build
+import android.provider.Settings
+import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 
@@ -44,6 +46,42 @@ class BootReceiver : BroadcastReceiver() {
             .getLaunchIntentForPackage(context.packageName)
             ?.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) ?: return
 
+        // C-1 (12 sept 2026): als SYSTEM_ALERT_WINDOW-toestemming
+        // ("Weergeven over andere apps") is verleend, biedt Android een
+        // BAL-exemption (Background Activity Start) waarmee we
+        // MainActivity direct kunnen starten — géén tik meer nodig na
+        // reboot. Zelfde pattern als OnsMomentFcmReceiver bij auto-
+        // answer. Wanneer verleend: de rustige-modus-tablet komt na
+        // stroomuitval vanzelf terug in Ons Moment.
+        //
+        // Zonder de toestemming: val terug op de bestaande fullScreen-
+        // Intent-notif (vereist een tik). Fail-safe — nul regressie voor
+        // installaties zonder deze toestemming.
+        if (canDrawOverlaysNow(context)) {
+            try {
+                context.startActivity(launchIntent)
+                Log.i(
+                    "OMBoot",
+                    "BOOT_COMPLETED → MainActivity gestart via BAL-exemption " +
+                            "(SYSTEM_ALERT_WINDOW). Rustige modus komt vanzelf terug."
+                )
+                return
+            } catch (e: Exception) {
+                Log.w(
+                    "OMBoot",
+                    "BOOT_COMPLETED startActivity faalde ondanks overlay-toestemming: " +
+                            "${e.message} — val terug op fullScreenIntent-notif."
+                )
+                // Doorval naar de notif-fallback hieronder.
+            }
+        } else {
+            Log.d(
+                "OMBoot",
+                "BOOT_COMPLETED zonder overlay-toestemming — toon " +
+                        "fullScreenIntent-notif (gebruiker moet tikken)."
+            )
+        }
+
         val pi = PendingIntent.getActivity(
             context, 0, launchIntent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
@@ -70,5 +108,15 @@ class BootReceiver : BroadcastReceiver() {
             .build()
 
         NotificationManagerCompat.from(context).notify(9001, notif)
+    }
+
+    private fun canDrawOverlaysNow(context: Context): Boolean {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            try {
+                Settings.canDrawOverlays(context)
+            } catch (_: Exception) {
+                false
+            }
+        } else true
     }
 }
