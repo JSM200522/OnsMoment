@@ -30,6 +30,7 @@ import '../../widgets/pulserend_hart.dart';
 import '../../widgets/video_speler.dart';
 import '../../data/labels.dart';
 import 'feedback_scherm.dart';
+import 'privacybeleid_scherm.dart';
 import 'kringleden_scherm.dart';
 import 'kring_aanmaken_scherm.dart';
 import 'pakket_keuze_scherm.dart';
@@ -4057,6 +4058,11 @@ class _InstellingenTabState extends State<InstellingenTab> {
           showModalBottomSheet(context: context,
               backgroundColor: Colors.transparent, isScrollControlled: true,
               builder: (ctx) => const _HulpDialog());
+        }),
+        _item('🔐', 'Privacybeleid',
+            'Hoe we omgaan met jouw gegevens', () {
+          Navigator.push(context, MaterialPageRoute(
+              builder: (c) => const PrivacybeleidScherm()));
         }),
         _item('💬', 'Feedback en ideeën',
             'Deel wat je fijn vindt of wat beter kan', () {
