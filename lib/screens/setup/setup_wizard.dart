@@ -28,6 +28,13 @@ class _SetupWizardState extends State<SetupWizard> {
   String _rol = '';
   bool _isInloggen = false;
   bool _bezig = false;
+  // B-9 (12 sept 2026): half-account herstel. Zet op true als
+  // _familieInloggen detecteert dat auth wél bestaat maar gebruikers-doc
+  // NIET — dan draait _familieRegistreren in idempotent-herstel-mode
+  // (skip createUser, gebruik bestaande uid, alleen aanvullen wat mist).
+  bool _isHerstel = false;
+  // Warme banner-tekst bovenaan stap 2 bij herstel. Leeg = geen banner.
+  String _herstelBanner = '';
   String? _bezigModus;
   bool _toonCarousel = false;
   final _carouselCtrl = PageController();
@@ -586,6 +593,27 @@ class _SetupWizardState extends State<SetupWizard> {
   // STAP 2: ONTVANGER PROFIEL (alleen voor familie bij registratie)
   // ───────────────────────────────────────────────────
   Widget _ontvangerProfielStap() => Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+    // B-9 (12 sept 2026): warme banner bovenaan bij half-account-
+    // herstel. Alleen zichtbaar als _familieInloggen detecteerde dat
+    // gebruikers-doc ontbrak (vorige registratie halverwege gecrasht).
+    if (_herstelBanner.isNotEmpty) ...[
+      Container(
+        margin: const EdgeInsets.only(bottom: 20),
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: kPeachPale,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: kPeach, width: 1.5),
+        ),
+        child: Row(children: [
+          const Text('💕', style: TextStyle(fontSize: 24)),
+          const SizedBox(width: 12),
+          Expanded(child: Text(_herstelBanner,
+              style: const TextStyle(fontSize: 13, color: kBrown,
+                  height: 1.45, fontWeight: FontWeight.w600))),
+        ]),
+      ),
+    ],
     const Text('Vertel over je dierbare',
         style: TextStyle(fontSize: 28, fontWeight: FontWeight.w900,
             color: kBrown, height: 1.2)),
@@ -731,7 +759,12 @@ class _SetupWizardState extends State<SetupWizard> {
     if (_rol == 'familie' && _isInloggen && _stap == 1) return 'Inloggen';
     if (_rol == 'familie' && _isInloggen && _stap == 2) return 'Klaar 💕';
     if (_rol == 'familie' && !_isInloggen && _stap == 1) return 'Volgende →';
-    if (_rol == 'familie' && !_isInloggen && _stap == 2) return '✨ App starten!';
+    if (_rol == 'familie' && !_isInloggen && _stap == 2) {
+      // B-9: bij herstel-mode andere knop-tekst zodat de gebruiker
+      // snapt dat er iets bijzonders gebeurt (account wordt afgemaakt,
+      // niet nieuw aangemaakt).
+      return _isHerstel ? 'Account afmaken 💕' : '✨ App starten!';
+    }
     if (_rol == 'ontvanger' && _stap == 1) return 'Inloggen op dit apparaat';
     return 'Volgende →';
   }
@@ -773,6 +806,36 @@ class _SetupWizardState extends State<SetupWizard> {
       await FirebaseAuth.instance.signInWithEmailAndPassword(
           email: _emailCtrl.text.trim(), password: _wachtwoordCtrl.text);
       final uid = FirebaseAuth.instance.currentUser!.uid;
+      // B-9 (12 sept 2026): half-account herstel. Als
+      // _familieRegistreren eerder is gecrasht ná createUser maar
+      // vóór/tijdens Batch A commit, staat er een Firebase Auth-account
+      // ZONDER gebruikers-doc. Zonder deze check zou de gebruiker
+      // vastzitten: inloggen slaagt maar de app werkt niet (geen
+      // gebruikers-doc, geen kring). Nieuwe registratie kan ook niet
+      // (email-already-in-use).
+      //
+      // Detectie: gebruikers-doc ontbreekt = half account. Herstel-flow:
+      // push naar stap 2 met _isHerstel=true en een warme banner-tekst.
+      // Op "Account afmaken 💕" draait _familieRegistreren idempotent:
+      // skip createUser + vul aan wat er ontbreekt (kring, leden,
+      // dagelijkse_momenten). Reads: 1 extra Firestore-get.
+      final gebruikersDoc = await FirebaseFirestore.instance
+          .collection('gebruikers').doc(uid).get();
+      if (!gebruikersDoc.exists) {
+        _naamCtrl.clear();
+        _ontvangerNaamCtrl.clear();
+        if (mounted) {
+          setState(() {
+            _isInloggen = false; // gedraagt zich als registratie-stap-2
+            _isHerstel = true;
+            _stap = 2;
+            _herstelBanner = 'We hebben je account gevonden, maar het '
+                'is nog niet af. Vul even je gegevens aan zodat we het '
+                'voor je kunnen afmaken.';
+          });
+        }
+        return;
+      }
       await DeviceModusService.zetActieveKringVoorEigenaar(uid);
       final apparaatId = await DeviceModusService.krijgApparaatId();
       final doc = await FirebaseFirestore.instance
@@ -799,14 +862,29 @@ class _SetupWizardState extends State<SetupWizard> {
     setState(() => _bezig = true);
     UserCredential? cred;
     try {
-      cred = await FirebaseAuth.instance.createUserWithEmailAndPassword(
-          email: _emailCtrl.text.trim(), password: _wachtwoordCtrl.text);
-      final uid = cred.user!.uid;
+      // B-9 (12 sept 2026): in herstel-mode is de auth-user al bekend
+      // (vorige registratie is halverwege gecrasht). Skip createUser
+      // en sendEmailVerification (al gebeurd bij eerste poging).
+      // Rollback in catch hieronder skipt óók user.delete() bij herstel.
+      final String uid;
+      if (_isHerstel) {
+        final huidig = FirebaseAuth.instance.currentUser;
+        if (huidig == null) {
+          _toonFout('Je bent uitgelogd — log opnieuw in en probeer weer.');
+          if (mounted) setState(() => _bezig = false);
+          return;
+        }
+        uid = huidig.uid;
+      } else {
+        cred = await FirebaseAuth.instance.createUserWithEmailAndPassword(
+            email: _emailCtrl.text.trim(), password: _wachtwoordCtrl.text);
+        uid = cred.user!.uid;
 
-      // V9 2.12-a-2: stuur verificatie-mail fire-and-forget. Zachte
-      // variant: het account werkt direct, ongeacht of de mail wordt
-      // bevestigd. Faalt silent bij netwerk/quota — geen blokkering.
-      cred.user?.sendEmailVerification().catchError((Object _) {});
+        // V9 2.12-a-2: stuur verificatie-mail fire-and-forget. Zachte
+        // variant: het account werkt direct, ongeacht of de mail wordt
+        // bevestigd. Faalt silent bij netwerk/quota — geen blokkering.
+        cred.user?.sendEmailVerification().catchError((Object _) {});
+      }
 
       // Profielfoto uploaden (geen exception bij fail; zie #22)
       String profielFotoUrl = '';
@@ -823,26 +901,51 @@ class _SetupWizardState extends State<SetupWizard> {
         }
       }
 
-      // FIX-signup-batch (sept 2026): niet één grote WriteBatch meer.
-      // Firestore-rules evalueren elke write in een batch tegen de
-      // PRE-batch database-state — geen intra-batch get()/exists(). De
-      // leden-create-rule (isEigenaar) leest kringen/{K}, en de
-      // dagelijkse_momenten-create-rule (isLid) leest kringen/{K}/leden/{uid}.
-      // Beide docs worden in de setup-batch aangemaakt, dus die reads
-      // faalden ("evaluation error"). Oplossing: 3 sequentiële batches
-      // waarbij elke volgende batch leest wat de vorige heeft
-      // gecommitteerd. Rollback bij failure: auth-user delete (catch
+      // FIX-signup-batch (sept 2026): 3 sequentiële batches — Firestore-
+      // rules evalueren batch-writes tegen pre-batch state (geen
+      // intra-batch get). Rollback bij failure: auth-user delete (catch
       // hieronder) — orphan Firestore-docs zijn zonder auth onbereikbaar
       // en retry met dezelfde email werkt door de auth-cleanup.
+      //
+      // B-9 idempotent-herstel-mode: als er al een kring is van deze
+      // uid (van een eerdere half-poging) → hergebruik die kringId,
+      // skip kring-create. Gebruikers-doc altijd met merge:true zodat
+      // bestaande velden (bv. proefStart uit vorige poging) niet
+      // gereset worden. Leden-doc + dagelijkse_momenten: check-then-write.
       final gebruikersRef =
           FirebaseFirestore.instance.collection('gebruikers').doc(uid);
-      final kringId = KringService.genereerKringId();
+
+      String kringId;
+      bool kringBestaatAl = false;
+      if (_isHerstel) {
+        // B-9: gebruik collectionGroup('leden')-query (via
+        // KringService.mijnKringen) i.p.v. kringen.where(eigenaarUid) —
+        // de tighter rules staan géén generieke kringen-list toe
+        // (isLid(kringId) faalt bij LIST omdat kringId dan null is),
+        // maar de leden-collectionGroup werkt wel (rule regel 106-108
+        // filtert op userUid == auth.uid). Als de eigenaar-leden-doc
+        // uit een vorige half-poging ontbreekt, komt hier ook 0 kringen
+        // terug — dan maken we alsnog een nieuwe kringId aan en Write B
+        // hieronder creëert de leden-doc voor het eerst.
+        final mijnKringen = await KringService.mijnKringen(uid);
+        final eigenKringen =
+            mijnKringen.where((k) => k.eigenaarUid == uid).toList();
+        if (eigenKringen.isNotEmpty) {
+          kringId = eigenKringen.first.id;
+          kringBestaatAl = true;
+        } else {
+          kringId = KringService.genereerKringId();
+        }
+      } else {
+        kringId = KringService.genereerKringId();
+      }
       final kringRef =
           FirebaseFirestore.instance.collection('kringen').doc(kringId);
 
-      // Batch A — gebruikers + kringen atomair. tierKringLimietOk leest
-      // gebruikers pre-batch (bestaat nog niet) → huidigAantal=0 → 0<1=true.
-      // kringAantal=1 in de gebruikers-write matcht post-batch de realiteit.
+      // Batch A — gebruikers (+ evt. kringen). Als de kring al bestond
+      // (herstel-scenario), doen we alleen de gebruikers-write.
+      // Gebruikers-doc altijd met merge:true zodat velden van een
+      // eerdere partial-write behouden blijven (bv. proefStart).
       final batchA = FirebaseFirestore.instance.batch();
       batchA.set(gebruikersRef, {
         'email': _emailCtrl.text.trim(),
@@ -858,48 +961,68 @@ class _SetupWizardState extends State<SetupWizard> {
         'kringAantal': 1,
         'aangemaaktOp': FieldValue.serverTimestamp(),
         'proefStart': FieldValue.serverTimestamp(),
-      });
-      batchA.set(kringRef,
-          KringService.bouwKringMap(
-            kringId: kringId,
-            eigenaarUid: uid,
-            ontvangerNaam: _ontvangerNaamCtrl.text.trim(),
-            foto: profielFotoUrl,
-            noodcontactNaam: _noodNaamCtrl.text.trim(),
-            noodcontactTel: _noodTelCtrl.text.trim(),
-            herkenningsgeluid: _gekozenGeluid,
-          ));
+      }, SetOptions(merge: true));
+      if (!kringBestaatAl) {
+        batchA.set(kringRef,
+            KringService.bouwKringMap(
+              kringId: kringId,
+              eigenaarUid: uid,
+              ontvangerNaam: _ontvangerNaamCtrl.text.trim(),
+              foto: profielFotoUrl,
+              noodcontactNaam: _noodNaamCtrl.text.trim(),
+              noodcontactTel: _noodTelCtrl.text.trim(),
+              herkenningsgeluid: _gekozenGeluid,
+            ));
+      }
       await batchA.commit();
 
-      // Write B — eigenaar-membership. Rule isEigenaar leest kringen/{K}
-      // dat nu bestaat en eigenaarUid=uid heeft → passes.
-      await kringRef.collection('leden').doc(uid).set(
-          KringService.bouwEigenaarMembershipMap(
-            eigenaarUid: uid,
-            eigenaarNaam: _naamCtrl.text.trim(),
-          ));
-
-      // Batch C — dagelijkse_momenten. Rule isLid leest leden/{uid} dat
-      // nu bestaat → passes. Als deze batch faalt: user heeft werkend
-      // account, mist alleen default items — geen fatale error.
-      final batchC = FirebaseFirestore.instance.batch();
-      for (final m in _momenten) {
-        batchC.set(
-            FirebaseFirestore.instance.collection('dagelijkse_momenten').doc(),
-            {
-          'kringId': kringId,
-          'emoji': m.emoji,
-          'label': m.label,
-          'uur': m.tijd.hour,
-          'minuut': m.tijd.minute,
-          'mediaType': '',
-          'mediaUrl': '',
-          'tekstBericht': '',
-          'actief': true,
-          'aangemaaktOp': FieldValue.serverTimestamp(),
-        });
+      // Write B — eigenaar-membership (idempotent: check-then-write).
+      // Rule isEigenaar leest kringen/{K} dat nu bestaat → passes.
+      bool ledenBestaatAl = false;
+      if (_isHerstel) {
+        final ledenDoc = await kringRef.collection('leden').doc(uid).get();
+        ledenBestaatAl = ledenDoc.exists;
       }
-      await batchC.commit();
+      if (!ledenBestaatAl) {
+        await kringRef.collection('leden').doc(uid).set(
+            KringService.bouwEigenaarMembershipMap(
+              eigenaarUid: uid,
+              eigenaarNaam: _naamCtrl.text.trim(),
+            ));
+      }
+
+      // Batch C — dagelijkse_momenten (idempotent: skip als er al items
+      // voor deze kring zijn). Rule isLid leest leden/{uid} dat nu
+      // bestaat → passes. Als deze batch faalt: user heeft werkend
+      // account, mist alleen default items — geen fatale error.
+      bool dagelijkseAlAanwezig = false;
+      if (_isHerstel) {
+        final bestaandSnap = await FirebaseFirestore.instance
+            .collection('dagelijkse_momenten')
+            .where('kringId', isEqualTo: kringId)
+            .limit(1).get();
+        dagelijkseAlAanwezig = bestaandSnap.docs.isNotEmpty;
+      }
+      if (!dagelijkseAlAanwezig) {
+        final batchC = FirebaseFirestore.instance.batch();
+        for (final m in _momenten) {
+          batchC.set(
+              FirebaseFirestore.instance.collection('dagelijkse_momenten').doc(),
+              {
+            'kringId': kringId,
+            'emoji': m.emoji,
+            'label': m.label,
+            'uur': m.tijd.hour,
+            'minuut': m.tijd.minute,
+            'mediaType': '',
+            'mediaUrl': '',
+            'tekstBericht': '',
+            'actief': true,
+            'aangemaaktOp': FieldValue.serverTimestamp(),
+          });
+        }
+        await batchC.commit();
+      }
 
       if (fotoUploadFaalde && mounted) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
