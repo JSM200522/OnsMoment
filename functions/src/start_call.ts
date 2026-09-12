@@ -278,11 +278,38 @@ export const startVideoCall = onCall(
         roomName, fcmId,
       });
     } catch (e) {
-      // Dead-token cleanup laten we in deze fase over aan onNieuwMoment
-      // (die doet het bij push-meldingen). Voor de belflow is een falende
-      // FCM een harde fout — de callee gaat het scherm niet zien.
+      // B-8 (12 sept 2026): dead-token cleanup — spiegelt het patroon
+      // in onNieuwMoment (index.ts:255-278). Zonder cleanup blijft een
+      // dood/verlopen fcmToken in het apparaat-doc staan (bijv. na een
+      // app-herinstall die een nieuwe apparaatId genereert), en krijgt
+      // ELKE volgende bel-poging naar dat apparaat opnieuw 'unavailable'.
+      // Met cleanup: token wordt weggehaald; volgende belpoging krijgt
+      // 'failed-precondition: geen actieve push-token' (regel 187-190),
+      // wat naar de warme "apparaat niet meer gekoppeld"-melding gaat.
+      // Beller krijgt nog steeds een fout deze keer, maar de bellijst
+      // blijft niet permanent kapot.
+      const err = e as { code?: string; message?: string };
+      const code = err.code;
+      if (code === 'messaging/registration-token-not-registered' ||
+          code === 'messaging/invalid-registration-token') {
+        try {
+          await doelRef.update({
+            fcmToken: admin.firestore.FieldValue.delete(),
+            fcmTokenBijgewerkt: admin.firestore.FieldValue.delete(),
+            fcmPlatform: admin.firestore.FieldValue.delete(),
+          });
+          logger.info('dead token opgeruimd na start_call FCM-fail', {
+            uid, kringId, doelApparaatId, code,
+          });
+        } catch (cleanupErr) {
+          logger.warn('cleanup na start_call faalde', {
+            uid, kringId, doelApparaatId,
+            error: String(cleanupErr),
+          });
+        }
+      }
       logger.error('inkomend-gesprek FCM faalde', {
-        uid, kringId, doelApparaatId, error: String(e),
+        uid, kringId, doelApparaatId, code, error: String(e),
       });
       throw new HttpsError('unavailable',
         'Kon doel-apparaat niet bereiken; probeer opnieuw');
