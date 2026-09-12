@@ -4054,10 +4054,8 @@ class _InstellingenTabState extends State<InstellingenTab> {
             Navigator.push(context, MaterialPageRoute(
                 builder: (c) => const BelDiagnoseScherm()));
           }),
-        _item('🚪', 'Uitloggen', 'Logt uit en wist apparaat-instellingen', () async {
-          await DeviceModusService.wis();
-          await FirebaseAuth.instance.signOut();
-        }),
+        _item('🚪', 'Uitloggen', 'Logt uit en wist apparaat-instellingen',
+            _bevestigUitloggen),
         const SizedBox(height: 30),
         Center(child: GestureDetector(
           // BEL-B verborgen dev-toggle: long-press op logo opent de
@@ -4260,6 +4258,42 @@ class _InstellingenTabState extends State<InstellingenTab> {
     padding: const EdgeInsets.symmetric(vertical: 6),
     child: Text(t, style: const TextStyle(fontSize: 11,
         fontWeight: FontWeight.w800, color: kTextMuted, letterSpacing: 0.8)));
+
+  /// UX-1 (12 sept 2026): bevestig uitloggen zodat niemand per ongeluk
+  /// zijn sessie kwijtraakt. Zelfde AlertDialog-stijl als
+  /// _bevestigZelfUitKring in kringleden_scherm.dart (kCream + kBrown +
+  /// kPeachLight). kPeach als actie-kleur — uitloggen is omkeerbaar
+  /// (opnieuw inloggen kan altijd), dus geen kRood zoals bij destructieve
+  /// acties.
+  void _bevestigUitloggen() {
+    showDialog(context: context, builder: (ctx) => AlertDialog(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      backgroundColor: kCream,
+      title: const Text('Weet je zeker dat je wilt uitloggen?',
+          style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900,
+              color: kBrown)),
+      content: const Text(
+          'Je moet daarna opnieuw inloggen met je e-mail en wachtwoord.',
+          style: TextStyle(fontSize: 14, color: kBrownLight, height: 1.5)),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(ctx),
+            child: const Text('Annuleren',
+                style: TextStyle(color: kTextMuted,
+                    fontWeight: FontWeight.w700))),
+        ElevatedButton(
+          style: ElevatedButton.styleFrom(backgroundColor: kPeach,
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12))),
+          onPressed: () async {
+            Navigator.pop(ctx);
+            await DeviceModusService.wis();
+            await FirebaseAuth.instance.signOut();
+          },
+          child: const Text('Uitloggen',
+              style: TextStyle(color: kWhite, fontWeight: FontWeight.w800))),
+      ],
+    ));
+  }
 
   Widget _item(String emoji, String titel, String tekst, VoidCallback onTap) =>
     GestureDetector(onTap: onTap, child: Container(
