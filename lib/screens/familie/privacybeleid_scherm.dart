@@ -101,6 +101,7 @@ class PrivacybeleidScherm extends StatelessWidget {
           padding: const EdgeInsets.all(20),
           children: [
             if (_privacybeleidStatus == 'concept') _conceptBanner(),
+            _samenvattingsBlok(),
             ..._bouwParagrafen(_privacybeleidTekstConcept),
             const SizedBox(height: 24),
             _webVersieKnop(context),
@@ -131,6 +132,65 @@ class PrivacybeleidScherm extends StatelessWidget {
                 color: kBrown, fontSize: 13, height: 1.4,
                 fontWeight: FontWeight.w600),
           ),
+        ),
+      ]),
+    );
+  }
+
+  /// Warm samenvattings-blok bovenaan — geeft de gebruiker in één
+  /// oogopslag het geruststellende beeld voordat de formele tekst begint.
+  /// In merkstijl (kPeachPale + kPeach-rand + kBrown-tekst).
+  Widget _samenvattingsBlok() {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 24),
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: kPeachPale,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: kPeach, width: 1.5),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('Jouw privacy is veilig bij ons',
+              style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900,
+                  color: kBrown, height: 1.2)),
+          const SizedBox(height: 12),
+          const Text(
+            'Ons Moment is een besloten plek, alleen voor jouw kring. '
+            'Alleen de mensen die jij uitnodigt kunnen de foto\'s, '
+            'berichten en gesprekken zien.',
+            style: TextStyle(fontSize: 14, color: kBrown, height: 1.5),
+          ),
+          const SizedBox(height: 12),
+          _samenvattingRegel(
+              'Al je gegevens staan veilig versleuteld, op beveiligde '
+              'servers in Europa.'),
+          _samenvattingRegel('Geen advertenties. Nooit.'),
+          _samenvattingRegel(
+              'Alleen jij beheert wie er in je kring zit.'),
+          const SizedBox(height: 12),
+          const Text('Kleine momenten, veilig gedeeld.',
+              style: TextStyle(fontSize: 14, color: kBrown,
+                  fontWeight: FontWeight.w800, height: 1.4,
+                  fontStyle: FontStyle.italic)),
+        ],
+      ),
+    );
+  }
+
+  Widget _samenvattingRegel(String tekst) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        const Padding(
+          padding: EdgeInsets.only(top: 3, right: 10),
+          child: Icon(Icons.check_circle, color: kPeach, size: 18),
+        ),
+        Expanded(
+          child: Text(tekst,
+              style: const TextStyle(fontSize: 14, color: kBrown,
+                  height: 1.45)),
         ),
       ]),
     );
