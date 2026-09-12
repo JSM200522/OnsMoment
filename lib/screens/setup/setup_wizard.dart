@@ -1175,12 +1175,16 @@ class _SetupWizardState extends State<SetupWizard> {
             emoji: '🔒',
             titel: 'Rustige modus',
             modusId: DeviceModusService.VERGRENDELD,
-            uitleg: 'Het apparaat staat vast op Ons Moment. Voor $naam '
-                'die niet meer zelf op een apparaat kan reageren.\n\n'
-                'Het apparaat:\n'
-                '- Toont alleen Ons Moment\n'
-                '- Kan niet naar andere apps of andere gesprekken\n'
-                '- $naam kan kijken en luisteren, maar niet terugsturen\n\n'
+            uitleg: 'Het apparaat staat volledig vergrendeld op Ons '
+                'Moment — niets anders is mogelijk. Voor $naam die '
+                'niet meer zelf op een apparaat kan reageren.\n\n'
+                '$naam ontvangt alles vanzelf:\n'
+                '- Alle momenten (foto, video, stem, liedje, tekst '
+                'en hartje)\n'
+                '- De agenda met dagelijkse momenten\n'
+                '- Videogesprekken worden automatisch opgenomen\n\n'
+                'Het apparaat kan niet naar andere apps of gesprekken '
+                '— alleen Ons Moment is zichtbaar.\n\n'
                 'Kies dit als $naam veel zorg nodig heeft of het '
                 'apparaat niet zelf gebruikt.',
             onTap: () => _voltooiOntvanger(DeviceModusService.VERGRENDELD),
@@ -1194,7 +1198,6 @@ class _SetupWizardState extends State<SetupWizard> {
                 'die nog wel zelf wil reageren.\n\n'
                 '$naam kan:\n'
                 '- Foto\'s, stem-berichten en muziek terugsturen\n'
-                '- De agenda zien\n'
                 '- Het apparaat gebruiken voor andere dingen\n\n'
                 'Berichten komen binnen als melding.\n\n'
                 'Notities tussen familie zijn voor $naam verborgen.',

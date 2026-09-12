@@ -4183,7 +4183,8 @@ class _InstellingenTabState extends State<InstellingenTab> {
         content: Column(mainAxisSize: MainAxisSize.min, children: [
           _modusOptie(
               emoji: '🔒', titel: 'Rustige modus',
-              uitleg: 'Het apparaat staat vast op Ons Moment',
+              uitleg: 'Volledig vergrendeld op Ons Moment — alles '
+                  'komt vanzelf binnen',
               modusId: DeviceModusService.VERGRENDELD,
               gekozen: gekozen, huidig: _huidigeOntvangerModus,
               onTap: () => setLocal(() =>
@@ -4191,7 +4192,8 @@ class _InstellingenTabState extends State<InstellingenTab> {
           const SizedBox(height: 10),
           _modusOptie(
               emoji: '📱', titel: 'Gewone modus',
-              uitleg: 'Ons Moment werkt naast andere apps',
+              uitleg: 'Werkt naast andere apps — $naam kan zelf '
+                  'terugsturen',
               modusId: DeviceModusService.MELDINGEN,
               gekozen: gekozen, huidig: _huidigeOntvangerModus,
               onTap: () => setLocal(() =>
