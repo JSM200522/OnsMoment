@@ -1,0 +1,141 @@
+rules_version = '2';
+
+// Ons Moment — Firebase Storage security rules
+//
+// PLAN (12 sept 2026) — DEEL 1 uit het randgevallen-onderzoek.
+// **NOG NIET GEDEPLOYED.** Deze file staat in de repo zodat de rules
+// versie-beheerd zijn en het plan reviewbaar is. Deploy vereist:
+//   1. Een kleine app-code-wijziging in familie_scherm.dart StuurTab
+//      (zie sectie /momenten/{kringId} hieronder) waarbij nieuwe
+//      uploads kringId in het pad krijgen.
+//   2. Beslissing over de legacy /momenten/{file} rule (zie daar).
+//   3. `firebase deploy --only storage`.
+//
+// PROBLEEM DAT DIT OPLOST:
+//   Huidige Console-rules staan `allow read: if request.auth != null`
+//   op momenten/, profielfotos/ en dagelijkse_audio/. Elke ingelogde
+//   gebruiker kan élk bestand downloaden mits ze het pad raden.
+//   momenten/-paden zijn timestamp-based (brute-forceable). Voor onze
+//   gevoelige doelgroep (dementie/mantelzorg) een AVG-punt en breekt
+//   de "besloten kring"-belofte.
+//
+// AANPAK: kringId in het Storage-pad + `firestore.exists()`-lookup op
+// de leden-subcollectie voor lees- en schrijfrechten. Voor bestaande
+// momenten zonder kringId in het pad → legacy-tak (read auth-only,
+// write false) tot een eventuele migratie post-launch.
+
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    // ── helpers ─────────────────────────────────────────────────
+
+    // Leser is ingelogd EN lid van kringId (via Firestore-lookup).
+    // Storage-rules ondersteunen `firestore.get/exists` voor
+    // cross-service-checks. Het pad naar de leden-doc spiegelt de
+    // Firestore-rule isLid() in firestore-tests/firestore.rules.
+    function isKringLid(kringId) {
+      return request.auth != null &&
+        firestore.exists(
+          /databases/(default)/documents/kringen/$(kringId)/leden/$(request.auth.uid));
+    }
+
+    // Kring-eigenaar via Firestore-lookup — nodig voor profielfoto-
+    // writes op kring-doc-niveau.
+    function isKringEigenaar(kringId) {
+      return request.auth != null &&
+        firestore.get(
+          /databases/(default)/documents/kringen/$(kringId)).data.eigenaarUid == request.auth.uid;
+    }
+
+    // Content-type + size guards. maxSizeMb per pad configureerbaar.
+    function isVeiligeMedia(maxSizeMb) {
+      return request.resource != null &&
+        request.resource.size < maxSizeMb * 1024 * 1024 &&
+        request.resource.contentType != null &&
+        (request.resource.contentType.matches('image/.*') ||
+         request.resource.contentType.matches('video/.*') ||
+         request.resource.contentType.matches('audio/.*'));
+    }
+
+    function isKringFotoOfEigenFoto(id) {
+      // profielfotos/{id}.jpg — id kan uid zijn (setup_wizard's
+      // registrant-foto) of kringId (kring_aanmaken / OntvangerInfo
+      // dierbare-foto). We accepteren beide interpretaties.
+      let idZonderExt = id.split('.')[0];
+      return request.auth.uid == idZonderExt ||
+        (firestore.exists(/databases/(default)/documents/kringen/$(idZonderExt)) &&
+         isKringEigenaar(idZonderExt));
+    }
+
+    // ── nieuwe paden — kringId in het pad ───────────────────────
+
+    // VEREIST APP-WIJZIGING: familie_scherm.dart StuurTab (regel
+    // 2297-2364) uploads gebruiken nu `momenten/<ts>.<ext>` — moet
+    // veranderen naar `momenten/<kringId>/<ts>.<ext>`. kringId is
+    // beschikbaar via de state (_kringId). Zonder deze aanpassing
+    // slaagt géén nieuwe moment-upload meer na deploy — daarom
+    // NIET deployen vóór de app-fix mee is.
+    match /momenten/{kringId}/{file} {
+      allow read: if isKringLid(kringId);
+      allow write: if isKringLid(kringId) && isVeiligeMedia(25);
+    }
+
+    // dagelijks_audio_service.dart schrijft al `dagelijkse_audio/
+    // <kringId>/<momentId>.<ext>`. Geen app-wijziging nodig.
+    match /dagelijkse_audio/{kringId}/{file} {
+      allow read: if isKringLid(kringId);
+      allow write: if isKringLid(kringId) && isVeiligeMedia(15);
+    }
+
+    // familie_scherm.dart MomentInvulScherm (regel 5363-5415) schrijft
+    // al `dagelijkse_media/<kringId>/<ts>.<ext>`. Geen app-wijziging.
+    match /dagelijkse_media/{kringId}/{file} {
+      allow read: if isKringLid(kringId);
+      allow write: if isKringLid(kringId) && isVeiligeMedia(25);
+    }
+
+    // profielfotos/{id}.jpg — id is òf uid (setup_wizard eigen foto)
+    // òf kringId (dierbare-foto van de kring). Beide interpretaties
+    // toegestaan; write beperkt tot eigen uid of eigenaar-van-die-kring.
+    match /profielfotos/{id} {
+      allow read: if request.auth != null && isKringFotoOfEigenFoto(id);
+      allow write: if request.auth != null &&
+        isVeiligeMedia(10) &&
+        isKringFotoOfEigenFoto(id);
+    }
+
+    // ── legacy — bestaande bestanden vóór 12 sept 2026 ──────────
+
+    // OPEN BESLISSING vóór deploy:
+    //
+    // (A) `allow read: if request.auth != null` — bestaande momenten
+    //     blijven leesbaar door elke ingelogde uid (huidige gedrag).
+    //     Nieuwe uploads via /momenten/{kringId}/{file} zijn wél
+    //     beveiligd. Acceptabel voor gesloten test met bekend aantal
+    //     testers; niet ideaal voor volledige launch.
+    //
+    // (B) `allow read: if false` — ALLE bestaande momenten worden
+    //     onleesbaar. Firestore-momenten met mediaUrl-verwijzingen
+    //     naar deze paden zullen broken images/videos tonen.
+    //     Vereist migratie-script (Cloud Function) VOORAF: verplaats
+    //     files naar /momenten/{kringId}/... en update Firestore
+    //     mediaUrl-velden.
+    //
+    // Aanbeveling: (A) voor eerste deploy, (B) na migratie post-
+    // launch. Momenten zijn efemeer (dagelijkse berichten), na een
+    // paar weken is de legacy-map grotendeels leeg.
+    //
+    // Write op legacy-pad is uitgesloten — nieuwe momenten MOETEN via
+    // /momenten/{kringId}/ (na de app-code-fix).
+    match /momenten/{file} {
+      allow read: if request.auth != null;
+      allow write: if false;
+    }
+
+    // ── default deny ────────────────────────────────────────────
+
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}
