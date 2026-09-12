@@ -73,14 +73,41 @@ class DeviceModusService {
   }
 
   /// Wis de modus (bij uitloggen of bewust wisselen).
+  ///
+  /// A-1 (12 sept 2026): wist ook _apparaatIdKey + _geregistreerdKey +
+  /// alle gecachte ontvanger-namen (prefix-scan) zodat de volgende
+  /// gebruiker op hetzelfde toestel geen resten erft van de vorige. Extra:
+  /// [_apparaatIdFuture] (static in-memory cache) resetten zodat
+  /// [krijgApparaatId] bij de volgende call daadwerkelijk uit prefs leest
+  /// i.p.v. de oude memoized future teruggeeft. `actieveKringNotifier`
+  /// wordt ook op null gezet — dat ontbrak eerder en veroorzaakte een
+  /// verkeerde kringId-lezing tijdens PushService-registratie na signOut
+  /// (deel van A-8).
+  ///
+  /// GEVOLG: herinloggen met hetzelfde account op hetzelfde toestel doet
+  /// nu de volledige "onbekend apparaat"-setup-flow (modus + toestemmingen
+  /// opnieuw). Bewuste trade-off: beveiliging bij toestel-doorgeven wint
+  /// van kleine convenience bij eigen-herinloggen.
   static Future<void> wis() async {
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.remove(_key);
       await prefs.remove(_weergaveKey);
       await prefs.remove(_actieveKringKey);
+      await prefs.remove(_apparaatIdKey);
+      await prefs.remove(_geregistreerdKey);
+      // Alle kringId-gesuffixte gecachte ontvanger-namen wissen (multi-
+      // kring). Geen dependency op welke kringen bekend zijn.
+      final allePrefsKeys = prefs.getKeys();
+      for (final k in allePrefsKeys) {
+        if (k.startsWith(_gecachteOntvangerNaamPrefix)) {
+          await prefs.remove(k);
+        }
+      }
       notifier.value = null;
       weergaveModusNotifier.value = null;
+      actieveKringNotifier.value = null;
+      _apparaatIdFuture = null;
     } catch (_) {}
   }
 
