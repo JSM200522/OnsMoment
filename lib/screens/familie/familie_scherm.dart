@@ -4088,6 +4088,31 @@ class _InstellingenTabState extends State<InstellingenTab> {
           _item('🗑️', 'Account verwijderen',
               'Wist ALLES — onomkeerbaar',
               () => startVerwijderAccountFlow(context)),
+        // P4 (13 sept 2026): stroomuitval-proof checklist bereikbaar
+        // ALLEEN in ontvanger-mode (dierbare-tablet). Op familie-account
+        // heeft dit menu-item geen nut (checklist controleert het
+        // apparaat waar hij op geopend wordt) en zou het alleen
+        // verwarrend zijn.
+        //
+        // Onder eigen kopje BELLEN i.p.v. losse OVERIG-optie: matcht
+        // het feit dat de checklist over bellen + berichten aan de
+        // dierbare-kant gaat.
+        if (widget.alsOntvanger) ...[
+          const SizedBox(height: 20),
+          _sectie('BELLEN'),
+          _item('🔧', 'Instellingen voor dit apparaat',
+              'Controleer of alles goed staat zodat gesprekken en '
+              'berichten altijd aankomen.', () {
+            Navigator.push(context, MaterialPageRoute(
+                builder: (c) => ToestemmingenSetupScherm(
+                      autoAnswerActief: true,
+                      weergaveModus:
+                          DeviceModusService.weergaveModusNotifier.value
+                              ?? DeviceModusService.VERGRENDELD,
+                      onKlaar: () => Navigator.of(c).pop(),
+                    )));
+          }),
+        ],
         const SizedBox(height: 20),
         _sectie('OVERIG'),
         _item('❓', 'Hulp en uitleg', 'Veelgestelde vragen', () {
@@ -4099,22 +4124,6 @@ class _InstellingenTabState extends State<InstellingenTab> {
             'Hoe we omgaan met jouw gegevens', () {
           Navigator.push(context, MaterialPageRoute(
               builder: (c) => const PrivacybeleidScherm()));
-        }),
-        // C-1-vervolg (12 sept 2026): stroomuitval-proof checklist —
-        // bereikbaar in beide modi zodat eigenaar op de dierbare-tablet
-        // óók kan aftikken zonder complete setup te herstarten. Niet-
-        // destructief; als dierbare er per abuis op tikt: hij ziet
-        // status-vinkjes, geen risico.
-        _item('🔧', 'Instellingen voor deze tablet bijwerken',
-            'Meldingen, automatisch opnemen, opstarten na herstart', () {
-          Navigator.push(context, MaterialPageRoute(
-              builder: (c) => ToestemmingenSetupScherm(
-                    autoAnswerActief: true,
-                    weergaveModus:
-                        DeviceModusService.weergaveModusNotifier.value
-                            ?? DeviceModusService.VERGRENDELD,
-                    onKlaar: () => Navigator.of(c).pop(),
-                  )));
         }),
         _item('💬', 'Feedback en ideeën',
             'Deel wat je fijn vindt of wat beter kan', () {

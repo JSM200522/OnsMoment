@@ -29,9 +29,6 @@ const String _laatstBijgewerkt = '12 september 2026';
 const String _privacybeleidWebUrl = 'https://onsmoment.app/privacy';
 
 const String _privacybeleidTekstConcept = '''
-[Deze tekst is een concept en heeft nog geen juridische controle gehad.
-Vervang door de definitieve tekst voordat je de app publiek maakt.]
-
 # Wie zijn wij
 
 Ons Moment is een app om op afstand verbonden te blijven met een
@@ -100,7 +97,6 @@ class PrivacybeleidScherm extends StatelessWidget {
         child: ListView(
           padding: const EdgeInsets.all(20),
           children: [
-            if (_privacybeleidStatus == 'concept') _conceptBanner(),
             _samenvattingsBlok(),
             ..._bouwParagrafen(_privacybeleidTekstConcept),
             const SizedBox(height: 24),
@@ -112,30 +108,6 @@ class PrivacybeleidScherm extends StatelessWidget {
     );
   }
 
-  Widget _conceptBanner() {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 20),
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: kPeachPale,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: kPeach, width: 1.5),
-      ),
-      child: Row(children: [
-        const Text('⚠️', style: TextStyle(fontSize: 24)),
-        const SizedBox(width: 12),
-        Expanded(
-          child: Text(
-            'Deze tekst is een concept en heeft nog geen '
-            'juridische controle gehad. De definitieve versie volgt.',
-            style: TextStyle(
-                color: kBrown, fontSize: 13, height: 1.4,
-                fontWeight: FontWeight.w600),
-          ),
-        ),
-      ]),
-    );
-  }
 
   /// Warm samenvattings-blok bovenaan — geeft de gebruiker in één
   /// oogopslag het geruststellende beeld voordat de formele tekst begint.
