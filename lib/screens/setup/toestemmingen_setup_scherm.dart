@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:device_info_plus/device_info_plus.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import '../../data/bel_uitleg_teksten.dart';
@@ -61,6 +62,12 @@ class _ToestemmingenSetupSchermState extends State<ToestemmingenSetupScherm>
   bool? _autostartOk;
   bool _oemHeeftAutostart = false;
   bool _bezig = false;
+  // P2 (13 sept 2026): race-guard voor _ververs. Als lifecycle-resumed
+  // snel na elkaar tweemaal fired (bekend Android-gedrag na systeem-
+  // instellingen), lopen twee _ververs-calls parallel; de tweede kan de
+  // eerste setState overschrijven met verouderde waarden. Ticket-check
+  // zorgt dat alleen de meest-recente ververs de state mag updaten.
+  int _verversTicket = 0;
 
   @override
   void initState() {
@@ -91,7 +98,9 @@ class _ToestemmingenSetupSchermState extends State<ToestemmingenSetupScherm>
       widget.weergaveModus != DeviceModusService.VERGRENDELD;
 
   Future<void> _ververs() async {
+    final mijnTicket = ++_verversTicket;
     if (kIsWeb) {
+      if (mijnTicket != _verversTicket) return;
       setState(() {
         _fsiOk = true;
         _battOk = true;
@@ -112,7 +121,9 @@ class _ToestemmingenSetupSchermState extends State<ToestemmingenSetupScherm>
     final autostart = oemNodig
         ? await StroomuitvalService.autostartAttested()
         : true;
-    if (!mounted) return;
+    // P2: race-guard. Als er intussen een nieuwere _ververs is gestart
+    // (bijv. door een tweede resumed-event), verwerpen we deze.
+    if (mijnTicket != _verversTicket || !mounted) return;
     setState(() {
       _fsiOk = fsi;
       _battOk = batt;
@@ -307,8 +318,24 @@ class _ToestemmingenSetupSchermState extends State<ToestemmingenSetupScherm>
           const Expanded(child: Text('Automatisch opstarten',
               style: TextStyle(fontSize: 15,
                   fontWeight: FontWeight.w800, color: kBrown))),
+          // P2 (13 sept 2026): user-attested badge visueel duidelijk
+          // anders dan systeem-geverifieerd. Systeem-checks tonen een
+          // strak groen check-icoon; hier een pill-badge "Door jou
+          // bevestigd" met kPeach — user weet dat Android dit niet zelf
+          // kan verifieren en dat hij zelf heeft aangevinkt.
           if (ok)
-            const Icon(Icons.check_circle, color: kGreen, size: 24)
+            Container(
+              padding: const EdgeInsets.symmetric(
+                  horizontal: 8, vertical: 4),
+              decoration: BoxDecoration(
+                color: kPeachPale,
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: kPeach, width: 1),
+              ),
+              child: const Text('Door jou bevestigd',
+                  style: TextStyle(fontSize: 10,
+                      color: kBrown, fontWeight: FontWeight.w700)),
+            )
           else
             const Icon(Icons.radio_button_unchecked,
                 color: kPeachLight, size: 24),
@@ -323,12 +350,28 @@ class _ToestemmingenSetupSchermState extends State<ToestemmingenSetupScherm>
         ),
         if (!ok) ...[
           const SizedBox(height: 10),
-          const Text(
-            'Open de instelling van dit merk-toestel, zoek "Automatisch '
-            'opstarten" (of "Autostart") en zet Ons Moment aan. Tik '
-            'daarna hieronder op "Ik heb het aangezet".',
-            style: TextStyle(fontSize: 12, color: kBrown, height: 1.5,
-                fontStyle: FontStyle.italic),
+          // P3 (13 sept 2026): merk-specifieke instructie. Bepaald door
+          // Codemagic-build op basis van device_info_plus.manufacturer;
+          // gerenderd via een FutureBuilder omdat het async is.
+          FutureBuilder<String>(
+            future: StroomuitvalService.isBlokkerendeOem().then((_) async {
+              // Herbepaal merk (zelfde call die openOemAutostartInstellingen
+              // straks doet) zodat de instructie 1-op-1 matcht.
+              try {
+                final info = await DeviceInfoPlugin().androidInfo;
+                return info.manufacturer.toLowerCase().trim();
+              } catch (_) {
+                return 'onbekend';
+              }
+            }),
+            builder: (ctx, snap) {
+              final merk = snap.data ?? 'onbekend';
+              return Text(
+                StroomuitvalService.instructiePerOem(merk),
+                style: const TextStyle(fontSize: 12, color: kBrown,
+                    height: 1.5, fontStyle: FontStyle.italic),
+              );
+            },
           ),
           const SizedBox(height: 12),
           Row(children: [

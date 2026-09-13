@@ -82,13 +82,20 @@ class KioskService {
 
   /// BEL-A4: true als de app is uitgezonderd van battery-optimalisatie.
   /// Op Android < 6 (Marshmallow) bestaat de feature niet → altijd true.
+  ///
+  /// P2 (13 sept 2026): fallback bij MethodChannel-exception → false
+  /// (fail-closed). Voorheen retourneerde de fallback `true`, wat een
+  /// vals-positief groen vinkje in ToestemmingenSetupScherm gaf terwijl
+  /// batterij-optimalisatie in werkelijkheid weer AAN stond. Nu tonen
+  /// we bij twijfel een rood cross-icoon zodat user de stap opnieuw
+  /// doet.
   static Future<bool> isBatteryOptimizationUit() async {
     if (kIsWeb) return true;
     try {
       return await _channel.invokeMethod<bool>('isBatteryOptimizationUit')
-          ?? true;
+          ?? false;
     } catch (_) {
-      return true;
+      return false;
     }
   }
 

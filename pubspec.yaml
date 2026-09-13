@@ -73,6 +73,12 @@ dependencies:
   # waardoor Play Console het aanmaken van abonnementen weer toestaat.
   # Route D (commit 906f501) wordt in deze feature-branch omgekeerd.
   purchases_flutter: ^9.0.0
+  # FASE D-1 P3 (13 sept 2026): per-OEM deep-links naar de exacte
+  # autostart-instellingpagina (Samsung/Xiaomi/Huawei/Oppo/Vivo/Realme).
+  # StroomuitvalService.openOemAutostartInstellingen probeert eerst een
+  # merk-specifieke Intent en valt terug op app-info-settings als de
+  # deep-link niet meer werkt op deze OS-versie.
+  android_intent_plus: ^5.0.0
 
 dependency_overrides:
   # FASE D-1 (13 sept 2026): record_android 1.2.0-override VERWIJDERD.

@@ -1,3 +1,4 @@
+import 'package:android_intent_plus/android_intent.dart';
 import 'package:device_info_plus/device_info_plus.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:permission_handler/permission_handler.dart';
@@ -63,21 +64,146 @@ class StroomuitvalService {
     }
   }
 
-  /// Best-effort: open OEM-instellingen. Op onbetrouwbare/nieuwe MIUI-
-  /// versies faalt de specifieke intent — dan valt permission_handler
-  /// terug op de app-info-page. Beide zijn 'in de buurt' van de juiste
-  /// setting; user krijgt in de UI extra tekst-instructie.
-  static Future<void> openOemAutostartInstellingen() async {
-    if (kIsWeb) return;
+  /// P3 (13 sept 2026): per-OEM deep-link naar EXACT de autostart-
+  /// pagina. Probeert eerst de merk-specifieke Intent; als die faalt
+  /// (OEM heeft de Activity hernoemd op deze OS-versie, of user heeft
+  /// een aangepaste ROM), fallback naar Android's app-info-pagina zodat
+  /// user van daar één klik verder kan naar batterij/autostart.
+  ///
+  /// Merk-specifieke deep-links zijn onvermijdelijk fragile — OEM's
+  /// hernoemen Activities regelmatig. Try/catch is essentieel.
+  ///
+  /// Retourneert de merknaam (lowercase) als je die wilt gebruiken voor
+  /// een merk-specifieke instructie-tekst; 'onbekend' bij niet-Android.
+  static Future<String> openOemAutostartInstellingen() async {
+    if (kIsWeb) return 'onbekend';
+    String merk = 'onbekend';
     try {
-      // openAppSettings gaat naar Android's app-info-scherm — vandaar
-      // klikt de gebruiker één keer door naar batterij/autostart. Meer
-      // gerichte deep-links (bijv. com.miui.permcenter.autostart.
-      // AutoStartManagementActivity) zijn OEM+versie-specifiek en breken
-      // regelmatig; we gebruiken de gegarandeerde fallback zodat we niet
-      // in "unknown-intent"-fouten belanden.
+      final info = await DeviceInfoPlugin().androidInfo;
+      merk = info.manufacturer.toLowerCase().trim();
+    } catch (_) {}
+
+    // Kandidaat-Intents per merk. Meerdere per OEM voor OS-versie-
+    // verschillen (bv. Xiaomi MIUI 12 vs 14 vs HyperOS).
+    final kandidaten = _oemIntentKandidaten(merk);
+    for (final intent in kandidaten) {
+      try {
+        await intent.launch();
+        return merk;
+      } catch (_) {
+        // volgende kandidaat proberen
+      }
+    }
+    // Fallback: app-info-pagina.
+    try {
       await openAppSettings();
     } catch (_) {}
+    return merk;
+  }
+
+  static List<AndroidIntent> _oemIntentKandidaten(String merk) {
+    switch (merk) {
+      case 'samsung':
+        return [
+          // One UI 5+ Sleeping apps direct
+          const AndroidIntent(
+            action: 'com.samsung.android.sm.ACTION_APP_SLEEP_LIST',
+          ),
+          // Device Care (algemene batterij-optimalisatie-pagina)
+          const AndroidIntent(
+            action: 'android.intent.action.MAIN',
+            componentName: 'com.samsung.android.lool/'
+                'com.samsung.android.sm.ui.battery.BatteryActivity',
+          ),
+        ];
+      case 'xiaomi':
+      case 'redmi':
+      case 'poco':
+        return [
+          // MIUI/HyperOS autostart-manager
+          const AndroidIntent(
+            action: 'android.intent.action.MAIN',
+            componentName: 'com.miui.securitycenter/'
+                'com.miui.permcenter.autostart.AutoStartManagementActivity',
+          ),
+          // MIUI power-hide-mode (batterij-optimalisatie-lijst)
+          const AndroidIntent(
+            action: 'miui.intent.action.POWER_HIDE_MODE_APP_LIST',
+          ),
+        ];
+      case 'huawei':
+      case 'honor':
+        return [
+          // EMUI/MagicOS launch-manager
+          const AndroidIntent(
+            action: 'android.intent.action.MAIN',
+            componentName: 'com.huawei.systemmanager/'
+                '.startupmgr.ui.StartupNormalAppListActivity',
+          ),
+          const AndroidIntent(
+            action: 'android.intent.action.MAIN',
+            componentName: 'com.huawei.systemmanager/'
+                '.optimize.process.ProtectActivity',
+          ),
+        ];
+      case 'oppo':
+      case 'realme':
+        return [
+          // ColorOS/RealmeUI autostart. Nieuwere en oudere paths.
+          const AndroidIntent(
+            action: 'android.intent.action.MAIN',
+            componentName: 'com.coloros.safecenter/'
+                '.startupapp.StartupAppListActivity',
+          ),
+          const AndroidIntent(
+            action: 'android.intent.action.MAIN',
+            componentName: 'com.coloros.safecenter/'
+                '.permission.startup.StartupAppListActivity',
+          ),
+        ];
+      case 'vivo':
+        return [
+          // FuntouchOS bg-startup-manager
+          const AndroidIntent(
+            action: 'android.intent.action.MAIN',
+            componentName: 'com.vivo.permissionmanager/'
+                '.activity.BgStartUpManagerActivity',
+          ),
+        ];
+      default:
+        return const [];
+    }
+  }
+
+  /// Korte NL-instructie per merk voor onder de "Instelling openen"-
+  /// knop, zodat user weet wat te doen als de deep-link naar app-info
+  /// fallback'te (of naar een instelling-tab die er iets anders uitziet
+  /// dan verwacht).
+  static String instructiePerOem(String merk) {
+    switch (merk) {
+      case 'samsung':
+        return "Zoek onder Batterij → Achtergrondgebruikslimiet → "
+            "Slapen. Als Ons Moment in de lijst staat: haal 'm daar weg.";
+      case 'xiaomi':
+      case 'redmi':
+      case 'poco':
+        return 'Zoek "Autostart" (of "Automatisch opstarten") en zet '
+            'Ons Moment aan.';
+      case 'huawei':
+      case 'honor':
+        return 'Zoek "App-launch" (of "Handmatig beheer") en zet '
+            'de schakelaar voor Ons Moment aan.';
+      case 'oppo':
+      case 'realme':
+        return 'Zoek "Autostart" (onder Batterijgebruik) en zet '
+            'Ons Moment aan.';
+      case 'vivo':
+        return 'Zoek "Achtergrondtoegang" (of "Autostart") en zet '
+            'Ons Moment aan.';
+      default:
+        return 'Zoek "Autostart" of "Automatisch opstarten" in de '
+            'instellingen van je apparaat en zet Ons Moment aan.';
+    }
   }
 
   static Future<bool> autostartAttested() async {
