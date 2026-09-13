@@ -139,12 +139,44 @@ class MainActivity : FlutterActivity() {
                         }
                     }
                     "requestFullScreenIntent" -> {
+                        // Q1 (14 sept 2026): drie-laags fallback voor de FSI-
+                        // toestemmingspagina. Op Android 14+ vereist; op oudere
+                        // OS-versies is de permission automatisch verleend en
+                        // hoeft er niks te openen.
+                        //   1. ACTION_MANAGE_APP_USE_FULL_SCREEN_INTENT + package:URI
+                        //      → direct de app-specifieke pagina (One UI + Pixel OK)
+                        //   2. ACTION_MANAGE_APP_USE_FULL_SCREEN_INTENT zonder URI
+                        //      → algemene FSI-app-lijst (sommige OEM's blokkeren
+                        //        de package-specifieke intent op recente ROM's)
+                        //   3. ACTION_APPLICATION_DETAILS_SETTINGS + package:URI
+                        //      → app-info-pagina, user vindt daar Meldingen →
+                        //        Volledig scherm zelf. Publiek en gegarandeerd.
                         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-                            val intent = Intent(
-                                Settings.ACTION_MANAGE_APP_USE_FULL_SCREEN_INTENT,
-                                Uri.parse("package:$packageName")
-                            )
-                            startActivity(intent)
+                            try {
+                                val intent = Intent(
+                                    Settings.ACTION_MANAGE_APP_USE_FULL_SCREEN_INTENT,
+                                    Uri.parse("package:$packageName")
+                                ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                startActivity(intent)
+                            } catch (_: Exception) {
+                                try {
+                                    val fallback = Intent(
+                                        Settings.ACTION_MANAGE_APP_USE_FULL_SCREEN_INTENT
+                                    ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                    startActivity(fallback)
+                                } catch (_: Exception) {
+                                    try {
+                                        val appInfo = Intent(
+                                            Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                                            Uri.parse("package:$packageName")
+                                        ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                        startActivity(appInfo)
+                                    } catch (_: Exception) {
+                                        // Geen enkele intent beschikbaar — Dart-kant
+                                        // toont de warme instructie-tekst zelf.
+                                    }
+                                }
+                            }
                         }
                         result.success(null)
                     }
@@ -256,6 +288,16 @@ class MainActivity : FlutterActivity() {
                     // dialog beschikbaar (Android-limitatie) — de gebruiker
                     // ziet Ons Moment in de lijst en tikt de toggle.
                     "vraagOverlayToestemming" -> {
+                        // Q2 (14 sept 2026): drie-laags fallback voor de overlay-
+                        // toestemmingspagina, spiegel van Q1.
+                        //   1. ACTION_MANAGE_OVERLAY_PERMISSION + package:URI
+                        //      → direct de app-specifieke pagina
+                        //   2. ACTION_MANAGE_OVERLAY_PERMISSION zonder URI
+                        //      → algemene overlay-app-lijst (sommige OEM's
+                        //        blokkeren de package-specifieke intent)
+                        //   3. ACTION_APPLICATION_DETAILS_SETTINGS + package:URI
+                        //      → app-info-pagina, user navigeert zelf naar
+                        //        'Weergeven over andere apps'.
                         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
                             try {
                                 val intent = Intent(
@@ -264,9 +306,57 @@ class MainActivity : FlutterActivity() {
                                 ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                                 startActivity(intent)
                             } catch (_: Exception) {
-                                // Op enkele OEMs is de intent afgeschermd —
-                                // val stil terug, de Dart-kant toont zelf UI.
+                                try {
+                                    val fallback = Intent(
+                                        Settings.ACTION_MANAGE_OVERLAY_PERMISSION
+                                    ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                    startActivity(fallback)
+                                } catch (_: Exception) {
+                                    try {
+                                        val appInfo = Intent(
+                                            Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                                            Uri.parse("package:$packageName")
+                                        ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                        startActivity(appInfo)
+                                    } catch (_: Exception) {
+                                        // Geen enkele intent — Dart toont UI.
+                                    }
+                                }
                             }
+                        }
+                        result.success(null)
+                    }
+                    // Q3 (14 sept 2026): ACTION_APP_NOTIFICATION_SETTINGS voor
+                    // Android 8+. Nodig bij permanent-denied POST_NOTIFICATIONS
+                    // waar Permission.notification.request() niks meer doet — user
+                    // moet dan handmatig via app-settings. Fallback naar
+                    // ACTION_APPLICATION_DETAILS_SETTINGS + package:URI.
+                    "openAppNotificationSettings" -> {
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                            try {
+                                val intent = Intent(
+                                    Settings.ACTION_APP_NOTIFICATION_SETTINGS
+                                ).putExtra(
+                                    Settings.EXTRA_APP_PACKAGE, packageName
+                                ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                startActivity(intent)
+                            } catch (_: Exception) {
+                                try {
+                                    val appInfo = Intent(
+                                        Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                                        Uri.parse("package:$packageName")
+                                    ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                    startActivity(appInfo)
+                                } catch (_: Exception) { /* Dart UI */ }
+                            }
+                        } else {
+                            try {
+                                val appInfo = Intent(
+                                    Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                                    Uri.parse("package:$packageName")
+                                ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                startActivity(appInfo)
+                            } catch (_: Exception) { /* Dart UI */ }
                         }
                         result.success(null)
                     }

@@ -238,6 +238,10 @@ class _ToestemmingenSetupSchermState extends State<ToestemmingenSetupScherm>
                   onTap: () async {
                     await KioskService.vraagFullScreenIntent();
                   },
+                  fallbackInstructie:
+                      'Werkt de knop niet? Ga naar Instellingen → Apps → '
+                      'Ons Moment → Meldingen → "Volledig scherm bij '
+                      'melding" en zet aan.',
                 ),
                 const SizedBox(height: 12),
                 // P3 (14 sept 2026): batterij-stap toont nu welke van de
@@ -282,6 +286,13 @@ class _ToestemmingenSetupSchermState extends State<ToestemmingenSetupScherm>
                       await StroomuitvalService.openBatterijInstellingen();
                     }
                   },
+                  fallbackInstructie: _battOk == false
+                      && _spaarstandUit == false
+                      ? 'Werkt de knop niet? Ga naar Instellingen → '
+                        'Batterij → Spaarstand en zet uit.'
+                      : 'Werkt de knop niet? Ga naar Instellingen → '
+                        'Apps → Ons Moment → Batterij → kies '
+                        '"Onbeperkt".',
                 ),
                 if (_overlayStapNodig) ...[
                   const SizedBox(height: 12),
@@ -299,6 +310,10 @@ class _ToestemmingenSetupSchermState extends State<ToestemmingenSetupScherm>
                     onTap: () async {
                       await OverlayPermissionService.vraagToestemming();
                     },
+                    fallbackInstructie:
+                        'Werkt de knop niet? Ga naar Instellingen → '
+                        'Apps → Speciale toegang → "Weergeven over '
+                        'andere apps" → zoek Ons Moment en zet aan.',
                   ),
                 ],
                 // C-1-vervolg: POST_NOTIFICATIONS (Android 13+). Zonder
@@ -316,8 +331,15 @@ class _ToestemmingenSetupSchermState extends State<ToestemmingenSetupScherm>
                   status: _notifOk,
                   knopTekst: 'Zet aan',
                   onTap: () async {
+                    // Q3 (14 sept 2026): vraagNotificatieToestemming detecteert
+                    // permanent-denied en opent dan meteen de meldingsinstellingen
+                    // via de KioskService method-channel. Zonder die detectie
+                    // deed .request() niks op een 'don't ask again'-toestel.
                     await StroomuitvalService.vraagNotificatieToestemming();
                   },
+                  fallbackInstructie:
+                      'Werkt de knop niet? Ga naar Instellingen → '
+                      'Apps → Ons Moment → Meldingen en zet aan.',
                 ),
                 // C-1-vervolg: OEM-autostart (alleen Samsung/Xiaomi/
                 // Huawei/Oppo/Vivo/Realme). Op Pixel/stock Android
@@ -508,6 +530,11 @@ class _ToestemmingenSetupSchermState extends State<ToestemmingenSetupScherm>
     required bool? status,
     required String knopTekst,
     required Future<void> Function() onTap,
+    // Q1-Q3 (14 sept 2026): warme fallback-instructie die getoond wordt
+    // ONDER de 'openen'-knop. User kan zo altijd zelf naar de juiste
+    // plek navigeren als een merk-specifieke Activity is hernoemd of
+    // exported=false is gezet. Alleen zichtbaar als de stap NIET-ok is.
+    String? fallbackInstructie,
   }) {
     final ok = status == true;
     return Container(
@@ -568,6 +595,12 @@ class _ToestemmingenSetupSchermState extends State<ToestemmingenSetupScherm>
                       fontSize: 14, fontWeight: FontWeight.w800)),
             ),
           ),
+          if (fallbackInstructie != null) ...[
+            const SizedBox(height: 10),
+            Text(fallbackInstructie,
+                style: const TextStyle(fontSize: 12, color: kBrown,
+                    height: 1.5, fontStyle: FontStyle.italic)),
+          ],
         ],
       ]),
     );

@@ -1,6 +1,7 @@
 import 'package:android_intent_plus/android_intent.dart';
 import 'package:device_info_plus/device_info_plus.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/services.dart' show MethodChannel;
 import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -39,10 +40,36 @@ class StroomuitvalService {
     }
   }
 
+  /// Q3 (14 sept 2026): permanent-denied-aware. Als user eerder
+  /// 'Don't ask again' heeft getikt, retourneert Permission.notification
+  /// .request() meteen 'permanentlyDenied' zonder dialog te tonen — dan
+  /// moet user handmatig via app-settings. Bij die status openen we
+  /// ACTION_APP_NOTIFICATION_SETTINGS via de KioskService-channel.
+  ///
+  /// Returned bool blijft 'is granted', ook al kan de flow via settings
+  /// gaan — bij terugkeer wordt de status opnieuw uitgelezen door
+  /// _ververs in het setup-scherm.
+  static const MethodChannel _kioskChannel =
+      MethodChannel('nl.onsmoment.kiosk');
+
   static Future<bool> vraagNotificatieToestemming() async {
     if (kIsWeb) return true;
     try {
+      final current = await Permission.notification.status;
+      if (current.isPermanentlyDenied) {
+        try {
+          await _kioskChannel.invokeMethod<void>(
+              'openAppNotificationSettings');
+        } catch (_) {}
+        return false;
+      }
       final status = await Permission.notification.request();
+      if (status.isPermanentlyDenied) {
+        try {
+          await _kioskChannel.invokeMethod<void>(
+              'openAppNotificationSettings');
+        } catch (_) {}
+      }
       return status.isGranted;
     } catch (_) {
       return false;
