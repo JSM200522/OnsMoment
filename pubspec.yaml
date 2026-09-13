@@ -36,7 +36,12 @@ dependencies:
   # direct declareren voorkomt implicit-open-dependency-lint en pint de
   # major-versie voor onze audio-attribuut-code.
   audio_session: ^0.1.21
-  record: ^5.1.0
+  # FASE D-1 (13 sept 2026): record 5.1 → 6.x. record_linux 0.7.2 was
+  # te oud voor record_platform_interface 1.6.0 dat via de flutter pub
+  # upgrade werd binnengetrokken. Bump forceert de complete record-familie
+  # (record_android/darwin/linux/web/windows) naar consistent nieuwere
+  # versies. AudioRecorder-class-API is stabiel gebleven sinds record 5.0.
+  record: ^6.0.0
   image_picker: ^1.0.7
   file_picker: ^8.0.0+1
   path_provider: ^2.1.2
@@ -70,7 +75,13 @@ dependencies:
   purchases_flutter: ^9.0.0
 
 dependency_overrides:
-  record_android: 1.2.0
+  # FASE D-1 (13 sept 2026): record_android 1.2.0-override VERWIJDERD.
+  # Was uit Flutter 3.19.6-tijdperk om een specifieke oude versie
+  # (zie CLAUDE.md reference-flutter-versie-stack) te forceren. Nu we
+  # op Flutter 3.47.4 + record ^6.0.0 zitten, is 1.2.0 zelf te oud
+  # (record_platform_interface 1.6.0-signature-mismatch met record_linux
+  # + waarschijnlijk ook Android). Pub-resolver kiest nu de bij record 6.x
+  # horende record_android 2.x zonder override.
   # FASE D-1 (13 sept 2026): win32 5.5.0 gebruikt UnmodifiableUint8ListView
   # die in Dart 3.13 uit dart:typed_data is verwijderd → Codemagic-build
   # fail 3. win32 5.14+ heeft de fix. Override omdat win32 een transitieve
