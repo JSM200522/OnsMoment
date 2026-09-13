@@ -206,6 +206,30 @@ class StroomuitvalService {
     }
   }
 
+  /// P3 (14 sept 2026): opent de algemene batterij-instellingenpagina
+  /// zodat de gebruiker daar spaarstand kan uitzetten. Er is geen
+  /// publieke Android-intent om spaarstand rechtstreeks te togglen —
+  /// dit is het beste alternatief. Fallback: app-info-pagina.
+  static Future<void> openBatterijInstellingen() async {
+    if (kIsWeb) return;
+    // Systeem-instellingen → Batterij. Meestal ondersteund op recente
+    // Android-versies; sommige OEM's hebben deze intent verborgen.
+    const kandidaten = [
+      AndroidIntent(action: 'android.settings.BATTERY_SAVER_SETTINGS'),
+    ];
+    for (final intent in kandidaten) {
+      try {
+        await intent.launch();
+        return;
+      } catch (_) {
+        // volgende kandidaat proberen
+      }
+    }
+    try {
+      await openAppSettings();
+    } catch (_) {}
+  }
+
   static Future<bool> autostartAttested() async {
     if (kIsWeb) return true;
     try {

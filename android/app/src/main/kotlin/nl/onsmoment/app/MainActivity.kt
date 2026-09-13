@@ -153,8 +153,45 @@ class MainActivity : FlutterActivity() {
                         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) {
                             result.success(true)
                         } else {
+                            // P3 (14 sept 2026): battery-opt-check bestaat uit TWEE
+                            // orthogonale Android-instellingen. Beide beïnvloeden of
+                            // Ons Moment op de achtergrond kan draaien.
+                            //   (a) per-app battery-optimization exemption
+                            //       (isIgnoringBatteryOptimizations): het wit-lijst-
+                            //       systeem. UIT = whitelisted, mag doorgaan.
+                            //   (b) globale Power Save Mode (isPowerSaveMode): de
+                            //       'Spaarstand'-schakelaar op systeem-niveau die
+                            //       ALLE apps beperkt, ook whitelisted ones.
+                            // Toesteltest (13 sept 2026): user zette Spaarstand AAN,
+                            // maar vinkje bleef GROEN want alleen (a) werd gecheckt.
+                            // Nu: groen ALLEEN als BEIDE ok zijn (whitelisted EN
+                            // spaarstand uit). Zo matcht het vinkje de werkelijkheid
+                            // die de gebruiker relevant vindt: 'kan de app doorgaan?'
+                            val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
+                            val perAppUit = pm.isIgnoringBatteryOptimizations(packageName)
+                            val spaarstandUit = !pm.isPowerSaveMode
+                            result.success(perAppUit && spaarstandUit)
+                        }
+                    }
+                    // P3 (14 sept 2026): losse sub-checks zodat de Dart-kant een
+                    // preciezere UX kan bieden ('spaarstand aan' vs 'app niet
+                    // whitelisted' zijn twee verschillende reparaties). Fallback naar
+                    // isBatteryOptimizationUit blijft werken als deze niet worden
+                    // aangeroepen — bestaande callers ongewijzigd.
+                    "isPerAppBatteryOptimizationUit" -> {
+                        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) {
+                            result.success(true)
+                        } else {
                             val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
                             result.success(pm.isIgnoringBatteryOptimizations(packageName))
+                        }
+                    }
+                    "isSpaarstandUit" -> {
+                        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.LOLLIPOP) {
+                            result.success(true)
+                        } else {
+                            val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
+                            result.success(!pm.isPowerSaveMode)
                         }
                     }
                     "vraagBatteryOptimizationUit" -> {

@@ -80,15 +80,19 @@ class KioskService {
     try { await _channel.invokeMethod<void>('requestFullScreenIntent'); } catch (_) {}
   }
 
-  /// BEL-A4: true als de app is uitgezonderd van battery-optimalisatie.
-  /// Op Android < 6 (Marshmallow) bestaat de feature niet → altijd true.
+  /// BEL-A4: true als de app op de achtergrond mag doorgaan zonder
+  /// beperkingen. P3 (14 sept 2026): dit is nu een SAMENGESTELDE check
+  /// van TWEE Android-instellingen — beide moeten uit zijn:
+  ///   (a) per-app battery-optimization exemption (whitelist)
+  ///   (b) globale Power Save Mode (spaarstand-schakelaar)
   ///
-  /// P2 (13 sept 2026): fallback bij MethodChannel-exception → false
-  /// (fail-closed). Voorheen retourneerde de fallback `true`, wat een
-  /// vals-positief groen vinkje in ToestemmingenSetupScherm gaf terwijl
-  /// batterij-optimalisatie in werkelijkheid weer AAN stond. Nu tonen
-  /// we bij twijfel een rood cross-icoon zodat user de stap opnieuw
-  /// doet.
+  /// Voorheen checkte alleen (a). Toesteltest: user zette Spaarstand
+  /// aan → whitelist bleef true → vinkje bleef GROEN → misleidend want
+  /// spaarstand overschrijft veel van de whitelist-vrijheid.
+  ///
+  /// Fallback bij MethodChannel-exception → false (fail-closed). Bij
+  /// twijfel toont de UI een rood cross-icoon zodat user de stap
+  /// opnieuw doet.
   static Future<bool> isBatteryOptimizationUit() async {
     if (kIsWeb) return true;
     try {
@@ -96,6 +100,32 @@ class KioskService {
           ?? false;
     } catch (_) {
       return false;
+    }
+  }
+
+  /// P3 (14 sept 2026): losse sub-check voor per-app-exemption alleen.
+  /// Gebruik dit i.c.m. [isSpaarstandUit] als je in de UI de gebruiker
+  /// een precieze reparatie-instructie wil geven ('zet spaarstand uit'
+  /// versus 'zet Ons Moment op de wit-lijst'). Voor eenvoud van de
+  /// standaard-checklist blijft [isBatteryOptimizationUit] beschikbaar
+  /// als samengestelde 'alles-ok'-vraag.
+  static Future<bool> isPerAppBatteryOptimizationUit() async {
+    if (kIsWeb) return true;
+    try {
+      return await _channel.invokeMethod<bool>(
+          'isPerAppBatteryOptimizationUit') ?? false;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// P3 (14 sept 2026): true als de systeem-brede Spaarstand UIT staat.
+  static Future<bool> isSpaarstandUit() async {
+    if (kIsWeb) return true;
+    try {
+      return await _channel.invokeMethod<bool>('isSpaarstandUit') ?? true;
+    } catch (_) {
+      return true;
     }
   }
 

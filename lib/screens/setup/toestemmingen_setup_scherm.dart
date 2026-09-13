@@ -59,6 +59,8 @@ class _ToestemmingenSetupSchermState extends State<ToestemmingenSetupScherm>
     with WidgetsBindingObserver {
   bool? _fsiOk;
   bool? _battOk;
+  bool? _perAppBattOk;
+  bool? _spaarstandUit;
   bool? _overlayOk;
   bool? _notifOk;
   bool? _autostartOk;
@@ -106,6 +108,8 @@ class _ToestemmingenSetupSchermState extends State<ToestemmingenSetupScherm>
       setState(() {
         _fsiOk = true;
         _battOk = true;
+        _perAppBattOk = true;
+        _spaarstandUit = true;
         _overlayOk = true;
         _notifOk = true;
         _autostartOk = true;
@@ -115,6 +119,13 @@ class _ToestemmingenSetupSchermState extends State<ToestemmingenSetupScherm>
     }
     final fsi = await KioskService.kanFullScreenIntent();
     final batt = await KioskService.isBatteryOptimizationUit();
+    // P3 (14 sept 2026): losse sub-checks zodat we in de UI kunnen
+    // uitleggen WELKE van de twee (per-app whitelist of spaarstand)
+    // nog aan-staat. isBatteryOptimizationUit() is de samengestelde
+    // check (beide moeten uit); de losse checks vertellen ons welke
+    // reparatie-instructie te tonen.
+    final perAppBatt = await KioskService.isPerAppBatteryOptimizationUit();
+    final spaarstand = await KioskService.isSpaarstandUit();
     final overlay = _overlayStapNodig
         ? await OverlayPermissionService.heeftToestemming()
         : true;
@@ -129,6 +140,8 @@ class _ToestemmingenSetupSchermState extends State<ToestemmingenSetupScherm>
     setState(() {
       _fsiOk = fsi;
       _battOk = batt;
+      _perAppBattOk = perAppBatt;
+      _spaarstandUit = spaarstand;
       _overlayOk = overlay;
       _notifOk = notif;
       _oemHeeftAutostart = oemNodig;
@@ -227,18 +240,47 @@ class _ToestemmingenSetupSchermState extends State<ToestemmingenSetupScherm>
                   },
                 ),
                 const SizedBox(height: 12),
+                // P3 (14 sept 2026): batterij-stap toont nu welke van de
+                // twee onderliggende instellingen aan-staat (whitelist of
+                // spaarstand). _battOk is de samenvatting; als NIET ok
+                // gebruiken we de sub-status om de juiste tekst + knop
+                // te tonen. Bij spaarstand aan: knop opent Instellingen
+                // → Batterij (algemeen), want er is geen direct-intent
+                // om spaarstand uit te schakelen (Android-limitatie).
                 _stapKaart(
                   emoji: '🔋',
-                  titel: 'Batterij-optimalisatie uit',
-                  uitleg:
-                      'Je apparaat kan de app stiller zetten als hij denkt '
-                      'dat de app "in slaap" is — dan mist je dierbare '
-                      'berichten en gesprekken. Zet dit uit voor Ons '
-                      'Moment.',
+                  titel: _battOk == false && _spaarstandUit == false
+                      ? 'Spaarstand uitzetten'
+                      : 'Batterij-optimalisatie uit',
+                  uitleg: _battOk == false && _spaarstandUit == false
+                      ? 'De Spaarstand van je apparaat staat AAN. In deze '
+                        'stand mag Ons Moment niet vrij op de achtergrond '
+                        'werken — je dierbare mist berichten en gesprekken '
+                        'terwijl de app "in slaap" wordt gezet. Zet de '
+                        'Spaarstand uit in de instellingen van je apparaat '
+                        '(meestal onder Batterij).'
+                      : 'Je apparaat kan de app stiller zetten als hij denkt '
+                        'dat de app "in slaap" is — dan mist je dierbare '
+                        'berichten en gesprekken. Zet dit uit voor Ons '
+                        'Moment.',
                   status: _battOk,
-                  knopTekst: 'Zet uit',
+                  knopTekst: _battOk == false && _spaarstandUit == false
+                      ? 'Open Batterij-instellingen'
+                      : 'Zet uit',
                   onTap: () async {
-                    await KioskService.vraagBatteryOptimizationUit();
+                    // Twee gescheiden acties op basis van welke van
+                    // de twee sub-checks NIET ok is. Als beide niet-ok
+                    // zijn, doen we eerst de per-app-exempt (die opent
+                    // een dialog); user pakt spaarstand daarna zelf op.
+                    if (_perAppBattOk == false) {
+                      await KioskService.vraagBatteryOptimizationUit();
+                    } else {
+                      // Alleen spaarstand aan: open de algemene batterij-
+                      // instellingen. Er is geen publieke Android-intent
+                      // om spaarstand direct uit te zetten — de gebruiker
+                      // ziet daar zelf de schakelaar.
+                      await StroomuitvalService.openBatterijInstellingen();
+                    }
                   },
                 ),
                 if (_overlayStapNodig) ...[
