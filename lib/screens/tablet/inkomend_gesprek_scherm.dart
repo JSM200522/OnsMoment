@@ -63,11 +63,24 @@ class _InkomendGesprekSchermState extends State<InkomendGesprekScherm> {
 
   Future<void> _startRingtone() async {
     try {
-      // BEL-E5: STREAM_RING-routing zodat de ringtone luid en beltoon-
-      // volume gebonden is (matched een echt inkomend gesprek). Blijft
-      // ook hoorbaar als LiveKit later een audio-communication-session
-      // opzet — de audio-focus valt niet weg tijdens de wachten-op-
-      // beantwoorden-fase.
+      // FINAL-CHECK (14 sept 2026): expliciete AudioSession.configure +
+      // setActive VÓÓR setAsset. Zelfde reden als BelScherm P4-fix en
+      // AutoOpnemenWaarschuwingScherm — in just_audio 0.9.46 wordt
+      // setAndroidAudioAttributes zonder actieve AudioSession genegeerd
+      // door OS → ringtone gaat via de default media-stream en wordt
+      // door LiveKit's aankomende MODE_IN_COMMUNICATION gedempt. Op
+      // dit scherm (dierbare-tablet) is dat extra kritiek: de dierbare
+      // hoort dan geen enkele ringtone bij een inkomend gesprek.
+      final session = await AudioSession.instance;
+      await session.configure(const AudioSessionConfiguration(
+        androidAudioAttributes: AndroidAudioAttributes(
+          usage: AndroidAudioUsage.notificationRingtone,
+          contentType: AndroidAudioContentType.sonification,
+        ),
+        androidAudioFocusGainType:
+            AndroidAudioFocusGainType.gainTransientMayDuck,
+      ));
+      await session.setActive(true);
       await _ringtone.setAndroidAudioAttributes(
         const AndroidAudioAttributes(
           usage: AndroidAudioUsage.notificationRingtone,

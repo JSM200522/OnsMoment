@@ -58,12 +58,24 @@ class _AutoOpnemenWaarschuwingSchermState
 
   Future<void> _startGeluid() async {
     try {
-      // BEL-E5: gebruik notificationRingtone-routing (STREAM_RING) zodat de
-      // marimba luid en herkenbaar is — spiegelt de audio-attributes van de
-      // beller-ringback (BelScherm) en van InkomendGesprekScherm. Zonder
-      // deze attributes zou GesprekScherm's aanstaande LiveKit-connect de
-      // media-stream direct dempen (MODE_IN_COMMUNICATION) net wanneer de
-      // waarschuwing hoorbaar moet zijn.
+      // FINAL-CHECK (14 sept 2026): expliciete AudioSession.configure +
+      // setActive VÓÓR setAsset. Zelfde reden als BelScherm P4-fix: in
+      // just_audio 0.9.46 wordt setAndroidAudioAttributes zonder actieve
+      // AudioSession genegeerd → marimba stil gerouteerd door LiveKit's
+      // aankomende MODE_IN_COMMUNICATION. Dit scherm speelt de marimba
+      // ~2.5s vóór GesprekScherm-open — precies het venster waarin de
+      // stille-routing zou plaatsvinden. Bug zat verborgen; nu preemptief
+      // gefixt om te matchen met BelScherm's ringback-flow.
+      final session = await AudioSession.instance;
+      await session.configure(const AudioSessionConfiguration(
+        androidAudioAttributes: AndroidAudioAttributes(
+          usage: AndroidAudioUsage.notificationRingtone,
+          contentType: AndroidAudioContentType.sonification,
+        ),
+        androidAudioFocusGainType:
+            AndroidAudioFocusGainType.gainTransientMayDuck,
+      ));
+      await session.setActive(true);
       await _speler.setAndroidAudioAttributes(
         const AndroidAudioAttributes(
           usage: AndroidAudioUsage.notificationRingtone,
