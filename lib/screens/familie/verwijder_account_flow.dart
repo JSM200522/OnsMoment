@@ -1,7 +1,11 @@
+import 'dart:async';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import '../../services/bel_log_service.dart';
 import '../../services/device_modus_service.dart';
 import '../../services/push_service.dart';
 import '../../theme/kleuren.dart';
@@ -261,10 +265,17 @@ Future<void> _voerVerwijderingUit(BuildContext context) async {
 
   String? foutmelding;
   try {
+    // AVG-1-P1 (13 sept 2026): expliciete lege payload i.p.v.
+    // `.call<dynamic>()` zonder argument. In cloud_functions 5.x
+    // behandelt de callable een missing argument mogelijk anders dan
+    // v4; expliciet `{}` is de veilige signature en matcht wat
+    // RevenueCat/Firebase-docs adviseren voor callables zonder input.
     final callable = FirebaseFunctions
         .instanceFor(region: 'europe-west1')
         .httpsCallable('verwijderAccount');
-    await callable.call<dynamic>();
+    final result = await callable.call<Map<String, dynamic>>({});
+    unawaited(BelLogService.log(
+        'verwijderAccount success — data: ${result.data}'));
     // Server heeft auth.deleteUser al gedaan; forceer signOut voor de
     // zekerheid + wis alle lokale prefs + achtergrond-idToken.
     await DeviceModusService.wis();
@@ -279,9 +290,23 @@ Future<void> _voerVerwijderingUit(BuildContext context) async {
       await FirebaseFirestore.instance.terminate();
       await FirebaseFirestore.instance.clearPersistence();
     } catch (_) {}
-  } on FirebaseFunctionsException catch (e) {
+  } on FirebaseFunctionsException catch (e, st) {
+    // AVG-1-P1: log de VOLLEDIGE fout zodat we bij een volgende
+    // toesteltest de echte oorzaak zien in BelLogService.
+    unawaited(BelLogService.log(
+        'verwijderAccount FirebaseFunctionsException — '
+        'code=${e.code} message=${e.message} details=${e.details}\n$st'));
+    debugPrint('verwijderAccount FF-EXC: ${e.code} — ${e.message}');
     foutmelding = _warmeFout(e);
-  } catch (e) {
+  } catch (e, st) {
+    // Generic catch — vaak parent-exception (FirebaseException,
+    // PlatformException) die niet als FirebaseFunctionsException wordt
+    // gevangen. Log runtime-type + toString zodat we die volgende keer
+    // exact zien.
+    unawaited(BelLogService.log(
+        'verwijderAccount OTHER EXCEPTION — '
+        'type=${e.runtimeType} toString=$e\n$st'));
+    debugPrint('verwijderAccount other exc: ${e.runtimeType} — $e');
     foutmelding = 'Verwijderen mislukte — probeer het over enkele '
         'minuten opnieuw. (${e.runtimeType})';
   }
