@@ -208,20 +208,31 @@ class DeviceModusService {
     } catch (_) {}
   }
 
-  /// Zoekt in Firestore de eerste kring waarvan deze uid eigenaar is en
-  /// slaat de doc-id op als actieveKringId. Stil bij geen kring of fout.
+  /// Zoekt de eerste kring waarvan deze uid eigenaar is en slaat de
+  /// doc-id op als actieveKringId. Stil bij geen kring of fout.
   /// Aangeroepen direct na signIn-blokken zodat reads die op kringId
   /// filteren (V9 1.1d+) werken voor bestaande eigenaars.
+  ///
+  /// DEEL F fix (13 sept 2026): gebruik collectionGroup('leden')-query
+  /// via KringService.mijnKringen i.p.v. `kringen.where(eigenaarUid)`.
+  /// De tighter Firestore-rules (FASE B, 29 aug 2026) staan een generieke
+  /// kringen-LIST NIET toe: `isLid(kringId)` faalt bij list met
+  /// "Null value error for 'list' @ L72". De query gooide silent
+  /// (try/catch), notifier bleef null, en KringledenScherm toonde
+  /// "Geen actieve kring — log opnieuw in." na een account-wissel
+  /// (A→uitloggen→B→uitloggen→A: door A-1 wist wis() de apparaatId
+  /// waardoor A een nieuwe apparaatId krijgt → apparaat-doc bestaat niet
+  /// → bekend-apparaat-pad slaat over → val terug op deze method die
+  /// dus stil faalde). Zelfde fix-patroon als commit d1e60e4 (herstel-
+  /// flow B-9).
   static Future<void> zetActieveKringVoorEigenaar(String uid) async {
     if (uid.isEmpty) return;
     try {
-      final snap = await FirebaseFirestore.instance
-          .collection('kringen')
-          .where('eigenaarUid', isEqualTo: uid)
-          .limit(1)
-          .get();
-      if (snap.docs.isEmpty) return;
-      await zetActieveKring(snap.docs.first.id);
+      final mijnKringen = await KringService.mijnKringen(uid);
+      final eigenKringen =
+          mijnKringen.where((k) => k.eigenaarUid == uid).toList();
+      if (eigenKringen.isEmpty) return;
+      await zetActieveKring(eigenKringen.first.id);
     } catch (_) {}
   }
 

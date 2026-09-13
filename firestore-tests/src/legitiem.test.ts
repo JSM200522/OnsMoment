@@ -1393,3 +1393,72 @@ describe('AUDIT: half-account herstel (B-9)', () => {
     });
   });
 });
+
+// ────────────────────────────────────────────────────────────────
+// DEEL F (13 sept 2026) — account-wissel "kring niet actief"-bug.
+// Reproductie: A→uitloggen→B→uitloggen→A op hetzelfde toestel; door
+// A-1 wist wis() de apparaatId. Bij re-login A: `zetActieveKring-
+// VoorEigenaar` deed `kringen.where(eigenaarUid==uid)` — een LIST
+// die onder de tighter FASE B-rules faalt met "Null value error for
+// 'list'" want `isLid(kringId)` kan bij LIST niet per doc geëvalueerd.
+// Silent try/catch → notifier bleef null → "Geen actieve kring".
+//
+// Fix (device_modus_service.dart): collectionGroup('leden')-query via
+// KringService.mijnKringen (respecteert de rule `path=**/leden` met
+// `userUid == request.auth.uid`).
+// ────────────────────────────────────────────────────────────────
+describe('DEEL F: zetActieveKringVoorEigenaar na account-wissel', () => {
+  test('AUD-22 OUDE-QUERY (regression-guard): kringen.where(eigenaarUid) MOET blijven falen onder tighter rules', async () => {
+    await env.clearFirestore();
+    // Seed: EIGENAAR_A_UID heeft een eigen kring, is lid via leden-doc.
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      const admin = ctx.firestore();
+      await setDoc(doc(admin, 'kringen', KRING_A_ID), {
+        eigenaarUid: EIGENAAR_A_UID,
+        naam: 'Familie A',
+      });
+      await setDoc(
+          doc(admin, 'kringen', KRING_A_ID, 'leden', EIGENAAR_A_UID),
+          { userUid: EIGENAAR_A_UID, rol: 'eigenaar' });
+    });
+    const db = alsEigenaarA(env).firestore();
+    // Deze query is wat de OUDE zetActieveKringVoorEigenaar deed —
+    // onder de tighter rules MOET hij falen (collection-LIST met
+    // isLid(kringId) kan de rules-engine niet statisch bewijzen).
+    await assertFails(
+      getDocs(
+        query(
+          collection(db, 'kringen'),
+          where('eigenaarUid', '==', EIGENAAR_A_UID),
+        ),
+      ),
+    );
+  });
+
+  test('AUD-23 NIEUWE-QUERY: collectionGroup(leden).where(userUid) werkt WEL onder tighter rules', async () => {
+    await env.clearFirestore();
+    // Zelfde seed als AUD-22.
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      const admin = ctx.firestore();
+      await setDoc(doc(admin, 'kringen', KRING_A_ID), {
+        eigenaarUid: EIGENAAR_A_UID,
+        naam: 'Familie A',
+      });
+      await setDoc(
+          doc(admin, 'kringen', KRING_A_ID, 'leden', EIGENAAR_A_UID),
+          { userUid: EIGENAAR_A_UID, rol: 'eigenaar' });
+    });
+    const db = alsEigenaarA(env).firestore();
+    // Dit is het patroon dat KringService.mijnKringen gebruikt (en dat
+    // de nieuwe zetActieveKringVoorEigenaar via die service aanroept).
+    // Rule `path=**/leden` staat read toe als userUid == auth.uid.
+    await assertSucceeds(
+      getDocs(
+        query(
+          collectionGroup(db, 'leden'),
+          where('userUid', '==', EIGENAAR_A_UID),
+        ),
+      ),
+    );
+  });
+});
