@@ -4141,19 +4141,26 @@ class _InstellingenTabState extends State<InstellingenTab> {
             Navigator.push(context, MaterialPageRoute(
                 builder: (c) => const BelDiagnoseScherm()));
           }),
-        // J-5 (12 sept 2026): Uitloggen alleen zichtbaar in familie-mode.
-        // In ontvanger-mode (rustige modus zonder InstellingenTab, én
-        // gewone modus mét alsOntvanger=true) verbergen we de knop, anders
-        // kan iemand met fysieke toegang tot de dierbare-tablet uitloggen
-        // → 'Familielid' kiezen in setup-wizard → eigenaar-acties doen
-        // (autoAnswer, kring verwijderen, leden verwijderen). Als de
-        // eigenaar de tablet wil resetten, doet die dat via
-        // Instellingen → Wijzig modus op zijn eigen toestel, of via
-        // fabrieksreset van de tablet.
-        if (!widget.alsOntvanger)
-          _item('🚪', 'Uitloggen',
-              'Logt uit en wist apparaat-instellingen',
-              _bevestigUitloggen),
+        // J-5 + DEEL E (13 sept 2026): Uitloggen in BEIDE modi zichtbaar.
+        // Familie-mode: gewone bevestig-dialog (dierbare kan niet per
+        // ongeluk uitloggen — komt niet op familie-account).
+        // Ontvanger-mode: label "Uitloggen (alleen eigenaar)" + drempel
+        // via wachtwoord-re-auth (reauthenticateWithCredential). Zonder
+        // wachtwoord: geen uitloggen. Dat matcht J-5's oorspronkelijke
+        // intentie: dierbare kan niet zomaar uitloggen (kent wachtwoord
+        // niet), eigenaar kan wél (om van account te wisselen of tablet
+        // opnieuw in te stellen).
+        _item(
+            '🚪',
+            widget.alsOntvanger
+                ? 'Uitloggen (alleen eigenaar)'
+                : 'Uitloggen',
+            widget.alsOntvanger
+                ? 'Wachtwoord van de eigenaar vereist'
+                : 'Logt uit en wist apparaat-instellingen',
+            widget.alsOntvanger
+                ? _bevestigEigenaarUitloggen
+                : _bevestigUitloggen),
         const SizedBox(height: 30),
         Center(child: GestureDetector(
           // BEL-B verborgen dev-toggle: long-press op logo opent de
@@ -4393,6 +4400,149 @@ class _InstellingenTabState extends State<InstellingenTab> {
               style: TextStyle(color: kWhite, fontWeight: FontWeight.w800))),
       ],
     ));
+  }
+
+  /// DEEL E (13 sept 2026): eigenaar-gated logout op ontvanger-toestel.
+  /// Voorkomt dat iemand met fysieke toegang tot de dierbare-tablet
+  /// uitlogt → 'Familielid' kiest in setup → eigenaar-acties uitvoert
+  /// (autoAnswer, kring verwijderen, leden verwijderen).
+  ///
+  /// Drempel = reauthenticateWithCredential met het account-wachtwoord.
+  /// Alleen wie het wachtwoord kent kan uitloggen. Zelfde AlertDialog-
+  /// stijl als _bevestigUitloggen (kCream + kBrown + kPeach) — geen
+  /// alarm-rood, want de handeling zelf is omkeerbaar (opnieuw inloggen).
+  ///
+  /// Fail-open bij netwerk-uitval: als reauthenticate faalt met
+  /// network-request-failed geven we een duidelijke foutmelding en
+  /// laten de dialog open (gebruiker kan opnieuw proberen). Zonder
+  /// server-verificatie NOOIT uitloggen — dat is de hele drempel.
+  void _bevestigEigenaarUitloggen() {
+    final wachtwoordCtl = TextEditingController();
+    final email = FirebaseAuth.instance.currentUser?.email ?? '';
+    final formKey = GlobalKey<FormState>();
+    var bezig = false;
+    String? fout;
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => StatefulBuilder(builder: (ctx, setLocalState) {
+        return AlertDialog(
+          shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(20)),
+          backgroundColor: kCream,
+          title: const Text('Uitloggen als eigenaar',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900,
+                  color: kBrown)),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                    'Alleen de eigenaar mag uitloggen op dit toestel. '
+                    'Voer het wachtwoord in van $email om verder te gaan.',
+                    style: const TextStyle(fontSize: 14,
+                        color: kBrownLight, height: 1.5)),
+                const SizedBox(height: 16),
+                Form(
+                  key: formKey,
+                  child: TextFormField(
+                    controller: wachtwoordCtl,
+                    obscureText: true,
+                    autofocus: true,
+                    enabled: !bezig,
+                    decoration: InputDecoration(
+                      labelText: 'Wachtwoord',
+                      filled: true,
+                      fillColor: kWhite,
+                      border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12)),
+                    ),
+                    validator: (v) => (v == null || v.isEmpty)
+                        ? 'Vul je wachtwoord in'
+                        : null,
+                  ),
+                ),
+                if (fout != null) ...[
+                  const SizedBox(height: 12),
+                  Text(fout!,
+                      style: const TextStyle(fontSize: 13, color: kRood,
+                          fontWeight: FontWeight.w700)),
+                ],
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+                onPressed: bezig ? null : () => Navigator.pop(ctx),
+                child: const Text('Annuleren',
+                    style: TextStyle(color: kTextMuted,
+                        fontWeight: FontWeight.w700))),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                  backgroundColor: kPeach,
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12))),
+              onPressed: bezig
+                  ? null
+                  : () async {
+                      if (!(formKey.currentState?.validate() ?? false)) {
+                        return;
+                      }
+                      setLocalState(() {
+                        bezig = true;
+                        fout = null;
+                      });
+                      try {
+                        final user = FirebaseAuth.instance.currentUser;
+                        if (user == null || email.isEmpty) {
+                          throw FirebaseAuthException(
+                              code: 'no-current-user',
+                              message: 'Geen actieve sessie gevonden.');
+                        }
+                        final cred = EmailAuthProvider.credential(
+                            email: email, password: wachtwoordCtl.text);
+                        await user.reauthenticateWithCredential(cred);
+                        if (!ctx.mounted) return;
+                        Navigator.pop(ctx);
+                        await DeviceModusService.wis();
+                        await FirebaseAuth.instance.signOut();
+                      } on FirebaseAuthException catch (e) {
+                        final boodschap = switch (e.code) {
+                          'wrong-password' ||
+                          'invalid-credential' =>
+                            'Wachtwoord klopt niet. Probeer opnieuw.',
+                          'too-many-requests' =>
+                            'Te veel pogingen. Wacht even en probeer opnieuw.',
+                          'network-request-failed' =>
+                            'Geen internetverbinding. Probeer opnieuw.',
+                          _ => 'Uitloggen mislukt (${e.code}).',
+                        };
+                        setLocalState(() {
+                          bezig = false;
+                          fout = boodschap;
+                        });
+                      } catch (_) {
+                        setLocalState(() {
+                          bezig = false;
+                          fout = 'Er ging iets mis. Probeer opnieuw.';
+                        });
+                      }
+                    },
+              child: bezig
+                  ? const SizedBox(
+                      width: 18, height: 18,
+                      child: CircularProgressIndicator(
+                          strokeWidth: 2, color: kWhite))
+                  : const Text('Uitloggen',
+                      style: TextStyle(
+                          color: kWhite, fontWeight: FontWeight.w800)),
+            ),
+          ],
+        );
+      }),
+    );
   }
 
   Widget _item(String emoji, String titel, String tekst, VoidCallback onTap) =>
