@@ -6,16 +6,22 @@
  * request.auth — geen params.
  *
  * SCENARIO A — EIGENAAR verwijdert account
- *   Voor ELKE kring waarvan uid eigenaarUid is:
+ *   Voor ELKE kring waarvan uid eigenaarUid is (in deze volgorde):
+ *     - andere leden' apparaten met kringId == K (per bekende userUid uit
+ *       de leden-subcollectie; die tablets worden daarna door
+ *       _KringWachter uitgelogd — expliciet in UI benoemd)
  *     - subcollectie leden/*
  *     - alle momenten, dagelijkse_momenten, gepland_momenten, notities
  *       met kringId == K
  *     - uitnodig_tokens met kringId == K
- *     - andere users' apparaten met kringId == K (die tablets worden
- *       daarna door _KringWachter uitgelogd — expliciet in UI benoemd)
  *     - kringen/{K} zelf
  *     - Storage: momenten/{K}/*, dagelijkse_audio/{K}/*,
  *       dagelijkse_media/{K}/*, profielfotos/{K}.jpg
+ *   Volgorde is bewust: apparaten-cleanup gebruikt leden als bron van
+ *   userUids, dus leden verwijdert NA apparaten. Voorheen (t/m 12 sept
+ *   2026) deed deze functie collectionGroup('apparaten').where('kringId'),
+ *   wat crashte met FAILED_PRECONDITION zonder index — vervangen door
+ *   per-user subcollectie-loop (geen index nodig).
  *
  * SCENARIO B — GAST verlaat andermans kringen
  *   Voor elke membership in andermans kring (collectionGroup leden):
@@ -163,9 +169,51 @@ async function verwijderKringCascade(
 ): Promise<void> {
   logger.info('verwijderKringCascade START', { kringId });
 
-  // leden-subcollectie
-  await verwijderCollectionInBatches(db,
-    db.collection('kringen').doc(kringId).collection('leden'));
+  // DEEL D (13 sept 2026): eerst leden LEZEN om userUids te verzamelen.
+  // Voorheen deden we `db.collectionGroup('apparaten').where('kringId')`
+  // om cross-user apparaten op te ruimen — dat crashte met
+  // FAILED_PRECONDITION omdat er geen collection-group-index bestaat op
+  // apparaten.kringId (en er is geen firestore.indexes.json in de repo
+  // om er één te definieren). Nieuwe aanpak: itereer per bekend
+  // lidmaatschap door hun eigen apparaten-subcollectie — dat is een
+  // gewone subcollectie-query per parent en vereist géén index.
+  const ledenRef = db.collection('kringen').doc(kringId)
+    .collection('leden');
+  const ledenSnap = await ledenRef.get();
+  const lidUserUids = new Set<string>();
+  for (const doc of ledenSnap.docs) {
+    const userUid = doc.get('userUid') as string | undefined;
+    if (userUid && userUid.length > 0) lidUserUids.add(userUid);
+  }
+  logger.info('leden gevonden voor apparaten-cleanup', {
+    kringId, aantal: lidUserUids.size,
+  });
+
+  // Per bekende lid: eigen apparaten-subcollectie waar kringId == deze
+  // kring. Dat is een gewone parent-scoped query — subcollectie-index
+  // op kringId is automatisch aanwezig via de single-field-index-mode
+  // van Firestore.
+  //
+  // Edge-case: gast die zich zelf al uit de kring had verwijderd (dus
+  // geen leden-doc meer) laat mogelijk een apparaat-doc met kringId
+  // achter. Die wordt niet door deze cleanup gedekt — maar het is een
+  // orphan die niets meer kan doen (client-side _KringWachter logt 'm
+  // toch al uit, en de gast heeft geen leestoegang op deze kring meer).
+  // Wachten op de eigenaar-account-delete: geen crisis, wél cleanup-
+  // schuld die ooit via een periodieke sweep op orphan-apparaten kan.
+  for (const lidUid of lidUserUids) {
+    const appSnap = await db.collection('gebruikers').doc(lidUid)
+      .collection('apparaten').where('kringId', '==', kringId).get();
+    if (appSnap.empty) continue;
+    logger.info('apparaten van lid verwijderen', {
+      kringId, lidUid, aantal: appSnap.docs.length,
+    });
+    await verwijderDocsInBatches(db, appSnap.docs);
+  }
+
+  // NU pas leden-subcollectie verwijderen. Volgorde is bewust: we
+  // hebben de userUids uit deze collectie nodig vóór delete.
+  await verwijderDocsInBatches(db, ledenSnap.docs);
 
   // content-collecties (kringId is een top-level veld)
   for (const coll of [
@@ -178,11 +226,6 @@ async function verwijderKringCascade(
   // uitnodig_tokens
   await verwijderQueryInBatches(db,
     db.collection('uitnodig_tokens').where('kringId', '==', kringId));
-
-  // andere users' apparaten die deze kringId hebben (cross-uid).
-  // Collection-group query.
-  await verwijderQueryInBatches(db,
-    db.collectionGroup('apparaten').where('kringId', '==', kringId));
 
   // kring-doc zelf
   try {
@@ -200,14 +243,6 @@ async function verwijderKringCascade(
   await deleteStorageFilesByPrefix(bucket, `profielfotos/${kringId}`);
 
   logger.info('verwijderKringCascade KLAAR', { kringId });
-}
-
-async function verwijderCollectionInBatches(
-  db: admin.firestore.Firestore,
-  ref: admin.firestore.CollectionReference,
-): Promise<void> {
-  const snap = await ref.get();
-  await verwijderDocsInBatches(db, snap.docs);
 }
 
 async function verwijderQueryInBatches(

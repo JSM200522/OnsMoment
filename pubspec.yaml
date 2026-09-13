@@ -1,7 +1,7 @@
 name: ons_moment
 description: Ons Moment - Verbinding voor mensen met dementie
 publish_to: 'none'
-version: 1.0.64+75
+version: 1.0.65+76
 
 environment:
   # FASE D-1 (12 sept 2026): Dart 3.4 / Flutter 3.22 vereist voor
