@@ -177,14 +177,28 @@ class _BelSchermState extends State<BelScherm> {
   Future<void> _startRingback() async {
     unawaited(BelLogService.log('BelScherm ringback START (setAsset+play)'));
     try {
-      // BEL-E5: LiveKit.setMicrophoneEnabled(true) zet AudioManager op
-      // MODE_IN_COMMUNICATION. Media-stream playback (just_audio default)
-      // wordt dan door de OS gedempt of stil-gerouteerd. Door usage op
-      // notificationRingtone te zetten routeert Android de marimba via
-      // STREAM_RING — die overleeft de communication-mode, precies zoals
-      // een systeem-beltoon dat doet bij een echt gesprek. contentType
-      // sonification signaleert 'kort signaal', matched het karakter van
-      // een ringback-toon.
+      // P4 (14 sept 2026): expliciete AudioSession.configure vóór de
+      // play-call. In just_audio 0.9.46 (na de Flutter 3.47-upgrade) is
+      // setAndroidAudioAttributes onbetrouwbaar zonder een actieve
+      // AudioSession — de attributes worden dan door OS soms genegeerd
+      // en de marimba wordt via de default media-stream gerouteerd. Die
+      // stream wordt door LiveKit's setMicrophoneEnabled(true) op
+      // MODE_IN_COMMUNICATION gedempt → stille ringback. Toesteltest 13
+      // sept 2026: eigenaar hoorde niets tijdens uitgaand gesprek.
+      //
+      // Configure + setActive vóór setAsset garandeert dat Android de
+      // usage=notificationRingtone accepteert; de stream loopt dan via
+      // STREAM_RING en overleeft de communication-mode.
+      final session = await AudioSession.instance;
+      await session.configure(const AudioSessionConfiguration(
+        androidAudioAttributes: AndroidAudioAttributes(
+          usage: AndroidAudioUsage.notificationRingtone,
+          contentType: AndroidAudioContentType.sonification,
+        ),
+        androidAudioFocusGainType:
+            AndroidAudioFocusGainType.gainTransientMayDuck,
+      ));
+      await session.setActive(true);
       await _ringbackPlayer.setAndroidAudioAttributes(
         const AndroidAudioAttributes(
           usage: AndroidAudioUsage.notificationRingtone,

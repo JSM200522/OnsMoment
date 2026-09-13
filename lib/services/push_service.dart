@@ -238,6 +238,12 @@ class PushService {
   /// SharedPreferences) en gereset naar 0 bij [lokaleMeldingenWissen].
   static const String _kBadgeCount = 'badge_count';
 
+  /// P4 (14 sept 2026): eenmalige migratie-vlag voor moment-channels
+  /// naar audioAttributesUsage=notificationRingtone. Zodra true blijft
+  /// de code idempotent en respecteert user-overrides op de channels.
+  static const String _kNotifChannelsV3Attrs =
+      'notif_channels_v3_audio_attrs_migrated';
+
   /// Gecacht zodat de onTokenRefresh-listener naar hetzelfde apparaat-doc
   /// kan schrijven zonder dat de aanroeper de ids opnieuw doorgeeft.
   static String? _huidigeFamilieUid;
@@ -348,15 +354,31 @@ class PushService {
         await androidImpl?.deleteNotificationChannel(gesprekChannelId);
       } catch (_) {}
 
-      // Zes channels registreren, één per herkenningsgeluid. Elk channel
-      // is immutable na aanmaak, dus we doen dit één keer bij eerste
-      // app-open. Wisselt de familie het herkenningsgeluid, dan komen
-      // volgende meldingen automatisch op een ander bestaand channel.
+      // Zes channels registreren, één per herkenningsgeluid.
+      //
+      // P4 (14 sept 2026): eenmalige migratie voor bestaande installs
+      // om audioAttributesUsage=notificationRingtone actief te maken.
+      // Voorheen (default) routeerden channels via STREAM_NOTIFICATION
+      // dat het 'meldingen-volume' volgt — dat staat vaak laag/uit,
+      // waardoor de eigenaar visueel wél de melding zag maar niets
+      // hoorde (toesteltest 13 sept 2026). Notification-ringtone volgt
+      // STREAM_RING = beltoonvolume; voor Ons Moment de juiste bron
+      // want dit zijn belangrijke berichten. Channels zijn immutable
+      // na aanmaak — delete+recreate is de enige manier. Guarded via
+      // SharedPreferences zodat we niet elke resume user-preferences
+      // wissen.
+      final prefs = await SharedPreferences.getInstance();
+      final gemigreerd = prefs.getBool(_kNotifChannelsV3Attrs) ?? false;
       for (final entry in channelIdVoorGeluid.entries) {
         final geluidId = entry.key;
         final channelId = entry.value;
         final channelNaam = _channelNaamVoorGeluid[geluidId]
             ?? 'Ons Moment';
+        if (!gemigreerd) {
+          try {
+            await androidImpl?.deleteNotificationChannel(channelId);
+          } catch (_) {}
+        }
         await androidImpl?.createNotificationChannel(
           AndroidNotificationChannel(
             channelId,
@@ -364,9 +386,13 @@ class PushService {
             description: 'Nieuwe berichten van je familie',
             importance: Importance.high,
             sound: RawResourceAndroidNotificationSound(channelId),
+            audioAttributesUsage: AudioAttributesUsage.notificationRingtone,
             showBadge: true,
           ),
         );
+      }
+      if (!gemigreerd) {
+        await prefs.setBool(_kNotifChannelsV3Attrs, true);
       }
 
       // P2: gesprek-channel als echte oproep — ringtone + beltoonvolume.
