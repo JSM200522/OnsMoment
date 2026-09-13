@@ -6833,14 +6833,35 @@ class _HulpDialog extends StatelessWidget {
         "verschijnt een rustige melding 'Gemist gesprek van [naam]' op het "
         "apparaat van je dierbare. Aan jouw kant zie je dat de verbinding "
         "niet is opgezet — je kunt op elk moment opnieuw proberen te bellen."),
+    // DEEL C (13 sept 2026): brede uitleg over de bel-checklist. Vervangt
+    // de oude "volledig scherm + batterij" FAQ zodat familie op één plek
+    // ziet WAAROM elke stap nodig is en WAAR ze te vinden zijn. Plain
+    // language, geen jargon, aansluitend op de warme toon van de rest.
     _FAQ('Videobellen',
-        "Waarom vraagt de app om 'volledig scherm' en 'batterij-uitzondering'?",
-        "Zodat een inkomend gesprek altijd doorkomt — ook als het "
-        "apparaat in slaap staat of het scherm uit is. Zonder deze twee "
-        "instellingen kan het apparaat de oproep vertragen of als kleine "
-        "melding in het meldingenscherm zetten, waar je dierbare hem "
-        "gemakkelijk over het hoofd ziet. Beide zijn eenmalige "
-        "toestemmingen; je hoeft ze nooit opnieuw te geven."),
+        "Waarom moet ik instellingen aanzetten voor bellen?",
+        "Android is streng: zonder een paar eenmalige toestemmingen kan "
+        "een inkomend gesprek geluidloos wegvallen of pas veel later "
+        "aankomen. Dat is niet de app — dat is Android die zuinig doet "
+        "met batterij en meldingen. Wij vragen alleen wat écht nodig is:\n\n"
+        "• Volledig scherm bij een gesprek — zodat de oproep groot in "
+        "beeld springt in plaats van als klein meldingetje bovenaan. "
+        "Anders ziet je dierbare het gesprek pas als hij toevallig het "
+        "meldingenscherm opent.\n\n"
+        "• Batterij-optimalisatie uit — zodat Android de app niet in "
+        "slaap zet als hij denkt dat 'ie te weinig gebruikt wordt. Zonder "
+        "dit komen berichten en gesprekken pas binnen zodra iemand het "
+        "scherm aantikt.\n\n"
+        "• Meldingen aan — anders blijft het scherm stil bij nieuwe "
+        "berichten. Vanaf Android 13 moet je dit zelf toestaan.\n\n"
+        "• Automatisch opnemen mogelijk maken (alleen bij automatisch "
+        "opnemen aan) — geeft Ons Moment toestemming om een gesprek te "
+        "openen ook al is de app dicht en het scherm aan. Wij tekenen "
+        "niks over andere apps; het is puur de sleutel die Android vraagt.\n\n"
+        "Elke stap zet je met één tik aan; het systeem opent zelf de "
+        "juiste pagina. Je hoeft dit maar één keer te doen. Wil je "
+        "later controleren of alles goed staat? Open op het apparaat "
+        "van je dierbare: Instellingen → Bellen → Instellingen voor "
+        "dit apparaat."),
     // ── Abonnement ──
     _FAQ('Abonnement', "Wat kost Ons Moment?",
         "Je start altijd met 14 dagen gratis — geen betaalgegevens nodig.\n\n"
