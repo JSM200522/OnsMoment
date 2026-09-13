@@ -254,7 +254,8 @@ Future<void> _voerVerwijderingUit(BuildContext context) async {
           SizedBox(height: 6),
           CircularProgressIndicator(color: kPeach),
           SizedBox(height: 18),
-          Text('Bezig met verwijderen...\nDit kan even duren.',
+          Text('Bezig met verwijderen…\n'
+              'Dit kan tot 90 seconden duren bij een grote familie.',
               textAlign: TextAlign.center,
               style: TextStyle(fontSize: 14, color: kBrown,
                   fontWeight: FontWeight.w700, height: 1.4)),
@@ -264,15 +265,29 @@ Future<void> _voerVerwijderingUit(BuildContext context) async {
   );
 
   String? foutmelding;
+  bool clientTimeout = false;
   try {
     // AVG-1-P1 (13 sept 2026): expliciete lege payload i.p.v.
     // `.call<dynamic>()` zonder argument. In cloud_functions 5.x
     // behandelt de callable een missing argument mogelijk anders dan
     // v4; expliciet `{}` is de veilige signature en matcht wat
     // RevenueCat/Firebase-docs adviseren voor callables zonder input.
+    //
+    // P6 (14 sept 2026): expliciete 90s client-side timeout via
+    // HttpsCallableOptions. Server-side is de function 540s
+    // getimeouted en werkt door bij een grote familie ook al gaf de
+    // client op. De client-timeout dient om de UI-blokkade te breken:
+    // toesteltest 13 sept had een user die 5-10 min in een
+    // laadscherm zat. Nu: max 90s wachten, daarna nette afhandeling
+    // (sign-out + waarschuwing dat het op de server doorloopt).
     final callable = FirebaseFunctions
         .instanceFor(region: 'europe-west1')
-        .httpsCallable('verwijderAccount');
+        .httpsCallable(
+          'verwijderAccount',
+          options: HttpsCallableOptions(
+            timeout: const Duration(seconds: 90),
+          ),
+        );
     final result = await callable.call<Map<String, dynamic>>({});
     unawaited(BelLogService.log(
         'verwijderAccount success — data: ${result.data}'));
@@ -297,7 +312,20 @@ Future<void> _voerVerwijderingUit(BuildContext context) async {
         'verwijderAccount FirebaseFunctionsException — '
         'code=${e.code} message=${e.message} details=${e.details}\n$st'));
     debugPrint('verwijderAccount FF-EXC: ${e.code} — ${e.message}');
-    foutmelding = _warmeFout(e);
+    // P6 (14 sept 2026): deadline-exceeded is de client-timeout hit —
+    // server loopt zelf door tot 540s. Sign-out lokaal + warme
+    // 'loopt door'-boodschap; bij volgende inlog zie je vanzelf of
+    // je account weg is (SetupWizard) of nog bestaat (herprobeer-optie).
+    if (e.code.toLowerCase().contains('deadline-exceeded')) {
+      clientTimeout = true;
+      try {
+        await DeviceModusService.wis();
+        await PushService.wisAchtergrondIdToken();
+        await FirebaseAuth.instance.signOut();
+      } catch (_) {}
+    } else {
+      foutmelding = _warmeFout(e);
+    }
   } catch (e, st) {
     // Generic catch — vaak parent-exception (FirebaseException,
     // PlatformException) die niet als FirebaseFunctionsException wordt
@@ -320,6 +348,20 @@ Future<void> _voerVerwijderingUit(BuildContext context) async {
       content: Text(foutmelding),
       backgroundColor: kRood,
       duration: const Duration(seconds: 6),
+    ));
+    return;
+  }
+
+  if (clientTimeout) {
+    // P6 (14 sept 2026): warme uitleg dat de server doorwerkt, ook
+    // al is de UI-timer voorbij. Auth-listener stuurt de user na de
+    // signOut hierboven al naar SetupWizard.
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+      content: Text('Verwijderen duurt langer dan verwacht — het loopt '
+          'op de achtergrond door. Log over een minuut opnieuw in om te '
+          'zien of alles weg is.'),
+      backgroundColor: kPeach,
+      duration: Duration(seconds: 8),
     ));
     return;
   }

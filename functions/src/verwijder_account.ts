@@ -189,43 +189,47 @@ async function verwijderKringCascade(
     kringId, aantal: lidUserUids.size,
   });
 
-  // Per bekende lid: eigen apparaten-subcollectie waar kringId == deze
-  // kring. Dat is een gewone parent-scoped query — subcollectie-index
-  // op kringId is automatisch aanwezig via de single-field-index-mode
-  // van Firestore.
+  // P6 (14 sept 2026): parallelliseer alle onafhankelijke deletes.
+  // Toesteltest 13 sept 2026 klokte 5-10 min door sequentiële wachten
+  // op elke query + delete. Firestore-queries zijn independent — geen
+  // volgorde-afhankelijkheid tussen apparaten-per-lid, content-
+  // collecties, uitnodig_tokens. Met Promise.all lopen ze concurrent
+  // en spaart dit tot ~70% van de wall-clock-tijd bij typische
+  // familie-groottes.
   //
-  // Edge-case: gast die zich zelf al uit de kring had verwijderd (dus
-  // geen leden-doc meer) laat mogelijk een apparaat-doc met kringId
-  // achter. Die wordt niet door deze cleanup gedekt — maar het is een
-  // orphan die niets meer kan doen (client-side _KringWachter logt 'm
-  // toch al uit, en de gast heeft geen leestoegang op deze kring meer).
-  // Wachten op de eigenaar-account-delete: geen crisis, wél cleanup-
-  // schuld die ooit via een periodieke sweep op orphan-apparaten kan.
-  for (const lidUid of lidUserUids) {
-    const appSnap = await db.collection('gebruikers').doc(lidUid)
-      .collection('apparaten').where('kringId', '==', kringId).get();
-    if (appSnap.empty) continue;
-    logger.info('apparaten van lid verwijderen', {
-      kringId, lidUid, aantal: appSnap.docs.length,
+  // Edge-case orphan-apparaten (gast die zich zelf al uit de kring
+  // verwijderde vóór eigenaar-delete): niet gedekt door deze cleanup.
+  // In praktijk een dode doc — client-side _KringWachter logt 'm toch
+  // al uit, en de gast heeft geen leestoegang op deze kring meer.
+  const apparatenPerLidPromises = Array.from(lidUserUids).map(
+    async (lidUid) => {
+      const appSnap = await db.collection('gebruikers').doc(lidUid)
+        .collection('apparaten').where('kringId', '==', kringId).get();
+      if (appSnap.empty) return;
+      logger.info('apparaten van lid verwijderen', {
+        kringId, lidUid, aantal: appSnap.docs.length,
+      });
+      await verwijderDocsInBatches(db, appSnap.docs);
     });
-    await verwijderDocsInBatches(db, appSnap.docs);
-  }
+
+  const contentPromises = [
+    'momenten', 'dagelijkse_momenten', 'gepland_momenten', 'notities',
+  ].map((coll) => verwijderQueryInBatches(db,
+    db.collection(coll).where('kringId', '==', kringId)));
+
+  const uitnodigPromise = verwijderQueryInBatches(db,
+    db.collection('uitnodig_tokens').where('kringId', '==', kringId));
+
+  await Promise.all([
+    ...apparatenPerLidPromises,
+    ...contentPromises,
+    uitnodigPromise,
+  ]);
 
   // NU pas leden-subcollectie verwijderen. Volgorde is bewust: we
-  // hebben de userUids uit deze collectie nodig vóór delete.
+  // hebben de userUids uit deze collectie gebruikt vóór delete
+  // (parallel-run hierboven).
   await verwijderDocsInBatches(db, ledenSnap.docs);
-
-  // content-collecties (kringId is een top-level veld)
-  for (const coll of [
-    'momenten', 'dagelijkse_momenten', 'gepland_momenten', 'notities',
-  ]) {
-    await verwijderQueryInBatches(db,
-      db.collection(coll).where('kringId', '==', kringId));
-  }
-
-  // uitnodig_tokens
-  await verwijderQueryInBatches(db,
-    db.collection('uitnodig_tokens').where('kringId', '==', kringId));
 
   // kring-doc zelf
   try {
@@ -236,11 +240,15 @@ async function verwijderKringCascade(
     });
   }
 
-  // Storage
-  await deleteStorageFilesByPrefix(bucket, `momenten/${kringId}/`);
-  await deleteStorageFilesByPrefix(bucket, `dagelijkse_audio/${kringId}/`);
-  await deleteStorageFilesByPrefix(bucket, `dagelijkse_media/${kringId}/`);
-  await deleteStorageFilesByPrefix(bucket, `profielfotos/${kringId}`);
+  // Storage — P6: alle vier prefixes parallel. bucket.deleteFiles is
+  // intern al ge-optimaliseerd voor pagination + concurrent-delete per
+  // file, maar de 4 losse prefix-calls waren voorheen sequentieel.
+  await Promise.all([
+    deleteStorageFilesByPrefix(bucket, `momenten/${kringId}/`),
+    deleteStorageFilesByPrefix(bucket, `dagelijkse_audio/${kringId}/`),
+    deleteStorageFilesByPrefix(bucket, `dagelijkse_media/${kringId}/`),
+    deleteStorageFilesByPrefix(bucket, `profielfotos/${kringId}`),
+  ]);
 
   logger.info('verwijderKringCascade KLAAR', { kringId });
 }
