@@ -39,6 +39,7 @@ class _AutoOpnemenWaarschuwingSchermState
     extends State<AutoOpnemenWaarschuwingScherm> {
   final AudioPlayer _speler = AudioPlayer();
   Timer? _timer;
+  Timer? _hardFallbackTimer;
   bool _klaarGemeld = false;
 
   @override
@@ -46,6 +47,13 @@ class _AutoOpnemenWaarschuwingSchermState
     super.initState();
     unawaited(_startGeluid());
     _timer = Timer(widget.wachtduur, _meldKlaar);
+    // P5 (14 sept 2026): hard-fallback zodat dit scherm NOOIT blijft
+    // hangen als iets misgaat met de reguliere timer (bijv. een
+    // async-race die _meldKlaar preempt of een navigator-hik). Elke
+    // 10s harder proberen — user's toesteltest 13 sept had een klacht
+    // dat het scherm 'niet weg te klikken' bleef. Met deze fallback +
+    // canPop: true + de sluit-knop rechtsonder is dat structureel dicht.
+    _hardFallbackTimer = Timer(const Duration(seconds: 10), _meldKlaar);
   }
 
   Future<void> _startGeluid() async {
@@ -80,6 +88,7 @@ class _AutoOpnemenWaarschuwingSchermState
   @override
   void dispose() {
     _timer?.cancel();
+    _hardFallbackTimer?.cancel();
     unawaited(_speler.stop());
     unawaited(_speler.dispose());
     super.dispose();
@@ -93,51 +102,69 @@ class _AutoOpnemenWaarschuwingSchermState
 
   @override
   Widget build(BuildContext context) {
-    // Back-swipe blokkeren — de gebruiker mag hier niet uitvallen; het
-    // scherm sluit vanzelf zodra de timer klaar is en het gesprek opent.
+    // P5 (14 sept 2026): back-swipe is nu WEL toegestaan (canPop: true)
+    // als noodrem — bij een defecte timer of onverwachte navigator-state
+    // moet de user er altijd uit kunnen. Er zit óók een expliciete
+    // sluit-knop rechtsonder én een hard-fallback-timer in initState.
+    // Ook de vorige "belt jou — we nemen zo op…" was correct, maar
+    // "opent nu je gesprek…" is nog concreter voor de doelgroep.
     return PopScope(
-      canPop: false,
+      canPop: true,
       child: Scaffold(
         backgroundColor: kCream,
         body: SafeArea(
-          child: Center(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 32),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Container(
-                    width: 200, height: 200,
-                    decoration: const BoxDecoration(
-                      color: kPeach,
-                      shape: BoxShape.circle,
+          child: Stack(children: [
+            Center(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 32),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      width: 200, height: 200,
+                      decoration: const BoxDecoration(
+                        color: kPeach,
+                        shape: BoxShape.circle,
+                      ),
+                      child: Center(
+                        child: Text(_initiaal,
+                            style: const TextStyle(
+                                fontSize: 100,
+                                color: kWhite,
+                                fontWeight: FontWeight.w900)),
+                      ),
                     ),
-                    child: Center(
-                      child: Text(_initiaal,
-                          style: const TextStyle(
-                              fontSize: 100,
-                              color: kWhite,
-                              fontWeight: FontWeight.w900)),
-                    ),
-                  ),
-                  const SizedBox(height: 32),
-                  Text(widget.callerName,
-                      style: const TextStyle(
-                          fontSize: 44,
-                          color: kBrown,
-                          fontWeight: FontWeight.w900),
-                      textAlign: TextAlign.center),
-                  const SizedBox(height: 20),
-                  const Text('belt jou — we nemen zo op…',
-                      style: TextStyle(
-                          fontSize: 22,
-                          color: kBrownLight,
-                          fontWeight: FontWeight.w600),
-                      textAlign: TextAlign.center),
-                ],
+                    const SizedBox(height: 32),
+                    Text(widget.callerName,
+                        style: const TextStyle(
+                            fontSize: 44,
+                            color: kBrown,
+                            fontWeight: FontWeight.w900),
+                        textAlign: TextAlign.center),
+                    const SizedBox(height: 20),
+                    const Text('opent nu je gesprek…',
+                        style: TextStyle(
+                            fontSize: 22,
+                            color: kBrownLight,
+                            fontWeight: FontWeight.w600),
+                        textAlign: TextAlign.center),
+                  ],
+                ),
               ),
             ),
-          ),
+            // P5: sluit-knop rechtsboven als noodrem. Klein maar
+            // bereikbaar; de gebruiker die vaststrand kan altijd uit
+            // deze schil. Kwetsbare dierbare ziet hem waarschijnlijk
+            // niet — die kijkt naar de grote naam in het midden.
+            Positioned(
+              top: 12, right: 12,
+              child: IconButton(
+                icon: const Icon(Icons.close, color: kBrownLight, size: 28),
+                tooltip: 'Sluiten',
+                onPressed: _meldKlaar,
+              ),
+            ),
+          ]),
         ),
       ),
     );
