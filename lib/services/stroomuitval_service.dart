@@ -83,8 +83,14 @@ class StroomuitvalService {
       merk = info.manufacturer.toLowerCase().trim();
     } catch (_) {}
 
-    // Kandidaat-Intents per merk. Meerdere per OEM voor OS-versie-
-    // verschillen (bv. Xiaomi MIUI 12 vs 14 vs HyperOS).
+    // P2 (14 sept 2026): kandidaat-Intents per merk met NIEUWE 2025-2026
+    // paden (One UI 6.1/7, HyperOS 2, ColorOS 14/15, FuntouchOS 14).
+    // Meerdere per OEM voor OS-versie-verschillen; oudere paths blijven
+    // in de lijst als extra vangnet. Bij een niet-geëxporteerde Activity
+    // (Android 11+ `exported=false`) faalt de launch stil — try/catch
+    // valt door naar de volgende kandidaat. Laatste vangnet =
+    // ACTION_APPLICATION_DETAILS_SETTINGS met package:URI, 100% werkend
+    // op elke Android. Vanaf daar kan user zelf naar Batterij / Autostart.
     final kandidaten = _oemIntentKandidaten(merk);
     for (final intent in kandidaten) {
       try {
@@ -94,33 +100,54 @@ class StroomuitvalService {
         // volgende kandidaat proberen
       }
     }
-    // Fallback: app-info-pagina.
+    // Fallback A: ACTION_APPLICATION_DETAILS_SETTINGS met eigen
+    // package. Publieke intent — werkt op elke Android >= 9.
+    try {
+      final pkgIntent = AndroidIntent(
+        action: 'android.settings.APPLICATION_DETAILS_SETTINGS',
+        data: 'package:${await _pakketNaam()}',
+      );
+      await pkgIntent.launch();
+      return merk;
+    } catch (_) {}
+    // Fallback B: openAppSettings uit permission_handler (identiek
+    // resultaat maar via een andere lib-path).
     try {
       await openAppSettings();
     } catch (_) {}
     return merk;
   }
 
+  /// Pakketnaam voor de application-details-fallback. Hardcoded want
+  /// nl.onsmoment.app is de enige applicationId — geen flavors.
+  static Future<String> _pakketNaam() async => 'nl.onsmoment.app';
+
   static List<AndroidIntent> _oemIntentKandidaten(String merk) {
     switch (merk) {
       case 'samsung':
         return [
-          // One UI 5+ Sleeping apps direct
+          // One UI 6.1+ battery-activity (nieuwe path)
           const AndroidIntent(
-            action: 'com.samsung.android.sm.ACTION_APP_SLEEP_LIST',
+            action: 'android.intent.action.MAIN',
+            componentName: 'com.samsung.android.lool/'
+                'com.samsung.android.sm.battery.ui.BatteryActivity',
           ),
-          // Device Care (algemene batterij-optimalisatie-pagina)
+          // One UI 5-6 legacy
           const AndroidIntent(
             action: 'android.intent.action.MAIN',
             componentName: 'com.samsung.android.lool/'
                 'com.samsung.android.sm.ui.battery.BatteryActivity',
+          ),
+          // Sleeping-app-lijst (breekt op One UI 6.1+ maar werkt op 5)
+          const AndroidIntent(
+            action: 'com.samsung.android.sm.ACTION_APP_SLEEP_LIST',
           ),
         ];
       case 'xiaomi':
       case 'redmi':
       case 'poco':
         return [
-          // MIUI/HyperOS autostart-manager
+          // MIUI/HyperOS autostart-manager (werkt tot en met HyperOS 1)
           const AndroidIntent(
             action: 'android.intent.action.MAIN',
             componentName: 'com.miui.securitycenter/'
@@ -134,12 +161,13 @@ class StroomuitvalService {
       case 'huawei':
       case 'honor':
         return [
-          // EMUI/MagicOS launch-manager
+          // EMUI 14 / MagicOS 8 app-launch-management
           const AndroidIntent(
             action: 'android.intent.action.MAIN',
             componentName: 'com.huawei.systemmanager/'
                 '.startupmgr.ui.StartupNormalAppListActivity',
           ),
+          // Oudere EMUI protect-lijst
           const AndroidIntent(
             action: 'android.intent.action.MAIN',
             componentName: 'com.huawei.systemmanager/'
@@ -149,25 +177,37 @@ class StroomuitvalService {
       case 'oppo':
       case 'realme':
         return [
-          // ColorOS/RealmeUI autostart. Nieuwere en oudere paths.
+          // ColorOS 14/15 + Realme UI 5/6 (volledige component-naam)
           const AndroidIntent(
             action: 'android.intent.action.MAIN',
             componentName: 'com.coloros.safecenter/'
-                '.startupapp.StartupAppListActivity',
+                'com.coloros.safecenter.startupapp.StartupAppListActivity',
           ),
           const AndroidIntent(
             action: 'android.intent.action.MAIN',
             componentName: 'com.coloros.safecenter/'
-                '.permission.startup.StartupAppListActivity',
+                'com.coloros.safecenter.permission.startup.StartupAppListActivity',
+          ),
+          // Oppo-safe (oudere devices vóór ColorOS-rebrand)
+          const AndroidIntent(
+            action: 'android.intent.action.MAIN',
+            componentName: 'com.oppo.safe/'
+                'com.oppo.safe.permission.startup.StartupAppListActivity',
           ),
         ];
       case 'vivo':
         return [
-          // FuntouchOS bg-startup-manager
+          // FuntouchOS 14 / OriginOS bg-startup-manager
           const AndroidIntent(
             action: 'android.intent.action.MAIN',
             componentName: 'com.vivo.permissionmanager/'
-                '.activity.BgStartUpManagerActivity',
+                'com.vivo.permissionmanager.activity.BgStartUpManagerActivity',
+          ),
+          // iManager (iQoo/Vivo shared codebase)
+          const AndroidIntent(
+            action: 'android.intent.action.MAIN',
+            componentName: 'com.iqoo.secure/'
+                'com.iqoo.secure.ui.phoneoptimize.BgStartUpManager',
           ),
         ];
       default:
@@ -175,31 +215,41 @@ class StroomuitvalService {
     }
   }
 
-  /// Korte NL-instructie per merk voor onder de "Instelling openen"-
-  /// knop, zodat user weet wat te doen als de deep-link naar app-info
-  /// fallback'te (of naar een instelling-tab die er iets anders uitziet
-  /// dan verwacht).
+  /// P2 (14 sept 2026): merk-specifieke NL-instructie in complete
+  /// stappen. Wordt getoond onder de "Instelling openen"-knop zodat de
+  /// user óók zelf ernaartoe kan navigeren als de deep-link op de
+  /// verkeerde tab landt (Activities zijn regelmatig hernoemd op
+  /// nieuwere OS-versies) of de fallback naar de app-info-pagina
+  /// gaat. Doelgroep-vriendelijk: korte zinnen, geen jargon.
   static String instructiePerOem(String merk) {
     switch (merk) {
       case 'samsung':
-        return "Zoek onder Batterij → Achtergrondgebruikslimiet → "
-            "Slapen. Als Ons Moment in de lijst staat: haal 'm daar weg.";
+        return 'Open Instellingen → Batterij → Achtergrondgebruiks-'
+            'limieten → Slapende apps. Zoek Ons Moment in de lijst en '
+            'tik erop om te verwijderen. Ga daarna terug naar Batterij, '
+            'tik op Ons Moment en kies Onbeperkt.';
       case 'xiaomi':
       case 'redmi':
       case 'poco':
-        return 'Zoek "Autostart" (of "Automatisch opstarten") en zet '
-            'Ons Moment aan.';
+        return 'Open Instellingen → Apps → Alle apps → Ons Moment → '
+            'Andere permissies → zet Automatisch starten aan. Ga terug '
+            'naar de app en tik op Batterijbesparing → kies Geen '
+            'beperkingen.';
       case 'huawei':
       case 'honor':
-        return 'Zoek "App-launch" (of "Handmatig beheer") en zet '
-            'de schakelaar voor Ons Moment aan.';
+        return 'Open Instellingen → Apps → App-opstart → Ons Moment. '
+            'Zet Automatisch beheren UIT. Zet daarna alle drie de '
+            'schakelaars (Autostart, Secundair starten, Draaien op '
+            'achtergrond) AAN.';
       case 'oppo':
       case 'realme':
-        return 'Zoek "Autostart" (onder Batterijgebruik) en zet '
-            'Ons Moment aan.';
+        return 'Open Instellingen → Batterij → Batterijgebruik van '
+            'apps → Ons Moment. Zet Toestaan op de achtergrond aan én '
+            'Automatisch starten aan.';
       case 'vivo':
-        return 'Zoek "Achtergrondtoegang" (of "Autostart") en zet '
-            'Ons Moment aan.';
+        return 'Open Instellingen → Batterij → Achtergrondstroom-'
+            'verbruik → Ons Moment → Toestaan. Open daarna iManager → '
+            'App-manager → Autostart → schakel Ons Moment in.';
       default:
         return 'Zoek "Autostart" of "Automatisch opstarten" in de '
             'instellingen van je apparaat en zet Ons Moment aan.';
