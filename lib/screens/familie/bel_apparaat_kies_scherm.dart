@@ -125,6 +125,85 @@ class _BelApparaatKiesSchermState extends State<BelApparaatKiesScherm> {
         ? doelNaam
         : (label.isNotEmpty ? label : 'Onbekend apparaat');
 
+    // DEEL B (13 sept 2026): just-in-time warm dialog als het ontvanger-
+    // apparaat niet als bel-gereed geregistreerd staat. Bron: sync die
+    // in toestemmingen_setup_scherm bij elke resume plaatsvindt.
+    //
+    // Fail-open: null (oude installs die het setup-scherm nog nooit
+    // hebben doorlopen sinds DEEL B) → geen dialog. We waarschuwen
+    // ALLEEN bij expliciete `false`. Nadeel: eigenaar kan een echt-niet-
+    // gereed toestel missen. Voordeel: geen false-positives waardoor de
+    // hint irritatie wordt. Volgende keer dat het setup-scherm op de
+    // ontvanger wordt geopend, komt de status correct binnen.
+    //
+    // Niet blokkerend: user kan altijd "Bel toch" — soms is de checklist
+    // niet-gereed door een instelling die de gebruiker bewust wil laten
+    // staan (bijv. bewust batterij-opt aan om ander onderzoek).
+    final belGereed = apparaat['belGereed'];
+    if (belGereed == false && mounted) {
+      final belToch = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(20)),
+          backgroundColor: kCream,
+          title: Text('$weergaveNaam is nog niet helemaal klaar voor bellen',
+              style: const TextStyle(fontSize: 17,
+                  fontWeight: FontWeight.w900, color: kBrown)),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                    'Op het apparaat van $weergaveNaam staat nog een '
+                    'instelling uit die nodig is voor bellen. Je kunt nu '
+                    'toch bellen — het kan alleen zijn dat het gesprek '
+                    'niet aankomt.',
+                    style: const TextStyle(fontSize: 14,
+                        color: kBrownLight, height: 1.5)),
+                const SizedBox(height: 12),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: kPeachPale,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: kPeachLight),
+                  ),
+                  child: Text(
+                      'Zo zet je het aan:\n'
+                      'Pak het apparaat van $weergaveNaam, open '
+                      'Ons Moment → Instellingen → Bellen → '
+                      'Instellingen voor dit apparaat, en tik de '
+                      'ontbrekende stappen aan.',
+                      style: const TextStyle(fontSize: 13,
+                          color: kBrown, height: 1.55)),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('Annuleren',
+                    style: TextStyle(color: kTextMuted,
+                        fontWeight: FontWeight.w700))),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                  backgroundColor: kPeach,
+                  foregroundColor: kWhite,
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12))),
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Bel toch',
+                  style: TextStyle(fontWeight: FontWeight.w800)),
+            ),
+          ],
+        ),
+      );
+      if (belToch != true) return;
+    }
+
     // V4: als automatisch opnemen aan staat, eerst bevestigen bij de beller.
     if (_autoAnswer && mounted) {
       final bevestigd = await showDialog<bool>(

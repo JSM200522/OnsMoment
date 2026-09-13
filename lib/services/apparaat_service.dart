@@ -75,6 +75,35 @@ class ApparaatService {
     } catch (_) {}
   }
 
+  /// DEEL B (13 sept 2026): schrijft de bel-gereedheid van het HUIDIGE
+  /// apparaat naar zijn eigen apparaat-doc. Bron van waarheid = het
+  /// toestemmingen_setup_scherm dat na elke resume de vier (of vijf op
+  /// blokkerende OEM's) checks doet en 'em daar aanroept.
+  ///
+  /// Waarom op apparaat-doc en niet op de gebruiker: elk toestel binnen
+  /// dezelfde kring heeft z'n eigen permission-set (Android is per-app-
+  /// per-toestel, niet per Google-account). Familie ziet in het bel-
+  /// scherm meerdere ontvanger-apparaten en moet weten welk apparaat
+  /// klaarstaat voor bellen.
+  ///
+  /// Fail-soft: bij Firestore-fout gebeurt er niets — dat is beter dan
+  /// crashen. De volgende resume schrijft opnieuw.
+  static Future<void> zetBelGereed({
+    required String familieUid,
+    required String apparaatId,
+    required bool gereed,
+  }) async {
+    try {
+      await FirebaseFirestore.instance
+          .collection('gebruikers').doc(familieUid)
+          .collection('apparaten').doc(apparaatId)
+          .set({
+            'belGereed': gereed,
+            'belGereedBijgewerkt': FieldValue.serverTimestamp(),
+          }, SetOptions(merge: true));
+    } catch (_) {}
+  }
+
   /// V9+ Fase 1 push-meldingen: schrijft het FCM-token van dit apparaat
   /// naar het apparaat-doc. Set+merge zodat het doc niet hoeft te bestaan
   /// bij eerste aanroep — wordt door PushService aangeroepen bij inloggen
@@ -146,6 +175,13 @@ class ApparaatService {
               'persoonsNaam': d['persoonsNaam'] as String? ?? '',
               'apparaatLabel': d['apparaatLabel'] as String? ?? '',
               'modus': d['modus'] as String? ?? '',
+              // DEEL B (13 sept 2026): belGereed uit apparaat-doc.
+              // Optioneel — oude docs zonder veld gedragen zich als
+              // `null` (onbekend) i.p.v. `false`. Bel-scherm behandelt
+              // null als "geen dialog nodig" (fail-open) omdat we van
+              // oudere installs de status niet kunnen weten en niet
+              // onnodig moeten waarschuwen.
+              'belGereed': d['belGereed'] as bool?,
             };
           })
           .toList();

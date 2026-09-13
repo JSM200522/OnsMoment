@@ -1,8 +1,10 @@
 import 'dart:async';
 import 'package:device_info_plus/device_info_plus.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import '../../data/bel_uitleg_teksten.dart';
+import '../../services/apparaat_service.dart';
 import '../../services/device_modus_service.dart';
 import '../../services/kiosk_service.dart';
 import '../../services/overlay_permission_service.dart';
@@ -132,6 +134,43 @@ class _ToestemmingenSetupSchermState extends State<ToestemmingenSetupScherm>
       _oemHeeftAutostart = oemNodig;
       _autostartOk = autostart;
     });
+    // DEEL B (13 sept 2026): sync bel-gereedheid naar apparaat-doc zodat
+    // de familie-kant just-in-time kan waarschuwen als een ontvanger
+    // niet gereed is. Fire-and-forget — een Firestore-hik hier mag de
+    // UI niet blokkeren. Voorwaarde-set is IDENTIEK aan _allesOk (elke
+    // stap die visueel groen moet zijn), zodat "checklist compleet in
+    // UI" één-op-één matcht met "belGereed=true op server".
+    await _syncBelGereedNaarFirestore(
+      fsi: fsi, batt: batt, overlay: overlay,
+      notif: notif, oemNodig: oemNodig, autostart: autostart,
+    );
+  }
+
+  Future<void> _syncBelGereedNaarFirestore({
+    required bool fsi,
+    required bool batt,
+    required bool overlay,
+    required bool notif,
+    required bool oemNodig,
+    required bool autostart,
+  }) async {
+    if (kIsWeb) return;
+    // Zelfde condities als _allesOk, maar op de directe waarden uit
+    // deze _ververs-run (state is mogelijk nog niet gecommit als user
+    // heel snel klikt).
+    final gereed = fsi && batt && overlay && notif &&
+        (!oemNodig || autostart);
+    try {
+      final uid = FirebaseAuth.instance.currentUser?.uid;
+      if (uid == null || uid.isEmpty) return;
+      final apparaatId = await DeviceModusService.krijgApparaatId();
+      if (apparaatId.isEmpty) return;
+      await ApparaatService.zetBelGereed(
+        familieUid: uid,
+        apparaatId: apparaatId,
+        gereed: gereed,
+      );
+    } catch (_) {}
   }
 
   bool get _allesOk =>
