@@ -876,8 +876,25 @@ class _SetupWizardState extends State<SetupWizard> {
         _naamCtrl.clear();
         if (mounted) setState(() => _stap = 2);
       }
-    } catch (e) {
-      _toonFout('Inloggen mislukt. Klopt e-mail en wachtwoord?');
+    } on FirebaseAuthException catch (e) {
+      // DEEL 1 (14 sept 2026): echte auth-fout via _warmFirebaseAuthFoutTekst
+      // (wachtwoord fout / netwerk / user-not-found / etc). Voorheen viel
+      // ALLE errors — inclusief Firestore-permission-denied en netwerk —
+      // in de generieke 'Klopt e-mail en wachtwoord?'-catch waardoor
+      // niet-wachtwoord-fouten misleidend werden gemapt.
+      debugPrint('_familieInloggen FirebaseAuth-fout: ${e.code} - ${e.message}');
+      _toonFout(_warmFirebaseAuthFoutTekst(e,
+          fallback: 'Inloggen mislukt — probeer het over enkele minuten '
+              'opnieuw of neem contact op via info@onsmoment.app.'));
+    } catch (e, st) {
+      // Firestore / netwerk / andere fout NA succesvolle signIn. Toon
+      // ander bericht dan wachtwoord-fout zodat de user niet ten
+      // onrechte zijn wachtwoord bijstelt. debugPrint voor logcat-
+      // diagnose bij toekomstige toesteltest.
+      debugPrint('_familieInloggen post-signIn-fout: '
+          '${e.runtimeType} — $e\n$st');
+      _toonFout('Je bent ingelogd, maar het laden van je gegevens '
+          'mislukte. Controleer je internet en probeer opnieuw.');
     } finally {
       if (mounted) setState(() => _bezig = false);
     }
@@ -1182,8 +1199,27 @@ class _SetupWizardState extends State<SetupWizard> {
           }
         }
       }
-    } catch (e) {
-      _toonFout('Inloggen mislukt. Klopt e-mail en wachtwoord?');
+    } on FirebaseAuthException catch (e) {
+      // DEEL 1 (14 sept 2026): zelfde split als _familieInloggen. Echte
+      // auth-foutcodes worden warm gemapt via _warmFirebaseAuthFoutTekst;
+      // Firestore-permission-denied / netwerk NA succesvolle signIn
+      // vallen in de generieke catch met een AFWIJKENDE boodschap zodat
+      // de user niet ten onrechte zijn wachtwoord bijstelt. Toesteltest
+      // 14 sept 2026: ontvanger-herinlog gaf 'wachtwoord fout' terwijl
+      // de fout in de post-signIn-flow zat (mijnKringen / apparaat-doc
+      // lookup) — nu correct onderscheid.
+      debugPrint('_ontvangerInloggen FirebaseAuth-fout: '
+          '${e.code} - ${e.message}');
+      _toonFout(_warmFirebaseAuthFoutTekst(e,
+          fallback: 'Inloggen mislukt — probeer het over enkele minuten '
+              'opnieuw of neem contact op via info@onsmoment.app.'));
+    } catch (e, st) {
+      // Niet-auth fout (Firestore permission, netwerk, kring-lookup).
+      // Warme melding + debugPrint voor logcat-diagnose.
+      debugPrint('_ontvangerInloggen post-signIn-fout: '
+          '${e.runtimeType} — $e\n$st');
+      _toonFout('Je bent ingelogd, maar het laden van je gegevens '
+          'mislukte. Controleer je internet en probeer opnieuw.');
     } finally {
       if (mounted) setState(() => _bezig = false);
     }
