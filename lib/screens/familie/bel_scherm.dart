@@ -5,6 +5,7 @@ import 'package:just_audio/just_audio.dart';
 import 'package:livekit_client/livekit_client.dart';
 import 'package:permission_handler/permission_handler.dart';
 import '../../services/bel_log_service.dart';
+import '../../services/kiosk_service.dart';
 import '../../services/push_service.dart';
 import '../../services/video_call_service.dart';
 import '../../theme/kleuren.dart';
@@ -176,6 +177,31 @@ class _BelSchermState extends State<BelScherm> {
 
   Future<void> _startRingback() async {
     unawaited(BelLogService.log('BelScherm ringback START (setAsset+play)'));
+    // FINAL-CHECK (14 sept 2026): audio-diagnostiek VÓÓR play zodat we
+    // bij een stille ringback direct kunnen zien of het OS-brede
+    // volume/mode het probleem is. Fire-and-forget log — mag ringback
+    // niet vertragen.
+    unawaited(KioskService.getAudioDiagnostics().then((diag) {
+      if (diag == null) {
+        unawaited(BelLogService.log('audio-diag: (geen data)'));
+        return;
+      }
+      final ring = '${diag['ringVolume']}/${diag['ringMax']}';
+      final music = '${diag['musicVolume']}/${diag['musicMax']}';
+      final mode = diag['ringerMode']; // 0=silent 1=vibrate 2=normal
+      final audMode = diag['audioMode']; // 0=NORMAL 1=RINGTONE 2=IN_CALL 3=IN_COMM
+      unawaited(BelLogService.log(
+          'audio-diag: STREAM_RING=$ring STREAM_MUSIC=$music '
+          'ringerMode=$mode audioMode=$audMode '
+          'musicActive=${diag['isMusicActive']} '
+          'a2dp=${diag['isBluetoothA2dpOn']}'));
+      // Diagnose-hint: als STREAM_RING op 0 staat is dat de reden.
+      if (diag['ringVolume'] == 0) {
+        unawaited(BelLogService.log(
+            'DIAGNOSE: STREAM_RING volume = 0 — telefoon beltoon staat uit.'
+            ' Ringback zou stil zijn ondanks setAndroidAudioAttributes.'));
+      }
+    }));
     try {
       // P4 (14 sept 2026): expliciete AudioSession.configure vóór de
       // play-call. In just_audio 0.9.46 (na de Flutter 3.47-upgrade) is
@@ -208,7 +234,13 @@ class _BelSchermState extends State<BelScherm> {
       await _ringbackPlayer.setAsset('assets/sounds/marimba.wav');
       await _ringbackPlayer.setLoopMode(LoopMode.one);
       await _ringbackPlayer.play();
-      unawaited(BelLogService.log('BelScherm ringback PLAY OK'));
+      // FINAL-CHECK: log de daadwerkelijke player-state ná play. Als
+      // duration null blijft is de asset niet correct geladen; als
+      // playing false is heeft OS het geblokkeerd (audio-focus verloren).
+      unawaited(BelLogService.log(
+          'BelScherm ringback PLAY OK — duration='
+          '${_ringbackPlayer.duration} playing=${_ringbackPlayer.playing} '
+          'processingState=${_ringbackPlayer.processingState}'));
     } catch (e) {
       unawaited(BelLogService.log('BelScherm ringback FAALDE: $e'));
     }

@@ -175,6 +175,22 @@ Firestore collecties: gebruikers, dagelijkse_momenten, momenten, notities. Alle 
 - App: https://jsm200522.github.io/OnsMoment/
 - Repo: https://github.com/JSM200522/OnsMoment
 
+## ⚠️ Storage-rules met firestore.exists() → cross-service-toestemming vereist
+
+Onze `storage.rules` gebruikt `firestore.exists(/databases/(default)/documents/kringen/$(kringId)/leden/$(request.auth.uid))` voor lidmaatschap-checks. Deze cross-service-call vereist een IAM-rol op de Cloud Storage service-agent: **`roles/firebaserules.firestoreServiceAgent`** op `service-<PROJECT_NUMBER>@gcp-sa-firebasestorage.iam.gserviceaccount.com`.
+
+**Zonder deze rol faalt ELKE upload met "unauthorized"** — de rule kan de exists()-check niet evalueren en weigert stil. In Firebase Console → Storage → Rules verschijnt dan een rode banner met een "Fix issue"-knop; één klik grant de rol project-wide.
+
+**Blijft aan bij re-deploys** (idempotent). Wel opnieuw granten nodig bij: (a) nieuw Firebase-project, (b) Storage disabled → re-enabled, (c) service-agent-rotatie (zeldzaam).
+
+**Voorkoming bij toekomstige deploys**:
+- `firebase deploy --only storage` prompt vraagt sinds firebase-tools 11.10 automatisch om te granten. In non-interactive CI: `--force` accepteert de prompt, óf pre-grant via `gcloud projects add-iam-policy-binding onsmonent --member="serviceAccount:service-<PROJECT_NUMBER>@gcp-sa-firebasestorage.iam.gserviceaccount.com" --role="roles/firebaserules.firestoreServiceAgent"`.
+- CI-check: `gcloud projects get-iam-policy onsmonent --flatten="bindings[].members" --filter="bindings.role:roles/firebaserules.firestoreServiceAgent"` moet de service-agent bevatten.
+
+**Historie**: op 14 sept 2026 uitgevallen bij hertest branch `feature/flutter-upgrade-fase-d` — moment-upload gaf "unauthorized"; oorzaak was dat de IAM-rol per abuis niet was verleend na een eerdere `firebase deploy --only storage`. Gefixed via Console → Storage → Rules → "Fix issue".
+
+Officiële docs: https://firebase.google.com/docs/rules/manage-deploy sectie "Grant permissions for cross-service Rules".
+
 ## Bekende issues per 15 mei 2026
 
 - Oude V6 momenten in Firestore gebruiken nog naarUid prefix — verschijnen niet bij V7 ontvanger

@@ -5,6 +5,7 @@ import android.app.KeyguardManager
 import android.app.NotificationManager
 import android.content.Context
 import android.content.Intent
+import android.media.AudioManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -359,6 +360,35 @@ class MainActivity : FlutterActivity() {
                             } catch (_: Exception) { /* Dart UI */ }
                         }
                         result.success(null)
+                    }
+                    // FINAL-CHECK (14 sept 2026): audio-diagnostics voor
+                    // stille-ringback-onderzoek. Retourneert alle relevante
+                    // audio-parameters die de user-facing 'geen belgeluid'-
+                    // klacht kunnen verklaren. Dart-kant logt dit via
+                    // BelLogService bij het starten van een uitgaand gesprek.
+                    //   ringVolume/ringMax: STREAM_RING volume en max
+                    //   musicVolume/musicMax: STREAM_MUSIC (baseline)
+                    //   notifVolume/notifMax: STREAM_NOTIFICATION
+                    //   ringerMode: 0=silent, 1=vibrate, 2=normal
+                    //   audioMode: NORMAL/RINGTONE/IN_CALL/IN_COMMUNICATION
+                    "getAudioDiagnostics" -> {
+                        try {
+                            val am = getSystemService(Context.AUDIO_SERVICE) as AudioManager
+                            result.success(mapOf(
+                                "ringVolume" to am.getStreamVolume(AudioManager.STREAM_RING),
+                                "ringMax" to am.getStreamMaxVolume(AudioManager.STREAM_RING),
+                                "musicVolume" to am.getStreamVolume(AudioManager.STREAM_MUSIC),
+                                "musicMax" to am.getStreamMaxVolume(AudioManager.STREAM_MUSIC),
+                                "notifVolume" to am.getStreamVolume(AudioManager.STREAM_NOTIFICATION),
+                                "notifMax" to am.getStreamMaxVolume(AudioManager.STREAM_NOTIFICATION),
+                                "ringerMode" to am.ringerMode,
+                                "audioMode" to am.mode,
+                                "isMusicActive" to am.isMusicActive,
+                                "isBluetoothA2dpOn" to am.isBluetoothA2dpOn
+                            ))
+                        } catch (e: Exception) {
+                            result.error("AUDIO_DIAG_FAIL", e.message, null)
+                        }
                     }
                     else -> result.notImplemented()
                 }

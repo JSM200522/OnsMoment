@@ -141,6 +141,24 @@ class KioskService {
     } catch (_) {}
   }
 
+  /// FINAL-CHECK (14 sept 2026): audio-diagnostiek voor stille-ringback-
+  /// onderzoek. Returnt alle STREAM-volumes + ringerMode + audioMode
+  /// zodat BelLogService kan opnemen waarom een ringback stil is
+  /// (STREAM_RING op 0, silent-mode, of iets anders). Retourneert null
+  /// bij fout — Dart-kant logt dan gewoon 'geen data'.
+  static Future<Map<String, dynamic>?> getAudioDiagnostics() async {
+    if (kIsWeb) return null;
+    try {
+      final r = await _channel.invokeMethod<dynamic>('getAudioDiagnostics');
+      if (r is Map) {
+        return r.map((k, v) => MapEntry(k.toString(), v));
+      }
+      return null;
+    } catch (_) {
+      return null;
+    }
+  }
+
   /// BEL-D1: leest een pending auto-answer payload uit MainActivity als
   /// de Activity zojuist door OnsMomentFcmReceiver is gestart voor een
   /// auto-answer scenario (scherm AAN + app dicht + SYSTEM_ALERT_WINDOW).

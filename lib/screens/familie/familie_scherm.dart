@@ -15,6 +15,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:device_info_plus/device_info_plus.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import '../../services/apparaat_service.dart';
 import '../../services/overlay_permission_service.dart';
 import '../../services/callkit_flag_service.dart';
@@ -3786,6 +3787,29 @@ class _InstellingenTabState extends State<InstellingenTab> {
   bool _emailVerified = false;
   bool _bezigVerstuur = false;
   bool _bezigVerifieer = false;
+  // FINAL-CHECK 14 sept 2026: echte versie i.p.v. hardcoded 'v7'.
+  // Fail-soft: bij PackageInfo-fout blijft _appVersieLabel null en
+  // toont de footer alleen 'Ons Moment'.
+  String? _appVersieLabel;
+
+  /// FINAL-CHECK 14 sept 2026: leest de echte app-versie uit
+  /// PackageInfo. Format: '1.0.72 (83)' matcht pubspec 'version:'
+  /// (major.minor.patch+buildNumber). Fail-soft: bij fout blijft
+  /// _appVersieLabel null en toont de footer alleen 'Ons Moment'
+  /// — voorheen stond er hardcoded 'v7', wat maandenlang niet meer
+  /// klopte met de echte build.
+  Future<void> _leesAppVersie() async {
+    try {
+      final info = await PackageInfo.fromPlatform();
+      if (!mounted) return;
+      final v = info.version.trim();
+      final b = info.buildNumber.trim();
+      final samen = b.isEmpty ? v : '$v ($b)';
+      if (samen.isNotEmpty) setState(() => _appVersieLabel = samen);
+    } catch (_) {
+      // Fail-soft.
+    }
+  }
 
   /// V9 2.4-a-3: kring-doc primair, gebruikers/{uid} fallback,
   /// 'je dierbare' als ultieme default.
@@ -3802,6 +3826,7 @@ class _InstellingenTabState extends State<InstellingenTab> {
     // banner; bij elke handmatige verversing herzet _controleerVerificatie.
     _emailVerified =
         FirebaseAuth.instance.currentUser?.emailVerified ?? false;
+    _leesAppVersie();
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null) return;
     FirebaseFirestore.instance.collection('gebruikers').doc(uid).get()
@@ -4176,8 +4201,13 @@ class _InstellingenTabState extends State<InstellingenTab> {
               child: Image.asset('assets/images/logo.png', height: 48)),
         )),
         const SizedBox(height: 8),
-        const Center(child: Text('Ons Moment v7',
-            style: TextStyle(fontSize: 11, color: kTextMuted))),
+        Center(
+          child: Text(
+              _appVersieLabel != null
+                  ? 'Ons Moment $_appVersieLabel'
+                  : 'Ons Moment',
+              style: const TextStyle(fontSize: 11, color: kTextMuted)),
+        ),
       ]),
     );
   }
