@@ -93,13 +93,31 @@ class _ToestemmingenSetupSchermState extends State<ToestemmingenSetupScherm>
     if (state == AppLifecycleState.resumed) _ververs();
   }
 
-  /// BEL-D3: overlay-stap alleen relevant bij MELDINGEN-modus met
-  /// autoAnswer aan. Bij VERGRENDELDE modus staat het apparaat vast op
-  /// Ons Moment en werkt automatisch opnemen altijd — geen extra
-  /// toestemming nodig, en dus geen kaartje tonen.
-  bool get _overlayStapNodig =>
-      widget.autoAnswerActief &&
-      widget.weergaveModus != DeviceModusService.VERGRENDELD;
+  /// CHECKLIST-MODUS (14 sept 2026): rustige modus (vergrendeld) draait
+  /// de app permanent op de voorgrond via Screen Pinning. Daardoor:
+  ///   - Volledig scherm bij gesprek → niet nodig, de app IS al
+  ///     zichtbaar wanneer een gesprek binnenkomt.
+  ///   - Overlay (auto-answer via BAL-exemption) → niet nodig, app is
+  ///     al voorgrond → FCM-foreground pad publiceert direct naar
+  ///     incomingCallNotifier zonder background-activity-start.
+  ///   - Meldingen (POST_NOTIFICATIONS) → niet nodig, moment-popups
+  ///     komen direct via Firestore-listener in-app; er is geen
+  ///     tray-melding om te tonen.
+  /// Wat WEL nodig blijft in rustige modus:
+  ///   - Batterij-optimalisatie uit — Android kan de app zelfs op de
+  ///     voorgrond in Doze zetten na langere inactiviteit; dan mist
+  ///     de dierbare een moment. Zonder deze uitzondering wordt de
+  ///     Firestore-listener geknepen.
+  ///   - Autostart (Samsung/Xiaomi/etc) — na reboot of stroomuitval
+  ///     moet Ons Moment terugkomen op de voorgrond zonder dat de
+  ///     eigenaar erbij hoeft. Op Pixel/stock Android niet relevant
+  ///     (blokkerende OEM-check gate).
+  bool get _isRustig =>
+      widget.weergaveModus == DeviceModusService.VERGRENDELD;
+
+  bool get _fsiStapNodig => !_isRustig;
+  bool get _notifStapNodig => !_isRustig;
+  bool get _overlayStapNodig => widget.autoAnswerActief && !_isRustig;
 
   Future<void> _ververs() async {
     final mijnTicket = ++_verversTicket;
@@ -117,7 +135,14 @@ class _ToestemmingenSetupSchermState extends State<ToestemmingenSetupScherm>
       });
       return;
     }
-    final fsi = await KioskService.kanFullScreenIntent();
+    // CHECKLIST-MODUS: stappen die in rustige modus niet nodig zijn,
+    // slaan we ook over in de fysieke check — hun bool wordt true zodat
+    // _allesOk/_resterend/belGereed hen niet als 'ontbrekend' tellen.
+    // De UI verbergt de betreffende kaartjes; de warme uitleg bovenaan
+    // vertelt de eigenaar waarom er maar 2 stappen zijn.
+    final fsi = _fsiStapNodig
+        ? await KioskService.kanFullScreenIntent()
+        : true;
     final batt = await KioskService.isBatteryOptimizationUit();
     // P3 (14 sept 2026): losse sub-checks zodat we in de UI kunnen
     // uitleggen WELKE van de twee (per-app whitelist of spaarstand)
@@ -129,7 +154,9 @@ class _ToestemmingenSetupSchermState extends State<ToestemmingenSetupScherm>
     final overlay = _overlayStapNodig
         ? await OverlayPermissionService.heeftToestemming()
         : true;
-    final notif = await StroomuitvalService.notificatieToegestaan();
+    final notif = _notifStapNodig
+        ? await StroomuitvalService.notificatieToegestaan()
+        : true;
     final oemNodig = await StroomuitvalService.isBlokkerendeOem();
     final autostart = oemNodig
         ? await StroomuitvalService.autostartAttested()
@@ -168,10 +195,17 @@ class _ToestemmingenSetupSchermState extends State<ToestemmingenSetupScherm>
     required bool autostart,
   }) async {
     if (kIsWeb) return;
-    // Zelfde condities als _allesOk, maar op de directe waarden uit
-    // deze _ververs-run (state is mogelijk nog niet gecommit als user
-    // heel snel klikt).
-    final gereed = fsi && batt && overlay && notif &&
+    // CHECKLIST-MODUS: 'gereed' bevat alleen de checks die in de
+    // huidige modus WEL van toepassing zijn. In rustige modus is dat
+    // alleen batterij + autostart. Zonder deze gates zou de eigenaar-
+    // kant een 'niet bel-klaar'-melding zien voor stappen die op de
+    // ontvanger-tablet niet nodig zijn (bijv. Volledig scherm in de
+    // vergrendelde modus). fsi/overlay/notif zijn in _ververs al op
+    // 'true' gezet voor niet-relevante stappen, dus deze berekening is
+    // idempotent bij later toe- of afvoegen van gates.
+    final gereed = (_fsiStapNodig ? fsi : true) && batt &&
+        (_overlayStapNodig ? overlay : true) &&
+        (_notifStapNodig ? notif : true) &&
         (!oemNodig || autostart);
     try {
       final uid = FirebaseAuth.instance.currentUser?.uid;
@@ -186,19 +220,21 @@ class _ToestemmingenSetupSchermState extends State<ToestemmingenSetupScherm>
     } catch (_) {}
   }
 
+  /// CHECKLIST-MODUS: stap-nodig-gates verbergen niet-relevante stappen
+  /// uit de telling. Rustige modus telt alleen batterij + autostart.
   bool get _allesOk =>
-      (_fsiOk ?? false) &&
+      (_fsiStapNodig ? (_fsiOk ?? false) : true) &&
       (_battOk ?? false) &&
-      (_overlayOk ?? true) &&
-      (_notifOk ?? false) &&
+      (_overlayStapNodig ? (_overlayOk ?? false) : true) &&
+      (_notifStapNodig ? (_notifOk ?? false) : true) &&
       (_autostartOk ?? true);
 
   int get _resterend {
     int r = 0;
-    if (_fsiOk == false) r++;
+    if (_fsiStapNodig && _fsiOk == false) r++;
     if (_battOk == false) r++;
     if (_overlayStapNodig && _overlayOk == false) r++;
-    if (_notifOk == false) r++;
+    if (_notifStapNodig && _notifOk == false) r++;
     if (_oemHeeftAutostart && _autostartOk == false) r++;
     return r;
   }
@@ -225,25 +261,54 @@ class _ToestemmingenSetupSchermState extends State<ToestemmingenSetupScherm>
                           'aankomen bij je dierbare.',
                   style: const TextStyle(
                       fontSize: 14, color: kBrownLight, height: 1.4)),
+              // CHECKLIST-MODUS (14 sept 2026): rustige modus toont maar
+              // 2 stappen omdat de andere in kiosk-mode niet nodig zijn.
+              // Uitleg-kaart bovenaan zodat de eigenaar niet denkt dat er
+              // stappen ontbreken.
+              if (_isRustig) ...[
+                const SizedBox(height: 12),
+                Container(
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: kPeachPale,
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: kPeach, width: 1.2),
+                  ),
+                  child: const Row(children: [
+                    Text('🔒', style: TextStyle(fontSize: 22)),
+                    SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        'Omdat het apparaat vast op Ons Moment staat, '
+                        'zijn maar twee instellingen nodig.',
+                        style: TextStyle(fontSize: 13, color: kBrown,
+                            height: 1.5, fontWeight: FontWeight.w700),
+                      ),
+                    ),
+                  ]),
+                ),
+              ],
               const SizedBox(height: 16),
               Expanded(child: ListView(children: [
-                _stapKaart(
-                  emoji: '📢',
-                  titel: 'Volledig scherm bij een gesprek',
-                  uitleg:
-                      'Zodat een videogesprek groot in beeld komt — ook '
-                      'als het scherm uit is.',
-                  status: _fsiOk,
-                  knopTekst: 'Instelling openen',
-                  onTap: () async {
-                    await KioskService.vraagFullScreenIntent();
-                  },
-                  fallbackInstructie:
-                      'Werkt de knop niet? Ga naar Instellingen → Apps → '
-                      'Ons Moment → Meldingen → "Volledig scherm bij '
-                      'melding" en zet aan.',
-                ),
-                const SizedBox(height: 12),
+                if (_fsiStapNodig) ...[
+                  _stapKaart(
+                    emoji: '📢',
+                    titel: 'Volledig scherm bij een gesprek',
+                    uitleg:
+                        'Zodat een videogesprek groot in beeld komt — ook '
+                        'als het scherm uit is.',
+                    status: _fsiOk,
+                    knopTekst: 'Instelling openen',
+                    onTap: () async {
+                      await KioskService.vraagFullScreenIntent();
+                    },
+                    fallbackInstructie:
+                        'Werkt de knop niet? Ga naar Instellingen → Apps → '
+                        'Ons Moment → Meldingen → "Volledig scherm bij '
+                        'melding" en zet aan.',
+                  ),
+                  const SizedBox(height: 12),
+                ],
                 // P3 (14 sept 2026): batterij-stap toont nu welke van de
                 // twee onderliggende instellingen aan-staat (whitelist of
                 // spaarstand). _battOk is de samenvatting; als NIET ok
@@ -318,29 +383,33 @@ class _ToestemmingenSetupSchermState extends State<ToestemmingenSetupScherm>
                 ],
                 // C-1-vervolg: POST_NOTIFICATIONS (Android 13+). Zonder
                 // dit komt geen enkele melding aan — niet voor
-                // gesprekken, niet voor momenten.
-                const SizedBox(height: 12),
-                _stapKaart(
-                  emoji: '🔔',
-                  titel: 'Meldingen aan',
-                  uitleg:
-                      'Zet meldingen aan, zodat berichten en gesprekken '
-                      'altijd bij je dierbare aankomen. Zonder dit '
-                      'blijft het scherm stil, ook als er een moment of '
-                      'oproep binnenkomt.',
-                  status: _notifOk,
-                  knopTekst: 'Zet aan',
-                  onTap: () async {
-                    // Q3 (14 sept 2026): vraagNotificatieToestemming detecteert
-                    // permanent-denied en opent dan meteen de meldingsinstellingen
-                    // via de KioskService method-channel. Zonder die detectie
-                    // deed .request() niks op een 'don't ask again'-toestel.
-                    await StroomuitvalService.vraagNotificatieToestemming();
-                  },
-                  fallbackInstructie:
-                      'Werkt de knop niet? Ga naar Instellingen → '
-                      'Apps → Ons Moment → Meldingen en zet aan.',
-                ),
+                // gesprekken, niet voor momenten. CHECKLIST-MODUS:
+                // niet nodig in rustige modus; moment-popups komen
+                // dan via de Firestore-listener in-app.
+                if (_notifStapNodig) ...[
+                  const SizedBox(height: 12),
+                  _stapKaart(
+                    emoji: '🔔',
+                    titel: 'Meldingen aan',
+                    uitleg:
+                        'Zet meldingen aan, zodat berichten en gesprekken '
+                        'altijd bij je dierbare aankomen. Zonder dit '
+                        'blijft het scherm stil, ook als er een moment of '
+                        'oproep binnenkomt.',
+                    status: _notifOk,
+                    knopTekst: 'Zet aan',
+                    onTap: () async {
+                      // Q3 (14 sept 2026): vraagNotificatieToestemming detecteert
+                      // permanent-denied en opent dan meteen de meldingsinstellingen
+                      // via de KioskService method-channel. Zonder die detectie
+                      // deed .request() niks op een 'don't ask again'-toestel.
+                      await StroomuitvalService.vraagNotificatieToestemming();
+                    },
+                    fallbackInstructie:
+                        'Werkt de knop niet? Ga naar Instellingen → '
+                        'Apps → Ons Moment → Meldingen en zet aan.',
+                  ),
+                ],
                 // C-1-vervolg: OEM-autostart (alleen Samsung/Xiaomi/
                 // Huawei/Oppo/Vivo/Realme). Op Pixel/stock Android
                 // wordt deze stap OVERGESLAGEN — geen verwarrende
