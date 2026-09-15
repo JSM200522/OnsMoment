@@ -83,3 +83,24 @@ const bool CALLKIT_HARD_UIT = true;
 /// ontgrendelt daarbovenop het testrommel-oppervlak. Beide moeten uit
 /// vóór publieke release.
 const bool DEBUG_BEL_DEV = false;
+
+/// FASE D-2E (sept 2026): paywall live-mode. Bij FALSE toont
+/// PakketKeuzeScherm het originele "Betaaloptie volgt binnenkort"-
+/// placeholder. Bij TRUE haalt het scherm de echte RevenueCat-offerings
+/// op en activeert de koop-knoppen (Purchases.purchase → Play billing
+/// dialog → webhook → Firestore-tier update).
+///
+/// **BLIJFT FALSE tot na de eerste sandbox-test.** Volgorde per
+/// CLAUDE.md FASE D:
+///  1. Codemagic-build + Play Console-upload (BILLING-permissie).
+///  2. 4 abonnementen aanmaken in Play Console (klein_maand/jaar,
+///     groot_maand/jaar), product-IDs koppelen aan RevenueCat packages
+///     met dezelfde identifiers.
+///  3. License-tester + Play-service-account koppeling.
+///  4. Sandbox-koop op eigen toestel — hele round-trip verifieren.
+///  5. PAS DAN deze flag omzetten naar TRUE.
+///
+/// Zonder gevulde kRevenueCatAndroidKey EN offerings met de juiste
+/// identifiers gebeurt er niks bij TRUE — de knoppen tonen dan een
+/// nette "Momenteel geen abonnementen beschikbaar"-boodschap.
+const bool DEBUG_PAYWALL_LIVE = false;

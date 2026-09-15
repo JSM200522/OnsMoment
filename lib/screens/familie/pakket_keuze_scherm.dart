@@ -1,7 +1,24 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:purchases_flutter/purchases_flutter.dart';
+import '../../data/debug_flags.dart';
+import '../../services/purchases_service.dart';
 import '../../theme/kleuren.dart';
+
+/// Conventie voor package-identifiers in de RevenueCat "current"-offering.
+/// Joshua zet deze bij het aanmaken van packages in RevenueCat exact
+/// zo — kleine-letters, onderstrepen. Zonder deze conventie kan
+/// [_PakketKeuzeSchermState._koopTier] de juiste Package niet vinden en
+/// valt de koop-knop stil terug op "Momenteel niet beschikbaar".
+///
+/// Mapping tier×periode → identifier:
+///   klein + maand  → 'klein_maand'
+///   klein + jaar   → 'klein_jaar'
+///   groot + maand  → 'groot_maand'
+///   groot + jaar   → 'groot_jaar'
+String _pakketId(String tier, {required bool jaar}) =>
+    '${tier}_${jaar ? 'jaar' : 'maand'}';
 
 /// Toont proefperiode-teller, maand/jaar-toggle en twee pakketten met
 /// warme per-persoon-framing. Alleen aanroepen vanuit eigenaar-context.
@@ -26,10 +43,73 @@ class _PakketKeuzeSchermState extends State<PakketKeuzeScherm> {
   int? _dagenResterend; // null = proefStart onbekend (bestaand account)
   bool _geladen = false;
 
+  // D-2E paywall live-mode state. Alleen relevant als
+  // DEBUG_PAYWALL_LIVE=true; anders blijven deze velden ongebruikt en
+  // toont _betaalKnop het originele placeholder.
+  Offering? _offering;
+  bool _offeringGeladen = false;
+  bool _bezigKopen = false;
+
   @override
   void initState() {
     super.initState();
     _laadProefStart();
+    if (DEBUG_PAYWALL_LIVE) _laadOffering();
+  }
+
+  /// D-2E: haalt de RevenueCat "current"-offering op zodra het scherm
+  /// opent. No-op als SDK niet configured (lege API-key) — dan blijft
+  /// _offering null en toont [_betaalKnopLive] "Momenteel niet
+  /// beschikbaar".
+  Future<void> _laadOffering() async {
+    final offering = await PurchasesService.haalCurrentOffering();
+    if (!mounted) return;
+    setState(() {
+      _offering = offering;
+      _offeringGeladen = true;
+    });
+  }
+
+  /// D-2E: zoekt de Package voor het gegeven tier + de huidige toggle
+  /// en start de koop-flow. Play/App Store toont zelf de betaal-UI.
+  /// Bij succes sluit de sheet en de webhook doet de tier-schrijf.
+  Future<void> _koopTier(String tier) async {
+    if (_bezigKopen) return;
+    final offering = _offering;
+    if (offering == null) return;
+    final gewenstId = _pakketId(tier, jaar: _jaarModus);
+    Package? gekozen;
+    for (final p in offering.availablePackages) {
+      if (p.identifier == gewenstId) {
+        gekozen = p;
+        break;
+      }
+    }
+    if (gekozen == null) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('Pakket "$gewenstId" is nog niet beschikbaar. '
+            'Probeer het straks opnieuw.'),
+        backgroundColor: kRood));
+      return;
+    }
+    setState(() => _bezigKopen = true);
+    final result = await PurchasesService.koop(gekozen);
+    if (!mounted) return;
+    setState(() => _bezigKopen = false);
+    if (result != null) {
+      final actief = PurchasesService.tierUitCustomerInfo(result);
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(actief != null
+            ? 'Gelukt — je bent nu op pakket "${actief.toUpperCase()}".'
+            : 'Aankoop verwerkt. Het kan even duren voor je nieuwe '
+                'status zichtbaar is.'),
+        backgroundColor: kGreen));
+      Navigator.of(context).maybePop();
+    }
+    // result == null bij annulering of fout — service heeft al
+    // debugPrint gedaan; geen aparte user-melding nodig (Play toont
+    // eigen fout-UI).
   }
 
   Future<void> _laadProefStart() async {
@@ -462,7 +542,13 @@ class _PakketKeuzeSchermState extends State<PakketKeuzeScherm> {
     );
   }
 
-  Widget _betaalKnop() => Opacity(
+  Widget _betaalKnop() =>
+      DEBUG_PAYWALL_LIVE ? _betaalKnopLive() : _betaalKnopPlaceholder();
+
+  /// Origineel placeholder — actief zolang DEBUG_PAYWALL_LIVE=false.
+  /// De betaal-flow is nog niet klaar voor productie (wacht op Play
+  /// Console-abonnementen + sandbox-test), dus knop blijft disabled.
+  Widget _betaalKnopPlaceholder() => Opacity(
         opacity: 0.5,
         child: Container(
           padding: const EdgeInsets.symmetric(vertical: 16),
@@ -478,4 +564,60 @@ class _PakketKeuzeSchermState extends State<PakketKeuzeScherm> {
           ),
         ),
       );
+
+  /// D-2E live-modus. Toont twee knoppen (Klein / Groot), elk gekoppeld
+  /// aan het pakket dat matcht met de huidige jaar/maand-toggle. Bij
+  /// tap → Purchases.purchase → Play/App Store dialog.
+  Widget _betaalKnopLive() {
+    if (!_offeringGeladen) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(vertical: 16),
+        child: Center(child:
+            CircularProgressIndicator(color: kPeach, strokeWidth: 3)),
+      );
+    }
+    if (_offering == null || _offering!.availablePackages.isEmpty) {
+      return Container(
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(color: kPeachPale,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: kPeachLight, width: 1.5)),
+        child: const Center(child: Text(
+          'Momenteel geen abonnementen beschikbaar. Probeer het later '
+          'opnieuw of neem contact op via info@onsmoment.app.',
+          textAlign: TextAlign.center,
+          style: TextStyle(fontSize: 13, color: kBrown, height: 1.4))),
+      );
+    }
+    return Row(children: [
+      Expanded(child: _tierKoopKnop('klein', 'Kies Klein')),
+      const SizedBox(width: 10),
+      Expanded(child: _tierKoopKnop('groot', 'Kies Groot',
+          uitgelicht: true)),
+    ]);
+  }
+
+  Widget _tierKoopKnop(String tier, String label,
+      {bool uitgelicht = false}) {
+    return GestureDetector(
+      onTap: _bezigKopen ? null : () => _koopTier(tier),
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 14),
+        decoration: BoxDecoration(
+          color: uitgelicht ? kPeach : kWhite,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: kPeach,
+              width: uitgelicht ? 2 : 1.5),
+        ),
+        child: Center(child: _bezigKopen
+            ? const SizedBox(width: 18, height: 18,
+                child: CircularProgressIndicator(
+                    strokeWidth: 2.5, color: kWhite))
+            : Text(label,
+                style: TextStyle(fontSize: 14,
+                    fontWeight: FontWeight.w900,
+                    color: uitgelicht ? kWhite : kPeach))),
+      ),
+    );
+  }
 }
