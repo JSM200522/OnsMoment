@@ -165,6 +165,7 @@ class _PakketKeuzeSchermState extends State<PakketKeuzeScherm> {
                 _toggle(),
                 const SizedBox(height: 20),
                 _pakketKaart(
+                  tier: 'klein',
                   label: 'FAMILIE KLEIN',
                   maandPrijs: '€4,99',
                   jaarPrijs: '€35,99',
@@ -181,12 +182,13 @@ class _PakketKeuzeSchermState extends State<PakketKeuzeScherm> {
                   kenmerken: const [
                     '1 kring',
                     'Max 8 kringleden',
-                    '5 berichttypen',
+                    'Foto, video, stem, muziek, tekst en videobellen',
                   ],
                   isUitgelicht: false,
                 ),
                 const SizedBox(height: 12),
                 _pakketKaart(
+                  tier: 'groot',
                   label: 'FAMILIE GROOT',
                   maandPrijs: '€7,99',
                   jaarPrijs: '€57,99',
@@ -203,13 +205,23 @@ class _PakketKeuzeSchermState extends State<PakketKeuzeScherm> {
                   kenmerken: const [
                     'Max 3 kringen',
                     'Max 20 kringleden per kring',
-                    '5 berichttypen',
+                    'Foto, video, stem, muziek, tekst en videobellen',
                   ],
                   isUitgelicht: true,
                 ),
-                const SizedBox(height: 28),
-                _betaalKnop(),
-                const SizedBox(height: 12),
+                const SizedBox(height: 20),
+                // UI-3: geen bottom-knoppen meer in live-mode — elke
+                // kaart heeft z'n eigen koop-CTA. Placeholder (offline
+                // mode) blijft één strip.
+                if (!DEBUG_PAYWALL_LIVE) ...[
+                  _betaalKnopPlaceholder(),
+                  const SizedBox(height: 12),
+                ] else if (_offeringGeladen &&
+                    (_offering == null ||
+                        _offering!.availablePackages.isEmpty)) ...[
+                  _geenOfferingBlok(),
+                  const SizedBox(height: 12),
+                ],
                 const Center(
                   child: Text(
                     'Geen verplichtingen. Doe je niets, dan stopt het vanzelf.',
@@ -419,7 +431,15 @@ class _PakketKeuzeSchermState extends State<PakketKeuzeScherm> {
     );
   }
 
+  /// UI-2 + UI-3 (sept 2026): rustiger styling (geen dikke rand of shadow
+  /// die eruitziet als "aangeklikt" — beide kaarten krijgen dezelfde
+  /// 1.5px border) en inline koop-CTA (elke kaart heeft z'n eigen
+  /// "Kies dit pakket voor €X per maand/jaar"-knop, i.p.v. losse
+  /// buttons onderaan). Onderscheid tussen Klein en Groot loopt via
+  /// alleen de "Meest gekozen"-badge en (bij Groot) een lichte
+  /// crème-tint als achtergrond.
   Widget _pakketKaart({
+    required String tier,
     required String label,
     required String maandPrijs,
     required String jaarPrijs,
@@ -437,20 +457,11 @@ class _PakketKeuzeSchermState extends State<PakketKeuzeScherm> {
     return Container(
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
-        color: kWhite,
+        // Bij Groot een subtiele crème-tint zodat het kaartje visueel
+        // net iets opvalt zonder een klik-achtige highlight.
+        color: isUitgelicht ? kPeachPale : kWhite,
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(
-          color: isUitgelicht ? kPeach : kPeachLight,
-          width: isUitgelicht ? 2.5 : 1.5,
-        ),
-        boxShadow: isUitgelicht
-            ? [
-                BoxShadow(
-                    color: kPeach.withOpacity(0.15),
-                    blurRadius: 20,
-                    offset: const Offset(0, 6))
-              ]
-            : [],
+        border: Border.all(color: kPeachLight, width: 1.5),
       ),
       child:
           Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -508,7 +519,9 @@ class _PakketKeuzeSchermState extends State<PakketKeuzeScherm> {
         Container(
           padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
-              color: kPeachPale,
+              // Bij Groot krijgt de kaart al een crème-tint, dus dit
+              // interne blok krijgt de wittevariant voor contrast.
+              color: isUitgelicht ? kWhite : kPeachPale,
               borderRadius: BorderRadius.circular(10)),
           child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -529,25 +542,31 @@ class _PakketKeuzeSchermState extends State<PakketKeuzeScherm> {
         const SizedBox(height: 12),
         ...kenmerken.map((k) => Padding(
               padding: const EdgeInsets.only(bottom: 5),
-              child: Row(children: [
-                const Icon(Icons.check_circle_rounded,
-                    color: kGreen, size: 16),
-                const SizedBox(width: 8),
-                Text(k,
-                    style: const TextStyle(
-                        fontSize: 13, color: kBrownLight)),
-              ]),
+              child: Row(crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Padding(
+                    padding: EdgeInsets.only(top: 2),
+                    child: Icon(Icons.check_circle_rounded,
+                        color: kGreen, size: 16),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(child: Text(k,
+                      style: const TextStyle(
+                          fontSize: 13, color: kBrownLight, height: 1.35))),
+                ]),
             )),
+        // UI-3: koop-CTA binnen de kaart in live-mode. Labelt tegelijk
+        // periode + prijs zodat geen puzzelen nodig is.
+        if (DEBUG_PAYWALL_LIVE) ...[
+          const SizedBox(height: 14),
+          _kaartKoopKnop(tier, prijs, periode,
+              uitgelicht: isUitgelicht),
+        ],
       ]),
     );
   }
 
-  Widget _betaalKnop() =>
-      DEBUG_PAYWALL_LIVE ? _betaalKnopLive() : _betaalKnopPlaceholder();
-
-  /// Origineel placeholder — actief zolang DEBUG_PAYWALL_LIVE=false.
-  /// De betaal-flow is nog niet klaar voor productie (wacht op Play
-  /// Console-abonnementen + sandbox-test), dus knop blijft disabled.
+  /// Placeholder onder beide kaarten in NIET-live-mode.
   Widget _betaalKnopPlaceholder() => Opacity(
         opacity: 0.5,
         child: Container(
@@ -565,19 +584,11 @@ class _PakketKeuzeSchermState extends State<PakketKeuzeScherm> {
         ),
       );
 
-  /// D-2E live-modus. Toont twee knoppen (Klein / Groot), elk gekoppeld
-  /// aan het pakket dat matcht met de huidige jaar/maand-toggle. Bij
-  /// tap → Purchases.purchase → Play/App Store dialog.
-  Widget _betaalKnopLive() {
-    if (!_offeringGeladen) {
-      return const Padding(
-        padding: EdgeInsets.symmetric(vertical: 16),
-        child: Center(child:
-            CircularProgressIndicator(color: kPeach, strokeWidth: 3)),
-      );
-    }
-    if (_offering == null || _offering!.availablePackages.isEmpty) {
-      return Container(
+  /// Getoond in live-mode wanneer offerings zijn geladen maar leeg
+  /// zijn (packages nog niet gepubliceerd). Vervangt de kaart-CTA's
+  /// niet — die zijn achter dezelfde flag verborgen als de offering
+  /// null blijkt.
+  Widget _geenOfferingBlok() => Container(
         padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(color: kPeachPale,
             borderRadius: BorderRadius.circular(14),
@@ -588,17 +599,24 @@ class _PakketKeuzeSchermState extends State<PakketKeuzeScherm> {
           textAlign: TextAlign.center,
           style: TextStyle(fontSize: 13, color: kBrown, height: 1.4))),
       );
-    }
-    return Row(children: [
-      Expanded(child: _tierKoopKnop('klein', 'Kies Klein')),
-      const SizedBox(width: 10),
-      Expanded(child: _tierKoopKnop('groot', 'Kies Groot',
-          uitgelicht: true)),
-    ]);
-  }
 
-  Widget _tierKoopKnop(String tier, String label,
-      {bool uitgelicht = false}) {
+  /// UI-3: koop-CTA per kaart. Toont periode + prijs in het label
+  /// zodat de gebruiker in één blik ziet wat hij koopt.
+  Widget _kaartKoopKnop(String tier, String prijs, String periode,
+      {required bool uitgelicht}) {
+    if (!_offeringGeladen) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(vertical: 6),
+        child: Center(child: SizedBox(width: 18, height: 18,
+            child: CircularProgressIndicator(
+                color: kPeach, strokeWidth: 2.5))),
+      );
+    }
+    if (_offering == null || _offering!.availablePackages.isEmpty) {
+      // Kaart-CTA verbergen als er geen offering is; het _geenOfferingBlok
+      // onder beide kaarten dekt de uitleg voor de gebruiker.
+      return const SizedBox.shrink();
+    }
     return GestureDetector(
       onTap: _bezigKopen ? null : () => _koopTier(tier),
       child: Container(
@@ -607,13 +625,13 @@ class _PakketKeuzeSchermState extends State<PakketKeuzeScherm> {
           color: uitgelicht ? kPeach : kWhite,
           borderRadius: BorderRadius.circular(14),
           border: Border.all(color: kPeach,
-              width: uitgelicht ? 2 : 1.5),
+              width: uitgelicht ? 1.5 : 1.5),
         ),
         child: Center(child: _bezigKopen
             ? const SizedBox(width: 18, height: 18,
                 child: CircularProgressIndicator(
                     strokeWidth: 2.5, color: kWhite))
-            : Text(label,
+            : Text('Kies dit pakket — $prijs $periode',
                 style: TextStyle(fontSize: 14,
                     fontWeight: FontWeight.w900,
                     color: uitgelicht ? kWhite : kPeach))),

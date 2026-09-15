@@ -46,7 +46,9 @@ import '../../data/kring.dart';
 import '../../data/kring_membership.dart';
 import '../../services/kring_service.dart';
 import '../../services/purchases_service.dart';
+import '../../services/trial_prompt_service.dart';
 import '../../services/video_call_service.dart';
+import '../../widgets/trial_prompts.dart';
 import '../setup/accept_uitnodig_scherm.dart';
 
 class FamilieScherm extends StatefulWidget {
@@ -2229,6 +2231,9 @@ class _StuurTabState extends State<StuurTab> {
           content: Text('Je hartje is verstuurd 💕'),
           backgroundColor: kGreen));
       }
+      // D-3: nudge-check ná hartje-send. Fail-soft: bij fout gebeurt
+      // er niks, gebruiker merkt het niet.
+      unawaited(_maybeToonTussentijdseNudge());
     } catch (_) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
@@ -2480,6 +2485,10 @@ class _StuurTabState extends State<StuurTab> {
           _opnamePad = null;
           _opnameSeconden = 0;
         });
+        // D-3: nudge-check ná moment-send. Fail-soft; alleen zichtbaar
+        // als alle checks slagen (>=5 momenten, >=3 dagen sinds vorige,
+        // nog >1 dag proef resterend).
+        unawaited(_maybeToonTussentijdseNudge());
       }
     } catch (e) {
       _toonFout('Versturen mislukt: $e');
@@ -2492,6 +2501,20 @@ class _StuurTabState extends State<StuurTab> {
         });
       }
     }
+  }
+
+  /// D-3 (sept 2026): registreert de verzending in de moment-teller en
+  /// toont — als alle warme voorwaarden kloppen — de tussentijdse
+  /// nudge. Fail-soft: elke fout wordt gelogd via de service; UI blijft
+  /// altijd doorlopen.
+  Future<void> _maybeToonTussentijdseNudge() async {
+    await TrialPromptService.registreerMomentVerzonden();
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return;
+    final info = await TrialPromptService.magNudgeTonen(uid);
+    if (info == null) return;
+    if (!mounted) return;
+    await TussentijdseNudgeSheet.toon(context, info);
   }
 
   /// Upload met live voortgang. Op web kan progress in één stap van 0 naar 100
@@ -3799,6 +3822,11 @@ class _InstellingenTabState extends State<InstellingenTab> {
   // toont de footer alleen 'Ons Moment'.
   String? _appVersieLabel;
 
+  // D-3 (sept 2026): warme eind-reminder-kaart (laatste dag / verlopen).
+  // Alleen zichtbaar in eigenaar-modus zolang de proef in die fase zit.
+  TrialContext? _trialContext;
+  int _trialMomentenTotaal = 0;
+
   /// FINAL-CHECK 14 sept 2026: leest de echte app-versie uit
   /// PackageInfo. Format: '1.0.72 (83)' matcht pubspec 'version:'
   /// (major.minor.patch+buildNumber). Fail-soft: bij fout blijft
@@ -3861,6 +3889,7 @@ class _InstellingenTabState extends State<InstellingenTab> {
         }
       });
       _laadKringen();
+      _laadTrialContext();
       DeviceModusService.actieveKringNotifier.addListener(_opKringSwitch);
     }
     // V9 2.4-a-3: naam uit actieve kring-doc (wisselt mee bij switch).
@@ -3903,6 +3932,23 @@ class _InstellingenTabState extends State<InstellingenTab> {
     // Notifier triggert bij elke zetActieveKring — herlaad de lijst
     // (nieuw aangemaakte kring verschijnt, huidige markering schuift).
     _laadKringen();
+  }
+
+  /// D-3: laadt de trial-fase + moment-teller zodat de eind-reminder-
+  /// kaart bovenaan InstellingenTab kan verschijnen (laatste dag /
+  /// verlopen). Fail-soft: bij fout blijft _trialContext null en
+  /// toont TrialEindeKaart niks.
+  Future<void> _laadTrialContext() async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return;
+    final ctx = await TrialPromptService.haalContext(uid,
+        kringNaamFallback: _kringNaam);
+    final teller = await TrialPromptService.aantalMomentenVerzonden();
+    if (!mounted) return;
+    setState(() {
+      _trialContext = ctx;
+      _trialMomentenTotaal = teller;
+    });
   }
 
   Future<void> _laadKringen() async {
@@ -4107,6 +4153,16 @@ class _InstellingenTabState extends State<InstellingenTab> {
         const Text('Instellingen',
             style: TextStyle(fontSize: 24, fontWeight: FontWeight.w900,
                 color: kBrown)),
+        // D-3: warme eind-reminder-kaart (laatste dag / verlopen).
+        // Verschijnt alleen in eigenaar-modus als de proef in die
+        // fase zit; anders SizedBox.shrink. Persistent zichtbaar
+        // zolang fase actueel is.
+        if (!widget.alsOntvanger && _trialContext != null) ...[
+          const SizedBox(height: 16),
+          TrialEindeKaart(
+              context: _trialContext!,
+              momentenTotaal: _trialMomentenTotaal),
+        ],
         if (!widget.alsOntvanger) ...[
           const SizedBox(height: 20),
           _sectie('DAGELIJKSE MOMENTEN'),
