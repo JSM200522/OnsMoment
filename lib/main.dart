@@ -192,13 +192,51 @@ class _RouterSchermState extends State<RouterScherm>
     _laadInitieel();
     _authSub =
         FirebaseAuth.instance.authStateChanges().listen(_bijAuthWissel);
+    // D-2D: entitlement-listener attach. Firet zodra RevenueCat een
+    // customer-info-update ontvangt (nieuwe aankoop, restore, verlopen).
+    // No-op zolang PurchasesService.beschikbaar false is (lege API-key
+    // of web) — dan wordt de listener bewust niet geregistreerd.
+    PurchasesService.luisterEntitlementChanges(_opEntitlementUpdate);
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _authSub?.cancel();
+    PurchasesService.stopLuisteren();
     super.dispose();
+  }
+
+  /// D-2D callback: RevenueCat heeft een nieuwe customer-info gestuurd
+  /// (aankoop, restore, verlopen, cross-device sync). Server-side heeft
+  /// de `revenuecatWebhook` Cloud Function al `gebruikers/{uid}.tier`
+  /// bijgewerkt; deze callback forceert alleen een client-refresh zodat
+  /// UI-schermen die niet actief op gebruikers/{uid} streamen (bijv.
+  /// PakketKeuzeScherm) direct de nieuwe status zien.
+  ///
+  /// Fail-soft: elke fout wordt gelogd; nooit crash. De client heeft
+  /// geen schrijf-verantwoordelijkheid — de webhook is de bron van
+  /// waarheid voor tier/abonnement.
+  void _opEntitlementUpdate(CustomerInfo info) {
+    final tier = PurchasesService.tierUitCustomerInfo(info);
+    debugPrint('💳 entitlement-update ontvangen: tier=$tier '
+        '(actief: ${info.entitlements.active.keys.toList()})');
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null || uid.isEmpty) return;
+    // Force-refresh van het gebruikers-doc zodat een cached read direct
+    // de nieuwe tier oppikt. Niet strikt nodig als de UI al streamt,
+    // maar dekt ook de "PakketKeuzeScherm net geopend"-flow.
+    FirebaseFirestore.instance
+        .collection('gebruikers').doc(uid)
+        .get(const GetOptions(source: Source.server))
+        .catchError((Object e) {
+      debugPrint('💳 refresh gebruikers-doc na entitlement-update '
+          'faalde (fail-soft): $e');
+      // Return-type dwang — we mogen niet null returnen, dus geef
+      // een lege snapshot terug. Caller gebruikt hem niet.
+      return FirebaseFirestore.instance.collection('gebruikers')
+          .doc(uid).get();
+    });
   }
 
   /// Idempotent: negeer als het dezelfde uid is als de vorige registratie
@@ -219,6 +257,10 @@ class _RouterSchermState extends State<RouterScherm>
       // het achtergrond-isolate niet meer met een 1u geldige bearer-
       // token kan pingen namens de uitgelogde gebruiker. Fail-soft.
       unawaited(PushService.wisAchtergrondIdToken());
+      // D-2D: RevenueCat-user ook resetten — voorkomt dat een volgende
+      // inlog met een andere uid de entitlements van de vorige user
+      // erft. No-op als SDK niet configured.
+      unawaited(PurchasesService.logout());
       return;
     }
     if (user.uid == _laatstGeregistreerdeUid) return;
@@ -237,6 +279,11 @@ class _RouterSchermState extends State<RouterScherm>
           familieUid: user.uid, apparaatId: apparaatId));
       unawaited(PushService.registreerHuidigApparaat(
           familieUid: user.uid, apparaatId: apparaatId));
+      // D-2D: RevenueCat aan Firebase-uid koppelen. Dit is de sleutel
+      // waar de webhook Cloud Function op gebruikers/{uid} schrijft
+      // (via event.app_user_id in de RevenueCat-payload). No-op als
+      // SDK niet configured.
+      unawaited(PurchasesService.init(user.uid));
     } catch (e) {
       unawaited(BelLogService.log(
           'AUTH-1 push re-register faalde bij auth-wissel: $e'));
