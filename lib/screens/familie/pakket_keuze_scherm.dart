@@ -182,7 +182,7 @@ class _PakketKeuzeSchermState extends State<PakketKeuzeScherm> {
                   kenmerken: const [
                     '1 kring',
                     'Max 8 kringleden',
-                    'Foto, video, stem, muziek, tekst en videobellen',
+                    'Alle functies inbegrepen',
                   ],
                   isUitgelicht: false,
                 ),
@@ -205,7 +205,7 @@ class _PakketKeuzeSchermState extends State<PakketKeuzeScherm> {
                   kenmerken: const [
                     'Max 3 kringen',
                     'Max 20 kringleden per kring',
-                    'Foto, video, stem, muziek, tekst en videobellen',
+                    'Alle functies inbegrepen',
                   ],
                   isUitgelicht: true,
                 ),
