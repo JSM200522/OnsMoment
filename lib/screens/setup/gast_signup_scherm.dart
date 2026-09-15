@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import '../../data/email_blocklist.dart';
 import '../../data/uitnodiging.dart';
 import '../../services/apparaat_service.dart';
 import '../../services/device_modus_service.dart';
@@ -67,6 +68,14 @@ class _GastSignupSchermState extends State<GastSignupScherm> {
     }
     if (ww.length < 6) {
       _toonFout('Wachtwoord moet minstens 6 tekens zijn.');
+      return;
+    }
+    // BOUNCE-A (14 sept 2026): weer test/invalid-domeinen vóór
+    // createUser om ZeptoMail hard-bounces te voorkomen. Zie
+    // lib/data/email_blocklist.dart.
+    if (isGeblokkeerdEmailDomein(email)) {
+      _toonFout('Dit e-mailadres kan niet gebruikt worden. Gebruik je '
+          'echte e-mailadres zodat je de verificatie-mail ontvangt.');
       return;
     }
     setState(() => _bezig = true);

@@ -9,6 +9,7 @@ import '../../services/apparaat_service.dart';
 import '../../services/device_modus_service.dart';
 import '../../services/kring_service.dart';
 import '../../theme/kleuren.dart';
+import '../../data/email_blocklist.dart';
 import '../../data/geluiden.dart';
 import '../../data/kring.dart';
 import '../../widgets/normaal_scaffold.dart';
@@ -570,6 +571,21 @@ class _SetupWizardState extends State<SetupWizard> {
       _toonFout('Vul eerst je e-mailadres in');
       return;
     }
+    // BOUNCE-A: geen reset-mail versturen naar test/invalid-domeinen.
+    // Zelfde anti-enumeratie-belofte als hieronder: we tonen na dit
+    // pad de generieke succes-boodschap (return na de check), zodat
+    // een aanvaller niet uit een aparte fout kan afleiden dat een
+    // adres wél/niet bekend is.
+    if (isGeblokkeerdEmailDomein(email)) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('Als dit e-mailadres bij ons bekend is, sturen we '
+            'je een e-mail om je wachtwoord opnieuw in te stellen. '
+            'Kijk ook in je spam-map.'),
+        backgroundColor: Colors.green,
+      ));
+      return;
+    }
     try {
       await FirebaseAuth.instance.sendPasswordResetEmail(email: email);
     } on FirebaseAuthException catch (e) {
@@ -901,6 +917,19 @@ class _SetupWizardState extends State<SetupWizard> {
   }
 
   Future<void> _familieRegistreren() async {
+    // BOUNCE-A (14 sept 2026): blokkeer signup met test/invalid-domeinen.
+    // Firebase Auth stuurt automatisch een verify-mail bij createUser,
+    // en elke mail naar een niet-bestaand adres = hard bounce bij
+    // ZeptoMail → afzender-reputatie beschadigd. Zie
+    // lib/data/email_blocklist.dart voor de lijst en reden.
+    // Herstel-flow (B-9) slaat createUser over → bouncelevel niet
+    // relevant, dus check alleen bij écht nieuwe registraties.
+    if (!_isHerstel &&
+        isGeblokkeerdEmailDomein(_emailCtrl.text.trim())) {
+      _toonFout('Dit e-mailadres kan niet gebruikt worden. Gebruik je '
+          'echte e-mailadres zodat je de verificatie-mail ontvangt.');
+      return;
+    }
     setState(() => _bezig = true);
     UserCredential? cred;
     try {

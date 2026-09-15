@@ -175,6 +175,233 @@ Firestore collecties: gebruikers, dagelijkse_momenten, momenten, notities. Alle 
 - App: https://jsm200522.github.io/OnsMoment/
 - Repo: https://github.com/JSM200522/OnsMoment
 
+## E-mail / ZeptoMail (bounce-reputatie)
+
+**Aanleiding 14 sept 2026**: ZeptoMail-dashboard toonde 16 mails
+verstuurd / 0 afgeleverd / 16 hard bounces (100%) + rood banner "account
+kan geblokkeerd worden". Root cause: test-account `test1@test.nl`
+(uid `e85iRaczvHUNKyViXUe3xnowwH72`) waarnaar Firebase Auth herhaaldelijk
+verificatie-mails stuurde bij elke test-registratie.
+
+**Bevestigde ZeptoMail-drempels** (Zoho ToS + docs, verificatie 15 sept 2026):
+- Hard-bounce-rate moet < 5% blijven; spam-klachten < 0,1% (10 per 10.000);
+  spam-trap hits < 1 per 100.000. Wij zaten op 100% (16/16) — VER boven de
+  5%-drempel. Zoho behoudt zich het recht voor tot **suspensie zonder
+  voorafgaande waarschuwing**. Bij dit volume (< 20 mails) is er nog geen
+  langetermijn-reputatiegraph bij Gmail/Outlook — herstel is 2-4 weken
+  schoon gedrag. Nu ingrijpen = geen blijvende schade aan
+  `noreply@onsmoment.app`.
+
+**Volledig ge-audit + gefixed op 15 sept 2026** (deze sessie):
+
+*Mail-triggers in de codebase* — 9 plekken in totaal geïdentificeerd:
+
+| # | Bestand + regel | Trigger | Blocklist? |
+|---|---|---|---|
+| 1 | setup_wizard.dart:950 | `createUserWithEmailAndPassword` + auto-verificatie | ✓ (r.927) |
+| 2 | setup_wizard.dart:957 | `sendEmailVerification` (na signup) | ✓ (r.927) |
+| 3 | setup_wizard.dart:590 | `sendPasswordResetEmail` | ✓ (r.579) |
+| 4 | gast_signup_scherm.dart:86 | `createUserWithEmailAndPassword` | ✓ (r.76) |
+| 5 | gast_signup_scherm.dart:134 | `sendEmailVerification` | ✓ (r.76) |
+| 6 | verificatie_afdwingen_scherm.dart:55 | `sendEmailVerification` | ✓ **toegevoegd 15 sept** |
+| 7 | familie_scherm.dart:3928 | `sendEmailVerification` (banner) | ✓ **toegevoegd 15 sept** |
+| 8 | familie_scherm.dart:6292 | `verifyBeforeUpdateEmail` (email wijzigen) | ✓ **toegevoegd 15 sept** |
+| 9 | accept_uitnodig_scherm.dart:437 | `sendPasswordResetEmail` | ✓ **toegevoegd 15 sept** |
+
+Cloud Functions verzenden zélf géén mail (geverifieerd via grep op
+`zepto`/`nodemailer`/`sendMail`/`smtp` in `functions/src/**/*.ts`).
+Alle mail-verkeer loopt via Firebase Auth → ZeptoMail.
+
+*Blocklist in* `lib/data/email_blocklist.dart` — 13 domeinen: test.nl,
+test.com, test.local, test.test, example.{com,org,net}, invalid,
+localhost, mailinator.com, tempmail.com, guerrillamail.com,
+10minutemail.com. API: `isGeblokkeerdEmailDomein(email)` — case-insensitief,
+whitespace-strip, alleen exacte-domein-match. Warme foutmelding bij block:
+"Dit e-mailadres kan niet gebruikt worden. Gebruik je echte e-mailadres."
+
+*Waar de 4 nieuwe blocklist-checks zitten* (belangrijk: dit beschermt tegen
+BESTAANDE nep-accounts van vóór de blocklist die opnieuw mail-triggers
+kunnen genereren):
+- `verificatie_afdwingen_scherm._versturenOpnieuw`: warme melding "log
+  uit en maak een nieuw account".
+- `familie_scherm._verstuurVerificatieMail`: snackbar met dezelfde
+  boodschap.
+- `familie_scherm._wijzigEmail`: check op het NIEUWE adres vóór
+  `verifyBeforeUpdateEmail` — de gevaarlijkste omdat een user hier
+  bewust een nep-adres kan intikken.
+- `accept_uitnodig_scherm._wachtwoordVergetenAanvragen`: anti-enumeratie
+  bewaard — toont dezelfde generieke succes-melding, verstuurt niets.
+
+**Wat Joshua handmatig moet doen (nu, tegen suspensie)**:
+1. ZeptoMail Console → Suppression List → Auto-Suppression AAN. Voegt
+   automatisch hard-bounced adressen toe zodat opnieuw-versturen naar
+   dezelfde adressen niet meer telt als bounce (geweigerd zonder poging).
+2. Handmatig `test1@test.nl` op de suppression-list zetten.
+3. Support-ticket bij ZeptoMail (help.zoho.com/portal): closed-test met
+   interne test-accounts, adressen nu op suppression-list, echte users
+   komen straks via App Store. Vraag om review-hold, geen suspensie.
+4. Stop tot en met de blocklist-release met test-signups op nep-adressen.
+5. Nep-account opruimen (zie hieronder).
+
+**Nep-accounts opruimen — dry-run + veilige aanpak (bijgewerkt 15 sept 2026)**:
+
+*Genereren de accounts nog dóór bounces zolang ze bestaan?* NEE. Een
+hard bounce ontstaat alleen op het MOMENT dat Firebase Auth een mail
+probeert af te leveren (verificatie, reset, email-wijziging). Een
+bestaand nep-account dat niet meer wordt aangeraakt genereert géén
+nieuwe bounces. Urgentie zit dus in: (a) de blocklist die nieuwe
+signups tegenhoudt (klaar), (b) de 4 extra checks die vandaag zijn
+toegevoegd zodat bestaande nep-accounts geen HERHAALDE triggers
+kunnen doen (klaar), (c) de al-gedaan-bounces uit ZeptoMail-stats
+"wissen" via suppression + support-ticket (openstaand). Opruimen van
+de nep-user-docs is dan **hygiëne, niet crisis**.
+
+*Duidelijk-nep-inventarisatie* (14 sept 2026-audit, nog geldig):
+- 1 duidelijk-nep-domein: `test1@test.nl` (uid `e85iRaczvHUNKyViXUe3xnowwH72`).
+- 30+ verdachte @gmail.com-patronen: `test*@gmail.com`, `googletest*`,
+  `testuser_onsmoment*`, `newtestuser*`. Gmail levert normaal wél af
+  (géén bounces) — deze zijn cosmetische vervuiling, niet reputatie-
+  risico. NIET blind droppen: eigen dev-testers zitten er tussen
+  (joshua@, josmilhous@, michelle@, michelletepel@).
+
+*Dry-run — bewijs vóór delete*: open Firebase Console → Authentication
+→ Users → sorteer op "User UID" of "Created" of filter-veld met
+`test.nl` / `example.com` / `mailinator.com` / etc. Krijg je exact 1
+resultaat (test1@test.nl)? Dan is het duidelijk nep-cluster
+compleet. Voor de gmail-patronen: filter op `test` of `googletest`,
+noteer de lijst, mail-per-mail vergelijken met eigen dev-testers vóór
+delete.
+
+*Veilige delete-aanpak — 3 opties, oplopend in complexiteit*:
+
+**Optie 1 — Handmatig via Firebase Console (aanbevolen NU)**
+Werk: ~30 seconden per account, 1 account. Stappen:
+1. Firebase Console → Authentication → Users.
+2. Zoek `test1@test.nl` (of het domein waarvan je zeker weet dat het
+   nep is). Kopieer de uid.
+3. Firestore → `gebruikers/{uid}` opzoeken. Check of er `kringen` in de
+   subcollectie zitten. Zo ja: die kring(en) heeft de user waarschijnlijk
+   ook eigenaarschap over. Elke kring nagaan op `eigenaarUid == uid`
+   in `kringen/`-collectie via een query.
+4. In Console: `gebruikers/{uid}` document → Delete document (rechts-
+   boven menu). Confirmatie: dit verwijdert het doc ÉN alle
+   subcollecties (apparaten) — Firestore Console-delete doet cascade
+   binnen één doc-tree. Firestore-delete is beperkt tot ±10.000 docs
+   per klik; voor de hoeveelheden hier ruim genoeg.
+5. Elke kring waarvan die user eigenaar was: query `kringen` waar
+   `eigenaarUid == uid` → per kring `Delete document`. Idem voor
+   `momenten` / `dagelijkse_momenten` / `gepland_momenten` /
+   `notities` waar `kringId == K`.
+6. Storage → `momenten/{K}/`, `profielfotos/{uid}.jpg` etc. bij hand
+   verwijderen als je daar in wilt schoffelen (optioneel — één test-
+   foto neemt < 1 MB, prioriteit laag).
+7. Terug naar Authentication → user aanvinken → Delete account. Dit
+   verwijdert de Auth-user zelf. Als je dit vergeet blijft ie
+   inloggen kunnen.
+
+**Optie 2 — Eenmalig admin-script vanaf lokale machine (medium)**
+Bouwtijd: ~1 uur. Vereist: `firebase-admin` SDK + service-account-JSON
+downloaden uit Console → Project Settings → Service Accounts. Het
+script leest Auth-users via `admin.auth().listUsers()`, filtert op
+domein-patroon, print eerst een dry-run-lijst (uid + email + created),
+vraagt bevestiging, en roept dan de bestaande cascade aan door de
+functie in `functions/src/verwijder_account.ts` te hergebruiken via
+directe Admin-SDK calls (want de callable vereist `request.auth`).
+Alleen bouwen als > 10 accounts opgeruimd moeten worden.
+
+**Optie 3 — Admin-only Cloud Function (post-launch, LATER)**
+Nieuwe callable `adminBulkVerwijderAccounts` met hardcoded check
+`request.auth.uid == JOSHUA_UID`, die de bestaande
+`verwijderKringCascade` hergebruikt. NIET nu bouwen — voegt oppervlak
+toe voor beveiligingsissues. Overwegen als het aantal nep-accounts
+post-launch groeit.
+
+**Aanbeveling voor NU** (15 sept 2026): Optie 1. Eén account
+(`test1@test.nl`) is 5 minuten werk. De 30+ gmail-accounts kunnen
+blijven staan — ze veroorzaken geen bounces, alleen wat vervuiling in
+Auth-users. Post-launch een keer opruimen als Joshua daar zin in heeft
+(of Optie 2 bouwen). Prioriteit staat achter suppression + support-
+ticket + SPF/DKIM/DMARC-verificatie.
+
+**Test-werkwijze voor de toekomst**:
+- Gebruik Gmail plus-aliases: `joshuapanna+test1@gmail.com`,
+  `joshuapanna+test2@gmail.com`, etc. Firebase Auth ziet die als unieke
+  adressen; Gmail levert af in de hoofdinbox. Nul bounces, echte mails.
+- OF Firebase Auth Emulator (`firebase emulators:start --only auth`)
+  voor lokale dev — geen echte mails, verificatie-links in emulator-UI.
+- NOOIT meer `@test.nl`/`@example.com`/etc. — de blocklist blokkeert het
+  nu, maar consistent gedrag helpt tegen menselijk fouten.
+
+**SPF / DKIM / DMARC voor onsmoment.app** (openstaand — Joshua):
+- Check via [mxtoolbox.com/SuperTool](https://mxtoolbox.com/SuperTool.aspx):
+  1. SPF Record Lookup op `onsmoment.app` — verwacht `include:zeptomail.zoho.eu`
+     in het antwoord (ZeptoMail EU-regio).
+  2. DKIM Lookup op selector `zmail` (invulveld selector: `zmail`) — verwacht
+     publieke sleutel zonder syntax-fouten.
+  3. DMARC Lookup op `_dmarc.onsmoment.app` — verwacht op zijn minst een
+     TXT met `v=DMARC1; p=none; rua=mailto:...`.
+- ZeptoMail eist SPF + DKIM als **verplichte** domein-verificatie vóór
+  verzenden (Zoho docs: "Domain Verification is a pre-requisite for sending
+  emails using ZeptoMail"). Als deze records er staan, dan werkt onze
+  huidige uitgaande mail al — maar wel controleren of ze compleet zijn.
+- Aanbevolen DNS-records voor onsmoment.app (Netlify-DNS-panel):
+  - SPF (TXT `@`): `v=spf1 include:zeptomail.zoho.eu ~all`
+  - DKIM (TXT `zmail._domainkey`): public-key uit ZeptoMail Console →
+    Domains → onsmoment.app → View DKIM (kopieer letterlijk).
+  - Return-Path (CNAME `bounces` of soortgelijk, zoals ZeptoMail dicteert):
+    verwijst naar ZeptoMail bounce-server. Verhoogt DMARC-alignment.
+  - DMARC (TXT `_dmarc`): `v=DMARC1; p=none; rua=mailto:dmarc@onsmoment.app`
+- Start met `p=none` (monitoring). Na 4-8 weken rua-rapporten → escaleer
+  naar `p=quarantine; pct=25` → uiteindelijk `p=reject`. Direct springen
+  naar `reject` kan legitieme mail dumpen.
+- Google Postmaster Tools: niet nodig bij ons volume; overslaan tot na
+  launch of tot marketing-mails.
+
+**Reputatie-schade blijvend?**: Nee — bij <20 mails is er nog geen
+"reputation-graph" bij Gmail/Outlook. Herstel = 2-4 weken schoon gedrag.
+Als de bounces zonder maatregel doorlopen naar 50+ dan schuift Gmail
+wel naar spam voor `noreply@onsmoment.app`. Nu ingrijpen = geen
+langetermijnschade.
+
+**Format-check overwegen? — advies 15 sept 2026**:
+De huidige `RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$')` op alle signup-schermen
+is een basale syntax-check en volstaat. Een MX-lookup op het gekozen
+domein (voor "bestaat het echt"-check) is **overkill** — voegt latency
+toe, faalt bij DNS-hikkeps, en Firebase Auth heeft geen ingebouwde hook
+om dit op de client te doen. De domein-blocklist die er nu staat is de
+juiste laag: bekende nep-domeinen weren zonder legitieme users te raken.
+Voor extra bescherming later: **Firebase Auth `beforeCreate`-blocking-
+trigger** (Cloud Function op de identity-toolkit-event) die dezelfde
+`geblokkeerdeEmailDomeinen`-set server-side afdwingt — noodzakelijk zodra
+de app publiek in Play staat (client-side is dan te omzeilen via directe
+Firebase-REST-API calls). Zie
+[Firebase docs — Extend Firebase Authentication with blocking functions](https://firebase.google.com/docs/auth/extend-with-blocking-functions).
+NIET nu bouwen; het is een 30-regel Cloud Function ná de launch.
+
+**Openstaande punten vóór launch**:
+- [ ] ZeptoMail Console → Suppression List → Auto-Suppression AAN + handmatig
+      `test1@test.nl` toevoegen (voorkomt herhaal-bounces bij toekomstige tests)
+- [ ] Support-ticket bij Zoho ZeptoMail (help.zoho.com/portal): closed-test,
+      adressen op suppression, review-hold vragen. Aangepast toneel:
+      "16 hard bounces waren interne test-accounts op non-bestaande
+      domeinen; blocklist per 14 sept live + 4 extra checks per 15 sept
+      live in de app; suppression staat aan; testregime nu via
+      joshuapanna+testN@gmail.com-aliases."
+- [ ] SPF/DKIM/DMARC/Return-Path verifiëren via mxtoolbox — 4 lookups,
+      ~2 minuten werk. Screenshots bewaren.
+- [ ] DMARC-policy op `p=none` zetten als er geen `_dmarc.onsmoment.app`
+      TXT-record staat (Netlify DNS-panel).
+- [ ] `test1@test.nl` verwijderen uit Firebase Auth + Firestore (Optie 1
+      hierboven — 5 minuten Console-werk).
+- [ ] Verdachte @gmail.com-test-accounts reviewen (30+ items) — sommige
+      zijn wél de eigen dev-testers (joshua@, josmilhous@, michelle@,
+      michelletepel@); niet blind droppen. Prioriteit laag (geen bounces).
+- [ ] Server-side blocklist via Firebase Auth `beforeCreate`-blocking-
+      trigger toevoegen zodra app publiek staat (Play Store closed test
+      of hoger). Client-side alleen is dan te omzeilen.
+- [ ] Post-launch: admin-only bulk-cleanup Cloud Function als het aantal
+      groeit (Optie 3 hierboven).
+
 ## ⚠️ Storage-rules met firestore.exists() → cross-service-toestemming vereist
 
 Onze `storage.rules` gebruikt `firestore.exists(/databases/(default)/documents/kringen/$(kringId)/leden/$(request.auth.uid))` voor lidmaatschap-checks. Deze cross-service-call vereist een IAM-rol op de Cloud Storage service-agent: **`roles/firebaserules.firestoreServiceAgent`** op `service-<PROJECT_NUMBER>@gcp-sa-firebasestorage.iam.gserviceaccount.com`.
@@ -576,6 +803,36 @@ samenvatting) sluit dit gat af.
   - PUNT 3+4 OPEN — Samsung bel bij gesloten app (geen ringtone + Weiger-knop
     doet niks): advies gegeven (zie Openstaande punten — Videobellen). Beslissing
     over aanpak nog open. Nog niet bouwen.
+- 15 september 2026: ZeptoMail bounce-audit + 4 blocklist-fixes.
+  Aanleiding: opnieuw doordenken van bounce-probleem (16/16 = 100% >>
+  5% drempel → suspensie-risico). Codebase-audit vond 9 e-mail-trigger-
+  plekken, 5 al beschermd (setup_wizard × 3, gast_signup_scherm × 2),
+  **4 nog ONBESCHERMD** — bestaande nep-accounts konden hier nog steeds
+  bounces triggeren. Deze sessie toegevoegd:
+  - `lib/screens/verificatie_afdwingen_scherm.dart:_versturenOpnieuw`
+    (blocklist-check + warme melding "log uit, maak nieuw account")
+  - `lib/screens/familie/familie_scherm.dart:_verstuurVerificatieMail`
+    (snackbar + import)
+  - `lib/screens/familie/familie_scherm.dart:_wijzigEmail` (check op
+    NIEUW adres vóór verifyBeforeUpdateEmail — belangrijkste, want
+    hier kan user actief nep-adres intikken)
+  - `lib/screens/setup/accept_uitnodig_scherm.dart:_wachtwoordVergetenAanvragen`
+    (anti-enumeratie bewaard: zelfde generieke succes-melding, niks
+    verstuurd)
+  Cloud Functions verzenden zelf géén mail (grep op zepto/nodemailer/
+  sendMail/smtp in functions/src/**/*.ts = leeg). Alle mail loopt via
+  Firebase Auth. `flutter analyze` op de 3 gewijzigde bestanden = geen
+  errors; alleen bestaande info/warning-meldingen (withOpacity-deprecations
+  + unused _isAccountMaker — al Categorie A/B in opruim-inventarisatie).
+  Opruim-inventarisatie geactualiseerd: 3 opties beschreven (Console-
+  handmatig, admin-script, Cloud Function). Aanbeveling voor NU: Optie 1
+  Console-handmatig voor de 1 duidelijke nep (`test1@test.nl`); 30+
+  verdachte gmail-accounts genereren geen bounces, kunnen wachten.
+  Openstaande punten die Joshua NU moet doen: (a) ZeptoMail suppression
+  aan, (b) Zoho-support-ticket met "blocklist + 4 extra checks live"-
+  toneel, (c) mxtoolbox SPF/DKIM/DMARC-verificatie op onsmoment.app,
+  (d) test1@test.nl handmatig verwijderen. Server-side blocking-trigger
+  (Firebase Auth beforeCreate) blijft geplande post-launch-hardening.
 
 ## Bel-architectuur (definitief, sept 2026)
 

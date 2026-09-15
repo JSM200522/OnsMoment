@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import '../../data/email_blocklist.dart';
 import '../../data/uitnodiging.dart';
 import '../../services/apparaat_service.dart';
 import '../../services/device_modus_service.dart';
@@ -431,6 +432,20 @@ class _AcceptUitnodigSchermState extends State<AcceptUitnodigScherm> {
     if (email.isEmpty
         || !RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$').hasMatch(email)) {
       _toonFout('Vul eerst je e-mailadres in');
+      return;
+    }
+    // Blocklist: nep-domeinen genereren gegarandeerd een bounce zodra
+    // Firebase Auth de reset-mail probeert af te leveren. Toon dezelfde
+    // generieke succes-melding (anti-enumeratie) zonder daadwerkelijk
+    // te versturen.
+    if (isGeblokkeerdEmailDomein(email)) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('Als dit e-mailadres bij ons bekend is, sturen we '
+            'je een e-mail om je wachtwoord opnieuw in te stellen. Kijk '
+            'ook in je spam-map.'),
+        backgroundColor: kPeach,
+        duration: Duration(seconds: 6)));
       return;
     }
     try {

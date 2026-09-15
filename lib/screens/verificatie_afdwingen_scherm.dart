@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import '../data/email_blocklist.dart';
 import '../services/verificatie_gate_service.dart';
 import '../theme/kleuren.dart';
 import '../widgets/normaal_scaffold.dart';
@@ -47,6 +48,19 @@ class _VerificatieAfdwingenSchermState
   Future<void> _versturenOpnieuw() async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
+    // Blocklist-check: bestaande accounts van vóór de blocklist kunnen
+    // hier nog steeds mail triggeren → bounce-risico. Zie CLAUDE.md
+    // sectie "E-mail / ZeptoMail (bounce-reputatie)".
+    final email = user.email ?? '';
+    if (isGeblokkeerdEmailDomein(email)) {
+      setState(() {
+        _melding = 'Dit account gebruikt een test-adres dat niet '
+            'ontvangen kan. Log uit en maak een nieuw account met je '
+            'echte e-mailadres.';
+        _meldingIsFout = true;
+      });
+      return;
+    }
     setState(() {
       _bezigVersturen = true;
       _melding = null;

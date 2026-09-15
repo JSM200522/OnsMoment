@@ -26,6 +26,7 @@ import '../../services/push_service.dart';
 import '../../theme/kleuren.dart';
 import '../../data/geluiden.dart';
 import '../../data/debug_flags.dart';
+import '../../data/email_blocklist.dart';
 import '../../widgets/normaal_scaffold.dart';
 import '../../widgets/pulserend_hart.dart';
 import '../../widgets/video_speler.dart';
@@ -3923,6 +3924,16 @@ class _InstellingenTabState extends State<InstellingenTab> {
   Future<void> _verstuurVerificatieMail() async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
+    // Blocklist-check: bestaande accounts van vóór de blocklist kunnen
+    // hier nog steeds mail triggeren → bounce-risico bij ZeptoMail.
+    if (isGeblokkeerdEmailDomein(user.email ?? '')) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('Dit account gebruikt een test-adres dat niet '
+            'ontvangen kan. Maak een nieuw account met je echte '
+            'e-mailadres.'),
+        backgroundColor: kRood, duration: Duration(seconds: 6)));
+      return;
+    }
     setState(() => _bezigVerstuur = true);
     try {
       await user.sendEmailVerification();
@@ -6280,6 +6291,13 @@ class _AccountWijzigDialogState extends State<_AccountWijzigDialog> {
     }
     if (!RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$').hasMatch(nieuw)) {
       _toonFout('Email-adres is niet geldig'); return;
+    }
+    // Blocklist: nep-/wegwerp-domeinen weigeren voordat er een
+    // verificatielink naartoe wordt gestuurd (bounce-preventie).
+    if (isGeblokkeerdEmailDomein(nieuw)) {
+      _toonFout('Dit e-mailadres kan niet gebruikt worden. Gebruik '
+          'je echte e-mailadres.');
+      return;
     }
     setState(() => _bezigEmail = true);
     try {
