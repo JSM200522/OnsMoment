@@ -6910,6 +6910,45 @@ class _HulpDialog extends StatelessWidget {
         "later controleren of alles goed staat? Open op het apparaat "
         "van je dierbare: Instellingen → Bellen → Instellingen voor "
         "dit apparaat."),
+    // BEL-CHK (15 sept 2026): drie warme vervolg-FAQs zodat de eigenaar
+    // niet hoeft te zoeken naar HOE en WAAR de checklist bereikbaar is
+    // — en wat te doen als de tablet in de rustige modus staat.
+    _FAQ('Videobellen',
+        "Moet ik de bel-instellingen apart aanzetten?",
+        "Nee — bij het instellen van het apparaat van je dierbare loop "
+        "je deze stappen al één keer door. Daarna staat alles goed en "
+        "hoef je er niets meer aan te doen.\n\n"
+        "Wil je later iets nakijken of aanpassen? Dan vind je alles "
+        "terug via Instellingen → Bellen → \"Instellingen voor dit "
+        "apparaat\", op het apparaat van je dierbare.\n\n"
+        "Zie ook: \"Waarom moet ik instellingen aanzetten voor "
+        "bellen?\" voor uitleg per stap."),
+    _FAQ('Videobellen',
+        "Waar vind ik de bel-instellingen later terug?",
+        "Op het apparaat van je dierbare, via Instellingen → Bellen → "
+        "\"Instellingen voor dit apparaat\". Je ziet daar per stap of "
+        "alles goed staat, met een knop om het aan te zetten als er "
+        "nog iets mist.\n\n"
+        "In de gewone modus kom je hier gewoon bij — het apparaat "
+        "werkt dan als een normaal toestel. Staat het in de rustige "
+        "modus? Dan is de tablet vast op Ons Moment; zie de volgende "
+        "vraag hoe je er dan bijkomt."),
+    _FAQ('Videobellen',
+        "Hoe pas ik de bel-instellingen aan als het apparaat in de rustige modus staat?",
+        "In de rustige modus staat het apparaat van je dierbare vast "
+        "op Ons Moment, dus je kunt daar niet zomaar bij de "
+        "instellingen. Dat is bewust zo — je dierbare kan dan ook niets "
+        "per ongeluk afsluiten.\n\n"
+        "Zo pas je de bel-instellingen alsnog aan:\n\n"
+        "1. Pak je eigen telefoon en open Ons Moment.\n"
+        "2. Ga naar Instellingen → \"Wijzig modus van [naam]\" en zet "
+        "hem tijdelijk op Gewone modus.\n"
+        "3. Pak nu het apparaat van je dierbare. Ga daar naar "
+        "Instellingen → Bellen → \"Instellingen voor dit apparaat\" "
+        "en tik de ontbrekende stappen aan.\n"
+        "4. Zet op je eigen telefoon de modus weer terug naar Rustige "
+        "modus.\n\n"
+        "Klaar. Alles staat weer zoals het hoort."),
     // ── Abonnement ──
     _FAQ('Abonnement', "Wat kost Ons Moment?",
         "Je start altijd met 14 dagen gratis — geen betaalgegevens nodig.\n\n"
