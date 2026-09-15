@@ -3934,6 +3934,49 @@ class _InstellingenTabState extends State<InstellingenTab> {
     _laadKringen();
   }
 
+  /// D-4 (sept 2026): opent Google Play's abonnementscentrum. Als de
+  /// productId bekend is (via de webhook op `abonnement.productId`),
+  /// deeplinkt hij naar de specifieke abonnement-detailpagina; anders
+  /// naar het generieke overzicht. Fail-soft: warme snackbar bij
+  /// launch-fout.
+  ///
+  /// Package name is hard-coded ('nl.onsmoment.app') want dit is een
+  /// vaste app-identifier — via PackageInfo lezen zou een async-hop
+  /// toevoegen zonder winst. Bij een eventuele hernoeming (onwaarschijnlijk)
+  /// moet dit meebumpen.
+  Future<void> _openAbonnementBeheer() async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    String? productId;
+    if (uid != null) {
+      try {
+        final doc = await FirebaseFirestore.instance
+            .collection('gebruikers').doc(uid).get();
+        final abo = doc.data()?['abonnement'] as Map<String, dynamic>?;
+        final pid = abo?['productId'] as String?;
+        if (pid != null && pid.isNotEmpty) productId = pid;
+      } catch (_) {}
+    }
+    const pkg = 'nl.onsmoment.app';
+    final url = productId != null
+        ? Uri.parse('https://play.google.com/store/account/subscriptions'
+            '?sku=$productId&package=$pkg')
+        : Uri.parse('https://play.google.com/store/account/subscriptions');
+    try {
+      final ok = await launchUrl(url, mode: LaunchMode.externalApplication);
+      if (!ok && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('Kon Google Play niet openen. Open de Play '
+              'Store handmatig → Menu → Abonnementen.'),
+          backgroundColor: kRood, duration: Duration(seconds: 5)));
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('Kon Google Play niet openen: $e'),
+        backgroundColor: kRood, duration: const Duration(seconds: 5)));
+    }
+  }
+
   /// D-3: laadt de trial-fase + moment-teller zodat de eind-reminder-
   /// kaart bovenaan InstellingenTab kan verschijnen (laatste dag /
   /// verlopen). Fail-soft: bij fout blijft _trialContext null en
@@ -4235,7 +4278,18 @@ class _InstellingenTabState extends State<InstellingenTab> {
           _item('💳', 'Abonnement',
               'Proefperiode en pakketten bekijken',
               () => PakketKeuzeScherm.toon(context)),
-        // D-2G (sept 2026): Play Store-verplichte "Aankopen herstellen"-
+        // D-4 (sept 2026): Play Store-vereiste + gebruiksvriendelijk —
+        // opzeggen kan alleen via Google Play's abonnementscentrum
+        // (Google's beleid: geen in-app cancel-flow). We tonen een
+        // duidelijke knop die daarnaartoe deeplinkt. Alleen zichtbaar
+        // bij actief abonnement (TrialFase.betaald); voor gratis
+        // proef of verlopen zonder aankoop is er niks te beheren.
+        if (_benIkEigenaar && !widget.alsOntvanger
+            && _trialContext?.fase == TrialFase.betaald)
+          _item('🔗', 'Abonnement beheren of opzeggen',
+              'Ga naar Google Play — daar kun je wisselen of stoppen',
+              () => _openAbonnementBeheer()),
+        // D-2G (sept 2026): Play Store-vereiste "Aankopen herstellen"-
         // optie voor gebruikers die opnieuw hebben geïnstalleerd of van
         // toestel wisselen. Roept Purchases.restorePurchases(); server-
         // side webhook synct de tier terug op gebruikers/{uid}.
