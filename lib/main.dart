@@ -134,6 +134,23 @@ Future<void> _initRevenueCat() async {
     PurchasesService.markConfigureVoltooid();
     debugPrint('💳 RevenueCat: SDK geïnitialiseerd voor '
         '$defaultTargetPlatform');
+    // D-2D-FIX (sept 2026): cold-start timing-race repareren.
+    // _initRevenueCat is `unawaited` in main() zodat runApp niet
+    // wacht op de SDK. Op cold-start met een al-ingelogde user firet
+    // _RouterSchermState._bijAuthWissel echter mogelijk VÓÓR configure
+    // klaar is → PurchasesService.init doet dan no-op (beschikbaar
+    // was nog false) én zet _laatstGeregistreerdeUid, wat volgende
+    // auth-ticks met dezelfde uid blokkeert. Netto: Purchases.logIn
+    // firet vrijwel nooit bij cold-start en users komen niet in het
+    // RevenueCat-dashboard → aankopen koppelen niet aan de juiste
+    // Firebase-uid. Fix: als er hier al een user is, roep init
+    // expliciet aan. Idempotent via PurchasesService._initGedaan-
+    // guard; fail-soft via de try/catch in init zelf.
+    final huidigeUser = FirebaseAuth.instance.currentUser;
+    if (huidigeUser != null && huidigeUser.uid.isNotEmpty) {
+      unawaited(PurchasesService.init(huidigeUser.uid));
+      debugPrint('💳 cold-start logIn-retry voor ${huidigeUser.uid}');
+    }
   } catch (e, st) {
     debugPrint('⚠️ RevenueCat init faalde (fail-soft, app blijft '
         'werken): $e\n$st');
