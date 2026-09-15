@@ -103,4 +103,4 @@ const bool DEBUG_BEL_DEV = false;
 /// Zonder gevulde kRevenueCatAndroidKey EN offerings met de juiste
 /// identifiers gebeurt er niks bij TRUE — de knoppen tonen dan een
 /// nette "Momenteel geen abonnementen beschikbaar"-boodschap.
-const bool DEBUG_PAYWALL_LIVE = false;
+const bool DEBUG_PAYWALL_LIVE = true;
