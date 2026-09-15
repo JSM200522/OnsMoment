@@ -40,7 +40,7 @@ import 'theme/kleuren.dart';
 /// Public keys zijn bedoeld om in de client te staan — géén secret.
 /// RevenueCat's server-side webhook-secret (bij de webhook Cloud
 /// Function) is wél geheim en hoort NIET in deze file.
-const String kRevenueCatAndroidKey = '';
+const String kRevenueCatAndroidKey = 'goog_DJUPMPuJUItUVeMBCvLTDLAfUhB';
 const String kRevenueCatIosKey = '';
 
 /// App-niveau messenger zodat een toast (bv. force-logout) zichtbaar blijft
