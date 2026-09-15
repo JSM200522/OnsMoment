@@ -24,6 +24,7 @@ import 'services/crash_service.dart';
 import 'services/kiosk_service.dart';
 import 'services/push_service.dart';
 import 'services/verificatie_gate_service.dart';
+import 'services/purchases_service.dart';
 import 'services/video_call_service.dart';
 import 'data/debug_flags.dart';
 import 'theme/kleuren.dart';
@@ -128,6 +129,9 @@ Future<void> _initRevenueCat() async {
   }
   try {
     await Purchases.configure(PurchasesConfiguration(key));
+    // D-2: PurchasesService.beschikbaar returnt nu true; alle wrapper-
+    // calls (init, koop, restore, listener) worden vanaf hier live.
+    PurchasesService.markConfigureVoltooid();
     debugPrint('💳 RevenueCat: SDK geïnitialiseerd voor '
         '$defaultTargetPlatform');
   } catch (e, st) {
