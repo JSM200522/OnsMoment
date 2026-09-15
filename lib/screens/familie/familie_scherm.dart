@@ -45,6 +45,7 @@ import '../../data/bel_uitleg_teksten.dart';
 import '../../data/kring.dart';
 import '../../data/kring_membership.dart';
 import '../../services/kring_service.dart';
+import '../../services/purchases_service.dart';
 import '../../services/video_call_service.dart';
 import '../setup/accept_uitnodig_scherm.dart';
 
@@ -3994,6 +3995,41 @@ class _InstellingenTabState extends State<InstellingenTab> {
     }
   }
 
+  /// D-2G (sept 2026): Play Store-verplichte "Aankopen herstellen"-
+  /// actie. Roept `PurchasesService.herstelAankopen()`; server-side
+  /// webhook synct de tier terug naar `gebruikers/{uid}`. UI toont
+  /// een warme snackbar met uitkomst.
+  ///
+  /// Fail-soft: SDK slaapt (lege API-key) → herstelAankopen returnt
+  /// null → nette "Momenteel niet beschikbaar"-melding. Bij succes:
+  /// toont welk pakket (klein/groot) is teruggevonden, of "geen
+  /// aankopen gevonden" als de user nooit heeft betaald.
+  Future<void> _herstelAankopen() async {
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+      content: Text('Even geduld — we controleren je aankopen...'),
+      backgroundColor: kPeach, duration: Duration(seconds: 2)));
+    final info = await PurchasesService.herstelAankopen();
+    if (!mounted) return;
+    if (info == null) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('Herstellen lukte niet. Controleer je '
+            'internetverbinding en probeer opnieuw.'),
+        backgroundColor: kRood, duration: Duration(seconds: 5)));
+      return;
+    }
+    final tier = PurchasesService.tierUitCustomerInfo(info);
+    if (tier != null) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('Aankoop hersteld — je zit weer op pakket '
+            '"${tier.toUpperCase()}".'),
+        backgroundColor: kGreen, duration: const Duration(seconds: 4)));
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('Geen actieve aankopen gevonden op dit account.'),
+        backgroundColor: kPeach, duration: Duration(seconds: 4)));
+    }
+  }
+
   /// V9 2.12-a-2-fix: alleen de niet-bevestigd-kaart. De bevestigd-
   /// variant is weggehaald — bij _emailVerified == true verbergt de
   /// build deze sectie helemaal. Een constante 'bevestigd'-banner zou
@@ -4143,6 +4179,17 @@ class _InstellingenTabState extends State<InstellingenTab> {
           _item('💳', 'Abonnement',
               'Proefperiode en pakketten bekijken',
               () => PakketKeuzeScherm.toon(context)),
+        // D-2G (sept 2026): Play Store-verplichte "Aankopen herstellen"-
+        // optie voor gebruikers die opnieuw hebben geïnstalleerd of van
+        // toestel wisselen. Roept Purchases.restorePurchases(); server-
+        // side webhook synct de tier terug op gebruikers/{uid}.
+        // No-op zolang RevenueCat-SDK slaapt (lege API-key) — dan
+        // returnt de service null en tonen we een neutrale melding.
+        if (_benIkEigenaar && !widget.alsOntvanger)
+          _item('🔄', 'Aankopen herstellen',
+              'Voor als je opnieuw hebt geïnstalleerd of van '
+              'toestel bent gewisseld',
+              () => _herstelAankopen()),
         // AVG-1 (12 sept 2026): recht op verwijdering. Alleen zichtbaar
         // voor familie-mode; ontvanger-tablet-uitloggen loopt via
         // eigenaar-modus-wissel (J-5 fix).
