@@ -803,6 +803,27 @@ samenvatting) sluit dit gat af.
   - PUNT 3+4 OPEN — Samsung bel bij gesloten app (geen ringtone + Weiger-knop
     doet niks): advies gegeven (zie Openstaande punten — Videobellen). Beslissing
     over aanpak nog open. Nog niet bouwen.
+- 15 september 2026: BEL-CHK (bel-checklist ↔ rustige-modus). Onderzoek
+  bevestigde dat de setup-flow al goed staat: modus-keuze → checklist
+  blocking → pas dan kiosk. Geen architectuur-wijziging nodig. Wel drie
+  UX-gaps gedicht zodat niemand vastloopt:
+  - `apparaat_service.dart:kringLeden` — voegt `weergaveModus`-veld toe
+    aan de return-map (was er niet, moet er zijn om de warm dialog
+    modus-aware te maken).
+  - `bel_apparaat_kies_scherm.dart` — de bestaande belGereed-warm-
+    dialog kreeg een modus-aware instructie: bij rustige-modus-doel
+    krijgt de eigenaar het 3-stappen-pad (modus tijdelijk uit → tablet
+    checklist → modus weer aan). Bij meldingen-modus blijft de bestaande
+    1-stap-instructie.
+  - `setup_wizard.dart:_weergaveModusStap` — één alinea toegevoegd aan
+    de "Rustige modus"-kaart die de eigenaar tijdens de keuze al vertelt
+    hoe hij later bij de instellingen komt (via 'Wijzig modus van $naam'
+    op zijn eigen telefoon).
+  - `CLAUDE.md` sectie "Bel-checklist ↔ rustige-modus" toegevoegd met de
+    complete flow (setup vóór kiosk / later-openen / op afstand
+    zichtbaar / vastloop-preventie). Werkende paden ongewijzigd:
+    KioskService, immersiveSticky, failsafe-herpin, dispose-cleanup,
+    remote mode-wissel via Firestore-listener — alle onaangeraakt.
 - 15 september 2026: ZeptoMail bounce-audit + 4 blocklist-fixes.
   Aanleiding: opnieuw doordenken van bounce-probleem (16/16 = 100% >>
   5% drempel → suspensie-risico). Codebase-audit vond 9 e-mail-trigger-
@@ -833,6 +854,74 @@ samenvatting) sluit dit gat af.
   toneel, (c) mxtoolbox SPF/DKIM/DMARC-verificatie op onsmoment.app,
   (d) test1@test.nl handmatig verwijderen. Server-side blocking-trigger
   (Firebase Auth beforeCreate) blijft geplande post-launch-hardening.
+
+## Bel-checklist ↔ rustige-modus (definitief, sept 2026)
+
+**Vraag**: waar en wanneer bereikt de eigenaar de bel-checklist
+(batterij + evt. autostart voor rustige modus; batterij + FSI +
+meldingen + evt. overlay + autostart voor gewone modus)? Antwoord:
+
+**1 — Setup-flow (belangrijkste, dwingt volgorde af)**:
+Setup-wizard stap 2 = weergavemodus-keuze. Tik op een kaart →
+`_voltooiOntvanger(modus)` → registreer apparaat + haal
+`kring.autoAnswer` → **push `ToestemmingenSetupScherm` als
+BLOCKING fullscreenDialog** → pas ná `.pop()` roept `DeviceModusService.zet(ONTVANGER)`
+→ de `_OntvangerRouter` in main.dart switcht van setup-tak naar
+TabletScherm → TabletScherm.initState activeert kiosk. Dus:
+checklist is DOORLOPEN vóórdat de kiosk kan activeren. Zie
+`setup_wizard.dart:1562-1576` (regels stevig van comments voorzien;
+niet aanpassen zonder tests). Sinds 15 sept 2026 leest de
+"Rustige modus"-kaart in stap 2 óók één regel uitleg over het
+later-openen-pad (zie punt 2), zodat de eigenaar geen verrassing
+heeft dat de tablet daarna vast staat.
+
+**2 — Later-openen (rustige modus al aan)**:
+De dierbare kan (bewust) niet bij Instellingen. De eigenaar
+opent op zijn EIGEN telefoon `FamilieScherm` → InstellingenTab
+→ "Wijzig modus van $naam" (`familie_scherm.dart:4108`) → kiest
+Gewone modus. De remote listener op de tablet
+(`_OntvangerRouter._startListener` in main.dart) ziet
+`weergaveModus == 'meldingen'` en switcht `TabletScherm` →
+`FamilieScherm(alsOntvanger:true)`. `TabletScherm.dispose()`
+roept `KioskService.wis()` + `KioskService.stop()` → kiosk
+uit. Op de tablet-UI verschijnt dan onder InstellingenTab het
+kopje "BELLEN → Instellingen voor dit apparaat"
+(`familie_scherm.dart:4136-4151`, achter
+`if (widget.alsOntvanger)`) → opent `ToestemmingenSetupScherm`
+met de huidige weergavemodus. Na afronden: eigenaar zet modus
+weer naar Rustige via dezelfde "Wijzig modus"-optie.
+
+**3 — Op afstand zichtbaar voor eigenaar**:
+`toestemmingen_setup_scherm._syncBelGereedNaarFirestore` schrijft
+`apparaten/{id}.belGereed = bool` bij elke `didChangeAppLifecycleState(resumed)`
+(=elke keer terug uit Instellingen). `ApparaatService.kringLeden`
+levert dat veld mee, evenals sinds 15 sept 2026 ook
+`weergaveModus`. Wanneer eigenaar op zijn telefoon iemand belt
+via `BelApparaatKiesScherm` en `belGereed == false`, verschijnt
+een warm dialog met een **modus-aware instructie**:
+- Doel is Gewone modus → "Pak het apparaat, open Instellingen →
+  Bellen → 'Instellingen voor dit apparaat'."
+- Doel is Rustige modus → "1. Zet hier tijdelijk de modus op
+  Gewone modus, 2. Doe de checklist op de tablet, 3. Zet de
+  modus weer terug." — zodat de eigenaar niet vastloopt op een
+  onbereikbare tablet.
+Fail-open bij `belGereed == null` (oude installs) — geen dialog.
+Niet-blokkerend: "Bel toch" is altijd beschikbaar.
+
+**4 — Vastloop-preventie**:
+- Setup-modus-keuze legt uit hoe je later bij de checklist komt
+  (regel toegevoegd 15 sept in `_weergaveModusStap`).
+- Warm dialog bij bellen geeft de concrete route (modus-aware).
+- Tablet in kiosk: geen menu-optie zichtbaar; dat is bewust —
+  alle beheer loopt via de eigenaar-telefoon of via mode-wissel.
+- BootReceiver (K-3): na reboot verschijnt een
+  fullScreenIntent-notificatie zodat de eigenaar de tablet
+  weer in de rustige modus kan zetten; instellingen blijven
+  bewaard via SharedPreferences.
+
+Werkende paden ongewijzigd: TabletScherm-kiosk, immersiveSticky,
+failsafe-herpin, dispose-cleanup, remote mode-wissel via
+Firestore-listener — allemaal onaangeraakt.
 
 ## Bel-architectuur (definitief, sept 2026)
 

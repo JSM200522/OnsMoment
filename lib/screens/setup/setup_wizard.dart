@@ -1424,6 +1424,10 @@ class _SetupWizardState extends State<SetupWizard> {
                 '- Videogesprekken worden automatisch opgenomen\n\n'
                 'Het apparaat kan niet naar andere apps of gesprekken '
                 '— alleen Ons Moment is zichtbaar.\n\n'
+                'Wil je later iets instellen op de tablet? Dan zet je '
+                'de rustige modus vanaf je eigen telefoon even uit '
+                'via Instellingen → "Wijzig modus van $naam". '
+                'Daarna weer aan.\n\n'
                 'Kies dit als $naam veel zorg nodig heeft of het '
                 'apparaat niet zelf gebruikt.',
             onTap: () => _voltooiOntvanger(DeviceModusService.VERGRENDELD),

@@ -175,6 +175,13 @@ class ApparaatService {
               'persoonsNaam': d['persoonsNaam'] as String? ?? '',
               'apparaatLabel': d['apparaatLabel'] as String? ?? '',
               'modus': d['modus'] as String? ?? '',
+              // BEL-CHK (15 sept 2026): weergaveModus meegeven zodat
+              // consumers (bel_apparaat_kies_scherm) de warm dialog
+              // modus-aware kunnen maken — een dierbare in rustige
+              // modus is niet fysiek bereikbaar via 'Instellingen op
+              // dit apparaat' zonder eerst de kiosk tijdelijk uit te
+              // zetten. Nullable om oude docs zonder veld te dekken.
+              'weergaveModus': d['weergaveModus'] as String?,
               // DEEL B (13 sept 2026): belGereed uit apparaat-doc.
               // Optioneel — oude docs zonder veld gedragen zich als
               // `null` (onbekend) i.p.v. `false`. Bel-scherm behandelt

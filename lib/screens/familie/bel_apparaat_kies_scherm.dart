@@ -141,6 +141,28 @@ class _BelApparaatKiesSchermState extends State<BelApparaatKiesScherm> {
     // staan (bijv. bewust batterij-opt aan om ander onderzoek).
     final belGereed = apparaat['belGereed'];
     if (belGereed == false && mounted) {
+      // BEL-CHK (15 sept 2026): modus-aware instructie. In rustige modus
+      // is de tablet vastgezet op Ons Moment (kiosk), dus 'Instellingen →
+      // Bellen → Instellingen voor dit apparaat' is NIET fysiek te
+      // openen op de tablet zelf. Eigenaar moet eerst de rustige modus
+      // tijdelijk uitzetten via 'Wijzig modus van $naam' hier in
+      // Instellingen, dan de checklist openen, dan modus weer aan.
+      final doelWeergaveModus = apparaat['weergaveModus'] as String?;
+      final isRustig = doelWeergaveModus == DeviceModusService.VERGRENDELD;
+      final instructieTekst = isRustig
+          ? 'Zo zet je het aan:\n'
+              '1. Open hier: Instellingen → "Wijzig modus van '
+              '$weergaveNaam" en zet tijdelijk op Gewone modus.\n'
+              '2. Pak het apparaat van $weergaveNaam. Open '
+              'Ons Moment → Instellingen → Bellen → '
+              '"Instellingen voor dit apparaat" en tik de '
+              'ontbrekende stappen aan.\n'
+              '3. Zet de modus daarna weer op Rustige modus.'
+          : 'Zo zet je het aan:\n'
+              'Pak het apparaat van $weergaveNaam, open '
+              'Ons Moment → Instellingen → Bellen → '
+              '"Instellingen voor dit apparaat", en tik de '
+              'ontbrekende stappen aan.';
       final belToch = await showDialog<bool>(
         context: context,
         builder: (ctx) => AlertDialog(
@@ -170,12 +192,7 @@ class _BelApparaatKiesSchermState extends State<BelApparaatKiesScherm> {
                     borderRadius: BorderRadius.circular(12),
                     border: Border.all(color: kPeachLight),
                   ),
-                  child: Text(
-                      'Zo zet je het aan:\n'
-                      'Pak het apparaat van $weergaveNaam, open '
-                      'Ons Moment → Instellingen → Bellen → '
-                      'Instellingen voor dit apparaat, en tik de '
-                      'ontbrekende stappen aan.',
+                  child: Text(instructieTekst,
                       style: const TextStyle(fontSize: 13,
                           color: kBrown, height: 1.55)),
                 ),
