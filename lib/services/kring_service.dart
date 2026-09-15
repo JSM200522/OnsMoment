@@ -193,6 +193,50 @@ class KringService {
     }
   }
 
+  /// Variant van [mijnKringen] die per kring ook de rol (eigenaar/gast)
+  /// teruggeeft. Nodig voor de rol-chip in het kring-overzicht en voor
+  /// pre-join-checks (al-lid vs eigen-kring detectie in de multi-kring
+  /// join-flow). Zelfde collectionGroup-query als [mijnKringen] — geen
+  /// extra Firestore-reads, alleen extra veld uit dezelfde leden-doc.
+  static Future<List<({Kring kring, AccountRol rol})>> mijnKringenMetRol(
+      String uid) async {
+    if (uid.isEmpty) return const [];
+    try {
+      final ledenSnap = await FirebaseFirestore.instance
+          .collectionGroup('leden')
+          .where('userUid', isEqualTo: uid)
+          .get();
+      final entries = <({DocumentReference ref, AccountRol rol})>[];
+      for (final ledDoc in ledenSnap.docs) {
+        final kringRef = ledDoc.reference.parent.parent;
+        if (kringRef == null) continue;
+        final rolStr = ledDoc.data()['rol'] as String? ?? 'gast';
+        AccountRol rol;
+        try {
+          rol = AccountRol.values.byName(rolStr);
+        } catch (_) {
+          rol = AccountRol.gast;
+        }
+        entries.add((ref: kringRef, rol: rol));
+      }
+      if (entries.isEmpty) return const [];
+      final kringDocs =
+          await Future.wait(entries.map((e) => e.ref.get()));
+      final result = <({Kring kring, AccountRol rol})>[];
+      for (var i = 0; i < entries.length; i++) {
+        final doc = kringDocs[i];
+        if (!doc.exists) continue;
+        try {
+          result.add((kring: Kring.fromFirestore(doc), rol: entries[i].rol));
+        } catch (_) {}
+      }
+      return result;
+    } catch (e) {
+      debugPrint('🌀 [KringService] mijnKringenMetRol($uid) faalde: $e');
+      return const [];
+    }
+  }
+
   /// Lichtgewicht variant van [mijnKringen] die alleen de kringIds
   /// teruggeeft — zonder de N extra kring-doc-reads. Gebruikt door
   /// [PushService.registreerHuidigApparaat] om het `kringId`-veld

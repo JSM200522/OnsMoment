@@ -45,6 +45,8 @@ import '../../data/bel_uitleg_teksten.dart';
 import '../../data/kring.dart';
 import '../../data/kring_membership.dart';
 import '../../services/kring_service.dart';
+import '../../services/video_call_service.dart';
+import '../setup/accept_uitnodig_scherm.dart';
 
 class FamilieScherm extends StatefulWidget {
   final bool alsOntvanger;
@@ -3780,8 +3782,11 @@ class _InstellingenTabState extends State<InstellingenTab> {
   bool _isAccountMaker = false;
   bool _benIkEigenaar = false;   // V9 eigenaar-check: kring.eigenaarUid == authUid
   String? _huidigeOntvangerModus;
-  // V9 2.3a: kring-switcher state
-  List<Kring>? _kringen;
+  // V9 2.3a: kring-switcher state.
+  // Multi-kring (sept 2026): elk entry heeft ook de rol, zodat de
+  // kring-tegel een chip "Eigenaar"/"Gast" toont en de join-flow
+  // dubbele memberships kan detecteren.
+  List<({Kring kring, AccountRol rol})>? _kringen;
   String? _huidigeKringId;
   StreamSubscription<Kring?>? _actieveKringSub;
   // V9 2.12-a-2: e-mailverificatie-status (zacht — alleen tonen).
@@ -3902,7 +3907,7 @@ class _InstellingenTabState extends State<InstellingenTab> {
   Future<void> _laadKringen() async {
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null) return;
-    final kringen = await KringService.mijnKringen(uid);
+    final kringen = await KringService.mijnKringenMetRol(uid);
     final huidig = await DeviceModusService.krijgActieveKring();
     if (!mounted) return;
     setState(() {
@@ -3913,6 +3918,17 @@ class _InstellingenTabState extends State<InstellingenTab> {
 
   Future<void> _switchNaarKring(String kringId) async {
     if (kringId == _huidigeKringId) return;
+    // Multi-kring (sept 2026): blokkeer wisselen tijdens een actief
+    // videogesprek — de LiveKit-room hangt aan de HUIDIGE kring en
+    // een switch zou een half-verbonden gesprek achterlaten.
+    if (VideoCallService.roomNotifier.value != null) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('Je zit in een gesprek — hang eerst op voordat '
+            'je van kring wisselt.'),
+        backgroundColor: kPeach,
+        duration: Duration(seconds: 4)));
+      return;
+    }
     await DeviceModusService.zetActieveKring(kringId);
     // _opKringSwitch wordt vanzelf getriggerd via notifier; bovendien
     // herstart _FamilieSchermState._herstartListeners (2.2b) de
@@ -4075,6 +4091,16 @@ class _InstellingenTabState extends State<InstellingenTab> {
               'Voor een tweede dierbare bijvoorbeeld', () {
             Navigator.push(context, MaterialPageRoute(
                 builder: (c) => const KringAanmakenScherm()));
+          }),
+          _item('🔗', 'Kring joinen met code',
+              'Word lid van een kring waarvoor je bent uitgenodigd',
+              () async {
+            await Navigator.push(context, MaterialPageRoute(
+                builder: (c) => const AcceptUitnodigScherm(isIngelogd: true)));
+            // Verfris de kring-lijst — de notifier triggert dat al bij
+            // zetActieveKring, maar dit dekt ook het "annuleren"-pad
+            // waarbij de user zonder membership terugkomt.
+            if (mounted) _laadKringen();
           }),
         ],
         const SizedBox(height: 20),
@@ -4609,10 +4635,15 @@ class _InstellingenTabState extends State<InstellingenTab> {
 
   /// V9 2.3a: tegel voor één kring in de switcher-lijst. Huidige kring
   /// krijgt peach-pale achtergrond + vinkje + subtekst "(huidige kring)";
-  /// andere kringen zijn tikbaar om naar te switchen.
-  Widget _kringTegel(Kring k) {
+  /// andere kringen zijn tikbaar om naar te switchen. Sept 2026: rol-chip
+  /// "Eigenaar" (peach) of "Gast" (grijs) rechts naast de naam.
+  Widget _kringTegel(({Kring kring, AccountRol rol}) entry) {
+    final k = entry.kring;
     final isHuidig = k.id == _huidigeKringId;
     final foto = k.foto;
+    final isEigenaar = entry.rol == AccountRol.eigenaar;
+    final rolLabel = isEigenaar ? 'Eigenaar' : 'Gast';
+    final rolKleur = isEigenaar ? kPeach : kTextMuted;
     return GestureDetector(
       onTap: isHuidig ? null : () => _switchNaarKring(k.id),
       child: Container(
@@ -4645,16 +4676,31 @@ class _InstellingenTabState extends State<InstellingenTab> {
           Expanded(child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(k.naam.isEmpty ? 'Naamloze kring' : k.naam,
-                  style: const TextStyle(fontSize: 14,
-                      fontWeight: FontWeight.w800, color: kBrown)),
+              Row(children: [
+                Expanded(child: Text(k.naam.isEmpty ? 'Naamloze kring' : k.naam,
+                    style: const TextStyle(fontSize: 14,
+                        fontWeight: FontWeight.w800, color: kBrown))),
+                const SizedBox(width: 6),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(color: rolKleur,
+                      borderRadius: BorderRadius.circular(6)),
+                  child: Text(rolLabel,
+                      style: const TextStyle(fontSize: 10,
+                          fontWeight: FontWeight.w800, color: kWhite,
+                          letterSpacing: 0.3)),
+                ),
+              ]),
               if (isHuidig)
                 const Padding(padding: EdgeInsets.only(top: 2),
                   child: Text('(huidige kring)',
                       style: TextStyle(fontSize: 11, color: kTextMuted))),
             ])),
           if (isHuidig)
-            const Icon(Icons.check_circle_rounded, color: kPeach, size: 22),
+            const Padding(padding: EdgeInsets.only(left: 8),
+              child: Icon(Icons.check_circle_rounded,
+                  color: kPeach, size: 22)),
         ]),
       ),
     );

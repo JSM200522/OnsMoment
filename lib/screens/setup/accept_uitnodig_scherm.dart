@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../../data/email_blocklist.dart';
+import '../../data/kring.dart';
 import '../../data/uitnodiging.dart';
 import '../../services/apparaat_service.dart';
 import '../../services/device_modus_service.dart';
+import '../../services/kring_service.dart';
 import '../../services/uitnodiging_service.dart';
 import '../../theme/kleuren.dart';
 import '../../widgets/normaal_scaffold.dart';
@@ -28,7 +30,24 @@ class AcceptUitnodigScherm extends StatefulWidget {
   /// (gebruikt door 2.5-a-4 deeplink-handler).
   final String? initialToken;
 
-  const AcceptUitnodigScherm({super.key, this.initialToken});
+  /// True als de user AL ingelogd is en een EXTRA kring wil joinen
+  /// (multi-kring, sept 2026). In deze modus:
+  /// - Titel wordt "Kring joinen" i.p.v. "Uitnodiging".
+  /// - Auth-tak (inloggen / signup-keuze) wordt overgeslagen — na de
+  ///   preview volgt één "Lid worden"-knop die direct
+  ///   [UitnodigingService.accepteer] roept met de huidige uid.
+  /// - Pre-check op mijnKringenMetRol: al-eigenaar → "Je bent al
+  ///   eigenaar"; al-gast → "Je bent al lid" + knop "Schakel over".
+  /// - Post-success: [DeviceModusService.zetActieveKring] + pop
+  ///   (i.p.v. popUntil(isFirst)) — user komt terug in InstellingenTab
+  ///   met de nieuwe kring actief.
+  final bool isIngelogd;
+
+  const AcceptUitnodigScherm({
+    super.key,
+    this.initialToken,
+    this.isIngelogd = false,
+  });
 
   @override
   State<AcceptUitnodigScherm> createState() => _AcceptUitnodigSchermState();
@@ -44,6 +63,10 @@ class _AcceptUitnodigSchermState extends State<AcceptUitnodigScherm> {
   bool _bezigValideren = false;
   bool _toonInlogVelden = false;
   bool _bezigInloggen = false;
+
+  /// isIngelogd-modus: True zolang de "Lid worden"-knop draait
+  /// (accepteer + zetActieveKring). Voorkomt dubbele taps.
+  bool _bezigJoinen = false;
 
   @override
   void initState() {
@@ -204,15 +227,16 @@ class _AcceptUitnodigSchermState extends State<AcceptUitnodigScherm> {
         backgroundColor: Colors.transparent,
         elevation: 0,
         iconTheme: const IconThemeData(color: kBrown),
-        title: const Text('Uitnodiging',
-            style: TextStyle(color: kBrown, fontWeight: FontWeight.w900)),
+        title: Text(widget.isIngelogd ? 'Kring joinen' : 'Uitnodiging',
+            style: const TextStyle(color: kBrown, fontWeight: FontWeight.w900)),
       ),
       body: Padding(
         padding: const EdgeInsets.all(20),
         child: ListView(children: [
           if (_uitnodiging == null) ..._tokenInvoerSectie()
           else ..._previewEnKeuzeSectie(_uitnodiging!),
-          if (_toonInlogVelden) ..._inlogSectie(),
+          // Inlog-tak alleen in setup-flow; ingelogde-modus slaat 'm over.
+          if (_toonInlogVelden && !widget.isIngelogd) ..._inlogSectie(),
         ]),
       ),
     );
@@ -369,8 +393,128 @@ class _AcceptUitnodigSchermState extends State<AcceptUitnodigScherm> {
       const SizedBox(height: 24),
 
       if (!u.ruimte) ..._kringVolBlok()
+      else if (widget.isIngelogd) ..._lidWordenSectie(u)
       else ..._keuzeKnoppen(),
     ];
+  }
+
+  // ─── 2b. Lid worden — alleen in isIngelogd-modus (multi-kring) ─────
+  //
+  // Pre-check gebeurt in _joinAlsIngelogde vóór accepteer wordt geroepen:
+  // - Al eigenaar van deze kring → "Je bent al eigenaar" + Sluiten.
+  // - Al gast van deze kring → "Je bent al lid" + "Schakel over".
+  // - Anders → accepteer + zetActieveKring + pop.
+
+  List<Widget> _lidWordenSectie(Uitnodiging u) => [
+    OWKnop(
+      label: 'Lid worden van deze kring',
+      onTap: _bezigJoinen ? null : () => _joinAlsIngelogde(u),
+      bezig: _bezigJoinen,
+    ),
+    const SizedBox(height: 12),
+    Center(child: TextButton(
+      onPressed: _bezigJoinen ? null : () => Navigator.of(context).pop(),
+      child: const Text('Annuleren',
+          style: TextStyle(color: kTextMuted,
+              fontWeight: FontWeight.w700)))),
+  ];
+
+  Future<void> _joinAlsIngelogde(Uitnodiging u) async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) {
+      _toonFout('Niet ingelogd — log opnieuw in.');
+      return;
+    }
+    setState(() => _bezigJoinen = true);
+
+    // Pre-check: staat de user al in deze kring? (eigenaar of gast)
+    final mijnKringen = await KringService.mijnKringenMetRol(uid);
+    AccountRol? bestaandeRol;
+    for (final entry in mijnKringen) {
+      if (entry.kring.id == u.kringId) {
+        bestaandeRol = entry.rol;
+        break;
+      }
+    }
+    if (bestaandeRol != null) {
+      if (!mounted) return;
+      setState(() => _bezigJoinen = false);
+      if (bestaandeRol == AccountRol.eigenaar) {
+        _toonAlEigenaarDialog(u);
+      } else {
+        _toonAlLidDialog(u);
+      }
+      return;
+    }
+
+    // Echte accept.
+    final res = await UitnodigingService.accepteer(
+        token: u.token, gebruikerUid: uid);
+    if (!mounted) return;
+    if (res.success || res.fout == UitnodigingFout.alLid) {
+      await DeviceModusService.zetActieveKring(u.kringId);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('Je bent nu lid van '
+            '${u.kringNaam.isNotEmpty ? u.kringNaam : "deze kring"}.'),
+        backgroundColor: kGreen));
+      Navigator.of(context).pop();
+      return;
+    }
+    setState(() => _bezigJoinen = false);
+    _toonAcceptFout(res.fout);
+  }
+
+  void _toonAlEigenaarDialog(Uitnodiging u) {
+    showDialog(context: context, builder: (ctx) => AlertDialog(
+      backgroundColor: kCream,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      title: const Text('Dit is jouw eigen kring',
+          style: TextStyle(color: kBrown, fontWeight: FontWeight.w900)),
+      content: Text(
+        'Je bent al eigenaar van '
+        '${u.kringNaam.isNotEmpty ? u.kringNaam : "deze kring"}. Je hoeft '
+        'niks te doen — je hebt al volledige toegang.',
+        style: const TextStyle(color: kBrown, height: 1.5)),
+      actions: [
+        TextButton(
+          onPressed: () {
+            Navigator.pop(ctx);
+            Navigator.of(context).pop();
+          },
+          child: const Text('Sluiten',
+              style: TextStyle(color: kPeach, fontWeight: FontWeight.w800))),
+      ],
+    ));
+  }
+
+  void _toonAlLidDialog(Uitnodiging u) {
+    showDialog(context: context, builder: (ctx) => AlertDialog(
+      backgroundColor: kCream,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      title: const Text('Je bent al lid',
+          style: TextStyle(color: kBrown, fontWeight: FontWeight.w900)),
+      content: Text(
+        'Je zit al in '
+        '${u.kringNaam.isNotEmpty ? u.kringNaam : "deze kring"}. Wil je nu '
+        'naar deze kring overschakelen?',
+        style: const TextStyle(color: kBrown, height: 1.5)),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(ctx),
+          child: const Text('Niet nu',
+              style: TextStyle(color: kTextMuted))),
+        TextButton(
+          onPressed: () async {
+            Navigator.pop(ctx);
+            await DeviceModusService.zetActieveKring(u.kringId);
+            if (!mounted) return;
+            Navigator.of(context).pop();
+          },
+          child: const Text('Schakel over',
+              style: TextStyle(color: kPeach, fontWeight: FontWeight.w800))),
+      ],
+    ));
   }
 
   List<Widget> _kringVolBlok() => [

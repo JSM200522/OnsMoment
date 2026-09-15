@@ -96,6 +96,15 @@ service cloud.firestore {
         // meestuurt in het viaToken-veld en dat token naar deze kring
         // wijst. Rol wordt geforceerd op 'gast' — geen self-promotion
         // tot eigenaar. userUid-veld moet gelijk zijn aan de auth-uid.
+        //
+        // Vol-check (sept 2026): server weigert de write zodra
+        // huidigeLedenCache >= maxLedenCache. Cache wordt door
+        // `zorgVoorToken()` ververst bij elke opening van de
+        // uitnodig-dialog door de eigenaar. Bekende race: 2+ gelijktijdige
+        // joiners bij een bijna-volle kring kunnen beide slagen omdat de
+        // cache pas wordt bijgewerkt bij de volgende dialog-open.
+        // Defaults (0 / 8) fail-safe naar tier-klein voor oude tokens
+        // van vóór de cache-fields.
         allow create: if isIngelogd() &&
           lidId == request.auth.uid &&
           request.resource.data.userUid == request.auth.uid &&
@@ -103,7 +112,9 @@ service cloud.firestore {
           request.resource.data.viaToken is string &&
           request.resource.data.viaToken.size() > 0 &&
           exists(/databases/$(database)/documents/uitnodig_tokens/$(request.resource.data.viaToken)) &&
-          get(/databases/$(database)/documents/uitnodig_tokens/$(request.resource.data.viaToken)).data.kringId == kringId;
+          get(/databases/$(database)/documents/uitnodig_tokens/$(request.resource.data.viaToken)).data.kringId == kringId &&
+          get(/databases/$(database)/documents/uitnodig_tokens/$(request.resource.data.viaToken)).data.get('huidigeLedenCache', 0) <
+          get(/databases/$(database)/documents/uitnodig_tokens/$(request.resource.data.viaToken)).data.get('maxLedenCache', 8);
 
         // Self-leave: elke gebruiker mag zijn eigen membership deleten
         // (uit een kring stappen). Eigenaar-delete zit al in write-rule.
